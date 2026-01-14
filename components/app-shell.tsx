@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ClipboardList, Home, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
+import { BarChart3, ClipboardList, Home, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type NavItem = {
@@ -31,6 +31,12 @@ const navItems: NavItem[] = [
     label: 'Daily Tasks',
     helper: 'Team summaries',
     icon: ClipboardList,
+  },
+  {
+    href: '/p-and-l',
+    label: 'P&L',
+    helper: 'Daily profit + cashflow',
+    icon: BarChart3,
   },
   {
     href: '/settings',
@@ -151,7 +157,6 @@ function SideNavContent({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
-  const [showIntro, setShowIntro] = useState(true);
   const activeItem = useMemo(
     () => navItems.find((item) => item.href === pathname) ?? navItems[0],
     [pathname]
@@ -161,23 +166,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setNavOpen(false);
   }, [pathname]);
 
-  useEffect(() => {
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const timeout = window.setTimeout(() => {
-      setShowIntro(false);
-    }, prefersReducedMotion ? 150 : 850);
-    return () => window.clearTimeout(timeout);
-  }, []);
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen">
         <aside className="relative hidden w-72 flex-col border-r border-border/40 bg-sidebar/70 px-6 py-6 shadow-[0_0_40px_rgba(15,23,42,0.4)] backdrop-blur md:flex">
           <SideNavContent activePath={pathname} />
         </aside>
-        <main className="relative flex-1 motion-safe:animate-[pageReveal_900ms_ease-out]">
+        <main className="relative flex-1">
           <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/40 bg-background/70 px-4 py-3 backdrop-blur md:hidden">
             <button
               type="button"
@@ -194,37 +189,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           {children}
         </main>
-      </div>
-
-      <div
-        className={cn(
-          'pointer-events-none fixed inset-0 z-[60] overflow-hidden bg-background/92 transition-opacity duration-700',
-          showIntro ? 'opacity-100' : 'opacity-0'
-        )}
-        aria-hidden="true"
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.22),rgba(15,23,42,0.9)_55%,rgba(2,6,23,0.98))]" />
-        <div className="absolute inset-0 opacity-70 [background-image:repeating-linear-gradient(90deg,rgba(148,163,184,0.08)_0,rgba(148,163,184,0.08)_1px,transparent_1px,transparent_72px),repeating-linear-gradient(0deg,rgba(148,163,184,0.06)_0,rgba(148,163,184,0.06)_1px,transparent_1px,transparent_72px)] motion-safe:animate-[introGrid_6s_linear_infinite]" />
-        <div className="absolute -inset-40 bg-[radial-gradient(circle,rgba(34,211,238,0.25),transparent_60%)] blur-3xl opacity-60" />
-        <div className="absolute inset-x-0 top-0 h-48 bg-[linear-gradient(180deg,transparent,rgba(34,211,238,0.2),transparent)] opacity-0 motion-safe:animate-[introBeam_1.8s_ease-in-out_infinite]" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="relative flex h-56 w-56 items-center justify-center">
-            <div className="absolute inset-0 rounded-full border border-primary/40 bg-[radial-gradient(circle,rgba(34,211,238,0.25),transparent_65%)] shadow-[0_0_60px_rgba(34,211,238,0.35)] motion-safe:animate-[introIris_1.3s_ease-out_infinite]" />
-            <div className="absolute inset-5 rounded-full border border-primary/30 bg-[conic-gradient(from_120deg,rgba(34,211,238,0.25),rgba(251,191,36,0.1),rgba(16,185,129,0.2),rgba(34,211,238,0.25))] opacity-70 motion-safe:animate-[introSweep_2.2s_linear_infinite]" />
-            <div className="absolute inset-10 rounded-full border border-primary/20 bg-[radial-gradient(circle,rgba(15,23,42,0.6),transparent_70%)]" />
-            <div className="absolute inset-16 rounded-full border border-primary/15" />
-            <div className="absolute h-1 w-24 rounded-full bg-primary/50 blur-sm motion-safe:animate-[introFlash_1.3s_ease-in-out_infinite]" />
-            <div className="absolute h-24 w-1 rounded-full bg-primary/40 blur-sm motion-safe:animate-[introFlash_1.3s_ease-in-out_infinite]" />
-            <div className="relative h-3 w-3 rounded-full bg-primary shadow-[0_0_20px_rgba(34,211,238,0.7)] motion-safe:animate-[introFlash_1.3s_ease-in-out_infinite]" />
-          </div>
-        </div>
-        <div className="absolute inset-x-0 bottom-10 flex items-center justify-center">
-          <div className="rounded-full border border-border/60 bg-background/40 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.5em] text-muted-foreground">
-            Boot sequence
-          </div>
-        </div>
-        <div className="absolute left-10 top-10 h-16 w-16 rounded-2xl border border-primary/30 opacity-70 shadow-[0_0_20px_rgba(34,211,238,0.25)]" />
-        <div className="absolute bottom-12 right-12 h-20 w-20 rounded-2xl border border-primary/20 opacity-70 shadow-[0_0_24px_rgba(34,211,238,0.2)]" />
       </div>
 
       <div
