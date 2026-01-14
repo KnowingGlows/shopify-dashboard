@@ -10,18 +10,40 @@ function getRangeStart(
     ? range
     : 'today';
   const now = new Date();
-  const startDate = new Date(now);
-  const endDate = new Date(now);
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const DAY_MS = 24 * 60 * 60 * 1000;
 
-  if (normalizedRange === 'today') {
-    startDate.setHours(0, 0, 0, 0);
-  } else if (normalizedRange === 'yesterday') {
-    startDate.setDate(now.getDate() - 1);
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-  } else {
-    const daysBack = normalizedRange === '7d' ? 7 : 30;
-    startDate.setTime(now.getTime() - daysBack * 24 * 60 * 60 * 1000);
+  const getISTDateParts = (date: Date) => {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+
+    const year = Number(parts.find((part) => part.type === 'year')?.value);
+    const month = Number(parts.find((part) => part.type === 'month')?.value);
+    const day = Number(parts.find((part) => part.type === 'day')?.value);
+
+    return { year, month, day };
+  };
+
+  const startOfISTDay = (date: Date) => {
+    const { year, month, day } = getISTDateParts(date);
+    const utcMidnight = Date.UTC(year, month - 1, day, 0, 0, 0);
+    return new Date(utcMidnight - IST_OFFSET_MS);
+  };
+
+  const startOfTodayIST = startOfISTDay(now);
+  let startDate = new Date(startOfTodayIST);
+  let endDate = new Date(now);
+
+  if (normalizedRange === 'yesterday') {
+    startDate = new Date(startOfTodayIST.getTime() - DAY_MS);
+    endDate = new Date(startOfTodayIST);
+  } else if (normalizedRange === '7d' || normalizedRange === '30d') {
+    const daysBack = normalizedRange === '7d' ? 6 : 29;
+    startDate = new Date(startOfTodayIST.getTime() - daysBack * DAY_MS);
   }
 
   return {
