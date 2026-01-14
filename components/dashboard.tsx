@@ -96,7 +96,7 @@ export function Dashboard() {
             <CardDescription>{error}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={fetchData} className="w-full">
+            <Button onClick={() => fetchData()} className="w-full">
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
             </Button>
@@ -169,7 +169,7 @@ export function Dashboard() {
                 onStoreChange={setSelectedStore}
               />
               <Button
-                onClick={fetchData}
+                onClick={() => fetchData()}
                 variant="outline"
                 size="icon"
                 className="bg-background/60 backdrop-blur border-border/60 hover:border-primary/50 hover:text-primary"
