@@ -212,9 +212,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="absolute inset-0 rounded-full border border-primary/40 bg-[radial-gradient(circle,rgba(34,211,238,0.25),transparent_65%)] shadow-[0_0_60px_rgba(34,211,238,0.35)] motion-safe:animate-[introIris_1.3s_ease-out_infinite]" />
             <div className="absolute inset-5 rounded-full border border-primary/30 bg-[conic-gradient(from_120deg,rgba(34,211,238,0.25),rgba(251,191,36,0.1),rgba(16,185,129,0.2),rgba(34,211,238,0.25))] opacity-70 motion-safe:animate-[introSweep_2.2s_linear_infinite]" />
             <div className="absolute inset-10 rounded-full border border-primary/20 bg-[radial-gradient(circle,rgba(15,23,42,0.6),transparent_70%)]" />
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-border/60 bg-background/70 text-primary shadow-[0_0_30px_rgba(34,211,238,0.4)] motion-safe:animate-[introFlash_1.3s_ease-in-out_infinite]">
-              <Sparkles className="h-6 w-6" />
-            </div>
+            <div className="absolute inset-16 rounded-full border border-primary/15" />
+            <div className="absolute h-1 w-24 rounded-full bg-primary/50 blur-sm motion-safe:animate-[introFlash_1.3s_ease-in-out_infinite]" />
+            <div className="absolute h-24 w-1 rounded-full bg-primary/40 blur-sm motion-safe:animate-[introFlash_1.3s_ease-in-out_infinite]" />
+            <div className="relative h-3 w-3 rounded-full bg-primary shadow-[0_0_20px_rgba(34,211,238,0.7)] motion-safe:animate-[introFlash_1.3s_ease-in-out_infinite]" />
           </div>
         </div>
         <div className="absolute inset-x-0 bottom-10 flex items-center justify-center">
