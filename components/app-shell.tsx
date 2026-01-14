@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
+import { ClipboardList, Home, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type NavItem = {
@@ -25,6 +25,12 @@ const navItems: NavItem[] = [
     label: 'Brands',
     helper: 'Kairova and Mavric',
     icon: Store,
+  },
+  {
+    href: '/daily-tasks',
+    label: 'Daily Tasks',
+    helper: 'Team summaries',
+    icon: ClipboardList,
   },
   {
     href: '/settings',
@@ -145,6 +151,7 @@ function SideNavContent({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
   const activeItem = useMemo(
     () => navItems.find((item) => item.href === pathname) ?? navItems[0],
     [pathname]
@@ -154,13 +161,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setNavOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timeout = window.setTimeout(() => {
+      setShowIntro(false);
+    }, prefersReducedMotion ? 150 : 850);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex min-h-screen">
         <aside className="relative hidden w-72 flex-col border-r border-border/40 bg-sidebar/70 px-6 py-6 shadow-[0_0_40px_rgba(15,23,42,0.4)] backdrop-blur md:flex">
           <SideNavContent activePath={pathname} />
         </aside>
-        <main className="relative flex-1">
+        <main className="relative flex-1 motion-safe:animate-[pageReveal_900ms_ease-out]">
           <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/40 bg-background/70 px-4 py-3 backdrop-blur md:hidden">
             <button
               type="button"
@@ -177,6 +194,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           {children}
         </main>
+      </div>
+
+      <div
+        className={cn(
+          'pointer-events-none fixed inset-0 z-[60] flex items-center justify-center bg-background/85 backdrop-blur-md transition-opacity duration-700',
+          showIntro ? 'opacity-100' : 'opacity-0'
+        )}
+        aria-hidden="true"
+      >
+        <div className="relative flex h-28 w-28 items-center justify-center">
+          <div className="absolute inset-0 rounded-full border border-primary/30 bg-[radial-gradient(circle,rgba(34,211,238,0.22),transparent_70%)] shadow-[0_0_50px_rgba(34,211,238,0.35)] motion-safe:animate-[introPulse_1.8s_ease-in-out_infinite]" />
+          <div className="absolute -inset-6 rounded-full bg-[conic-gradient(from_90deg,rgba(34,211,238,0.18),rgba(251,191,36,0.12),rgba(16,185,129,0.16),rgba(34,211,238,0.18))] opacity-70 blur-2xl motion-safe:animate-[introSpin_3.2s_linear_infinite]" />
+          <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/70 text-primary shadow-[0_0_24px_rgba(34,211,238,0.25)]">
+            <Sparkles className="h-5 w-5" />
+          </div>
+        </div>
       </div>
 
       <div
