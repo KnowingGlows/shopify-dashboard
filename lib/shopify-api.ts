@@ -76,22 +76,35 @@ export async function fetchShopifyOrders(
 export async function fetchAllStoresOrders(
   stores: ShopifyStore[],
   options: FetchOrdersOptions = {}
-): Promise<OrderData[]> {
-  const ordersPromises = stores.map(async (store) => {
-    try {
-      const orders = await fetchShopifyOrders(store, options);
-      return {
-        storeName: store.name,
-        orders,
-      };
-    } catch (error) {
-      console.error(`Failed to fetch orders for ${store.name}:`, error);
-      return {
-        storeName: store.name,
-        orders: [],
-      };
-    }
-  });
+): Promise<{ ordersData: OrderData[]; errors: Array<{ storeName: string; message: string }> }> {
+  const results = await Promise.all(
+    stores.map(async (store) => {
+      try {
+        const orders = await fetchShopifyOrders(store, options);
+        return {
+          storeName: store.name,
+          orders,
+          error: null as string | null,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Failed to fetch orders for ${store.name}:`, error);
+        return {
+          storeName: store.name,
+          orders: [],
+          error: message,
+        };
+      }
+    })
+  );
 
-  return Promise.all(ordersPromises);
+  return {
+    ordersData: results.map(({ storeName, orders }) => ({ storeName, orders })),
+    errors: results
+      .filter((result) => result.error)
+      .map((result) => ({
+        storeName: result.storeName,
+        message: result.error ?? 'Unknown error',
+      })),
+  };
 }

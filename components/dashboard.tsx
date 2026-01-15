@@ -24,17 +24,27 @@ export function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [devLog, setDevLog] = useState<{
-    status: 'Idle' | 'Fetching' | 'Success' | 'Error';
+    status: 'Idle' | 'Fetching' | 'Success' | 'Warning' | 'Error';
     lastAttempt: string;
     lastSync: string;
     error: string | null;
     note: string | null;
+    range: string;
+    rangeStart: string;
+    rangeEnd: string;
+    storeCounts: Array<{ name: string; count: number }>;
+    storeErrors: Array<{ storeName: string; message: string }>;
   }>({
     status: 'Idle',
     lastAttempt: '',
     lastSync: '',
     error: null,
     note: null,
+    range: '',
+    rangeStart: '',
+    rangeEnd: '',
+    storeCounts: [],
+    storeErrors: [],
   });
 
   const fetchData = async (range = dateRange) => {
@@ -50,7 +60,16 @@ export function Dashboard() {
         note: null,
       }));
       const response = await fetch(`/api/sales?range=${range}`);
-      let result: { data?: SalesMetrics; ordersData?: OrderData[]; lastUpdated?: string; error?: string };
+      let result: {
+        data?: SalesMetrics;
+        ordersData?: OrderData[];
+        lastUpdated?: string;
+        error?: string;
+        range?: string;
+        rangeStart?: string;
+        rangeEnd?: string;
+        storeErrors?: Array<{ storeName: string; message: string }>;
+      };
       try {
         result = await response.json();
       } catch (err) {
@@ -65,15 +84,36 @@ export function Dashboard() {
       const syncStamp = result.lastUpdated
         ? new Date(result.lastUpdated).toLocaleString('en-IN')
         : attemptStamp;
-      setOrdersData(result.ordersData || []);
+      const nextOrders = result.ordersData || [];
+      const totalOrders = nextOrders.reduce((sum, entry) => sum + entry.orders.length, 0);
+      const storeCounts = nextOrders.map((entry) => ({
+        name: entry.storeName,
+        count: entry.orders.length,
+      }));
+      const storeErrors = result.storeErrors || [];
+      const hasWarning = storeErrors.length > 0 || totalOrders === 0;
+      const noteParts = [];
+      if (totalOrders === 0) {
+        noteParts.push('No orders returned for this range.');
+      }
+      if (storeErrors.length > 0) {
+        noteParts.push('Some stores failed to sync.');
+      }
+
+      setOrdersData(nextOrders);
       setSalesData(result.data || null);
       setLastUpdated(syncStamp);
       setDevLog((prev) => ({
         ...prev,
-        status: 'Success',
+        status: hasWarning ? 'Warning' : 'Success',
         lastSync: syncStamp,
         error: null,
-        note: (result.ordersData ?? []).length === 0 ? 'No orders returned for this range.' : null,
+        note: noteParts.length > 0 ? noteParts.join(' ') : null,
+        range: result.range ?? '',
+        rangeStart: result.rangeStart ?? '',
+        rangeEnd: result.rangeEnd ?? '',
+        storeCounts,
+        storeErrors,
       }));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'An error occurred';
@@ -258,21 +298,28 @@ function DeveloperModePanel({
   log,
 }: {
   log: {
-    status: 'Idle' | 'Fetching' | 'Success' | 'Error';
+    status: 'Idle' | 'Fetching' | 'Success' | 'Warning' | 'Error';
     lastAttempt: string;
     lastSync: string;
     error: string | null;
     note: string | null;
+    range: string;
+    rangeStart: string;
+    rangeEnd: string;
+    storeCounts: Array<{ name: string; count: number }>;
+    storeErrors: Array<{ storeName: string; message: string }>;
   };
 }) {
   const statusColor =
     log.status === 'Error'
       ? 'bg-rose-400'
-      : log.status === 'Fetching'
+      : log.status === 'Warning'
         ? 'bg-amber-400'
-        : log.status === 'Success'
-          ? 'bg-emerald-400'
-          : 'bg-muted-foreground';
+        : log.status === 'Fetching'
+          ? 'bg-sky-400'
+          : log.status === 'Success'
+            ? 'bg-emerald-400'
+            : 'bg-muted-foreground';
 
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-20 hidden md:block">
@@ -282,6 +329,10 @@ function DeveloperModePanel({
           <span className={cn('h-2 w-2 rounded-full', statusColor)} />
         </div>
         <div className="mt-3 space-y-2 text-[11px]">
+          <div className="flex items-center justify-between">
+            <span>Range</span>
+            <span className="text-foreground">{log.range ? log.range.toUpperCase() : '—'}</span>
+          </div>
           <div className="flex items-center justify-between">
             <span>Status</span>
             <span className="text-foreground">{log.status}</span>
@@ -294,10 +345,33 @@ function DeveloperModePanel({
             <span>Last sync</span>
             <span className="text-foreground">{log.lastSync || '—'}</span>
           </div>
+          <div className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[10px] text-muted-foreground">
+            <div>Window start: {log.rangeStart || '—'}</div>
+            <div>Window end: {log.rangeEnd || '—'}</div>
+          </div>
         </div>
+        {log.storeCounts.length > 0 ? (
+          <div className="mt-3 rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
+            {log.storeCounts.map((store) => (
+              <div key={store.name} className="flex items-center justify-between">
+                <span>{store.name}</span>
+                <span className="text-foreground">{store.count}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {log.note ? (
           <div className="mt-3 rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
             {log.note}
+          </div>
+        ) : null}
+        {log.storeErrors.length > 0 ? (
+          <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+            {log.storeErrors.map((storeError) => (
+              <div key={storeError.storeName}>
+                {storeError.storeName}: {storeError.message}
+              </div>
+            ))}
           </div>
         ) : null}
         {log.error ? (

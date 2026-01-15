@@ -68,13 +68,17 @@ export async function GET(request: Request) {
     const { range, createdAtMin, createdAtMax } = getRangeStart(
       searchParams.get('range') ?? 'today'
     );
-    const ordersData = await fetchAllStoresOrders(stores, { createdAtMin, createdAtMax });
+    const { ordersData, errors } = await fetchAllStoresOrders(stores, {
+      createdAtMin,
+      createdAtMax,
+    });
     const salesMetrics = aggregateSalesData(ordersData);
 
     return NextResponse.json({
       success: true,
       data: salesMetrics,
       ordersData,
+      storeErrors: errors,
       range,
       rangeStart: createdAtMin,
       rangeEnd: createdAtMax,
