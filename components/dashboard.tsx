@@ -23,23 +23,66 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [devLog, setDevLog] = useState<{
+    status: 'Idle' | 'Fetching' | 'Success' | 'Error';
+    lastAttempt: string;
+    lastSync: string;
+    error: string | null;
+    note: string | null;
+  }>({
+    status: 'Idle',
+    lastAttempt: '',
+    lastSync: '',
+    error: null,
+    note: null,
+  });
 
   const fetchData = async (range = dateRange) => {
+    const attemptStamp = new Date().toLocaleString('en-IN');
     try {
       setLoading(true);
       setError(null);
+      setDevLog((prev) => ({
+        ...prev,
+        status: 'Fetching',
+        lastAttempt: attemptStamp,
+        error: null,
+        note: null,
+      }));
       const response = await fetch(`/api/sales?range=${range}`);
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch data');
+      let result: { data?: SalesMetrics; ordersData?: OrderData[]; lastUpdated?: string; error?: string };
+      try {
+        result = await response.json();
+      } catch (err) {
+        throw new Error('Invalid JSON response from /api/sales');
       }
 
-      setOrdersData(result.ordersData);
-      setSalesData(result.data);
-      setLastUpdated(new Date(result.lastUpdated).toLocaleString('en-IN'));
+      if (!response.ok) {
+        const message = result?.error || `HTTP ${response.status} ${response.statusText}`;
+        throw new Error(message);
+      }
+
+      const syncStamp = result.lastUpdated
+        ? new Date(result.lastUpdated).toLocaleString('en-IN')
+        : attemptStamp;
+      setOrdersData(result.ordersData || []);
+      setSalesData(result.data || null);
+      setLastUpdated(syncStamp);
+      setDevLog((prev) => ({
+        ...prev,
+        status: 'Success',
+        lastSync: syncStamp,
+        error: null,
+        note: (result.ordersData ?? []).length === 0 ? 'No orders returned for this range.' : null,
+      }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const message = err instanceof Error ? err.message : 'An error occurred';
+      setError(message);
+      setDevLog((prev) => ({
+        ...prev,
+        status: 'Error',
+        error: message,
+      }));
       console.error('Error fetching sales data:', err);
     } finally {
       setLoading(false);
@@ -92,6 +135,7 @@ export function Dashboard() {
             </Button>
           </CardContent>
         </Card>
+        <DeveloperModePanel log={devLog} />
       </div>
     );
   }
@@ -204,6 +248,63 @@ export function Dashboard() {
         <div className="text-center text-xs uppercase tracking-[0.2em] text-muted-foreground">
           Shopify sales analytics
         </div>
+      </div>
+      <DeveloperModePanel log={devLog} />
+    </div>
+  );
+}
+
+function DeveloperModePanel({
+  log,
+}: {
+  log: {
+    status: 'Idle' | 'Fetching' | 'Success' | 'Error';
+    lastAttempt: string;
+    lastSync: string;
+    error: string | null;
+    note: string | null;
+  };
+}) {
+  const statusColor =
+    log.status === 'Error'
+      ? 'bg-rose-400'
+      : log.status === 'Fetching'
+        ? 'bg-amber-400'
+        : log.status === 'Success'
+          ? 'bg-emerald-400'
+          : 'bg-muted-foreground';
+
+  return (
+    <div className="pointer-events-none fixed bottom-6 right-6 z-20 hidden md:block">
+      <div className="pointer-events-auto w-72 rounded-2xl border border-border/60 bg-background/70 p-4 text-xs text-muted-foreground shadow-[0_0_30px_rgba(15,23,42,0.4)] backdrop-blur">
+        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+          <span>Developer mode</span>
+          <span className={cn('h-2 w-2 rounded-full', statusColor)} />
+        </div>
+        <div className="mt-3 space-y-2 text-[11px]">
+          <div className="flex items-center justify-between">
+            <span>Status</span>
+            <span className="text-foreground">{log.status}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Last attempt</span>
+            <span className="text-foreground">{log.lastAttempt || '—'}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Last sync</span>
+            <span className="text-foreground">{log.lastSync || '—'}</span>
+          </div>
+        </div>
+        {log.note ? (
+          <div className="mt-3 rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
+            {log.note}
+          </div>
+        ) : null}
+        {log.error ? (
+          <div className="mt-3 rounded-xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+            {log.error}
+          </div>
+        ) : null}
       </div>
     </div>
   );
