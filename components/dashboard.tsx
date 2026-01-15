@@ -92,7 +92,7 @@ export function Dashboard() {
       }));
       const storeErrors = result.storeErrors || [];
       const hasWarning = storeErrors.length > 0 || totalOrders === 0;
-      const noteParts = [];
+      const noteParts: string[] = [];
       if (totalOrders === 0) {
         noteParts.push('No orders returned for this range.');
       }
