@@ -2,6 +2,7 @@ import type { ShopifyStore } from '@/types/shopify';
 
 type StoreCredentialInput = {
   handle: string;
+  displayName?: string;
   clientId: string;
   clientSecret: string;
 };
@@ -9,6 +10,7 @@ type StoreCredentialInput = {
 type StoreCredentialRecord = {
   handle: string;
   domain: string;
+  displayName?: string;
   clientId: string;
   clientSecret: string;
   accessToken?: string;
@@ -80,6 +82,7 @@ export const registerStore = async (input: StoreCredentialInput) => {
   const record: StoreCredentialRecord = {
     handle,
     domain,
+    displayName: input.displayName?.trim() || undefined,
     clientId: input.clientId,
     clientSecret: input.clientSecret,
   };
@@ -93,6 +96,7 @@ export const getRegisteredStores = () =>
   Array.from(storeRegistry.values()).map((store) => ({
     handle: store.handle,
     domain: store.domain,
+    displayName: store.displayName ?? null,
     lastTokenRefresh: store.tokenFetchedAt
       ? new Date(store.tokenFetchedAt).toISOString()
       : null,
@@ -100,6 +104,17 @@ export const getRegisteredStores = () =>
       ? new Date(store.tokenExpiresAt).toISOString()
       : null,
   }));
+
+export const updateStoreDisplayName = (handleInput: string, displayName: string) => {
+  const handle = normalizeHandle(handleInput);
+  const record = storeRegistry.get(handle);
+  if (!record) {
+    throw new Error('Store not found.');
+  }
+  record.displayName = displayName.trim() || undefined;
+  storeRegistry.set(handle, record);
+  return record;
+};
 
 export const getRegisteredStoresWithTokens = async (): Promise<ShopifyStore[]> => {
   const stores = Array.from(storeRegistry.values());
@@ -113,7 +128,7 @@ export const getRegisteredStoresWithTokens = async (): Promise<ShopifyStore[]> =
         throw new Error(`Missing access token for ${store.handle}.`);
       }
       return {
-        name: store.handle,
+        name: store.displayName || store.handle,
         domain: store.domain,
         accessToken: store.accessToken,
       };

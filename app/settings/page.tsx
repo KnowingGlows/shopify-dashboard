@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [error, setError] = useState('');
   const [storeHandle, setStoreHandle] = useState('');
+  const [storeDisplayName, setStoreDisplayName] = useState('');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [storeStatus, setStoreStatus] = useState<{
@@ -25,11 +26,12 @@ export default function SettingsPage() {
     Array<{
       handle: string;
       domain: string;
+      displayName: string | null;
       lastTokenRefresh: string | null;
       tokenExpiresAt: string | null;
     }>
   >([]);
-  const [envStores, setEnvStores] = useState<Array<{ name: string; domain: string }>>([]);
+  const [storeEdits, setStoreEdits] = useState<Record<string, string>>({});
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -57,7 +59,11 @@ export default function SettingsPage() {
       const response = await fetch('/api/stores');
       const result = await response.json();
       setStores(result.stores ?? []);
-      setEnvStores(result.envStores ?? []);
+      const editMap: Record<string, string> = {};
+      (result.stores ?? []).forEach((store: { handle: string; displayName?: string }) => {
+        editMap[store.handle] = store.displayName || store.handle;
+      });
+      setStoreEdits(editMap);
     } catch (err) {
       console.error('Failed to load stores:', err);
     }
@@ -81,6 +87,7 @@ export default function SettingsPage() {
         },
         body: JSON.stringify({
           handle: storeHandle,
+          displayName: storeDisplayName,
           clientId,
           clientSecret,
         }),
@@ -91,6 +98,7 @@ export default function SettingsPage() {
       }
       setStoreStatus({ type: 'success', message: 'Access token refreshed.' });
       setStoreHandle('');
+      setStoreDisplayName('');
       setClientId('');
       setClientSecret('');
       loadStores();
@@ -102,6 +110,28 @@ export default function SettingsPage() {
 
   const formatTimestamp = (value: string | null) =>
     value ? new Date(value).toLocaleString('en-IN') : '—';
+
+  const handleStoreNameUpdate = async (handle: string) => {
+    try {
+      const response = await fetch('/api/stores', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          handle,
+          displayName: storeEdits[handle] ?? '',
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update store name.');
+      }
+      loadStores();
+    } catch (err) {
+      console.error('Failed to update store name:', err);
+    }
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
@@ -256,7 +286,7 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <form onSubmit={handleStoreSubmit} className="grid gap-4 md:grid-cols-3">
+                <form onSubmit={handleStoreSubmit} className="grid gap-4 md:grid-cols-4">
                   <div className="space-y-2 md:col-span-1">
                     <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
                       Store handle
@@ -268,7 +298,7 @@ export default function SettingsPage() {
                       <input
                         value={storeHandle}
                         onChange={(event) => setStoreHandle(event.target.value)}
-                        placeholder="cvcd0m-e6"
+                        placeholder="your-store-handle"
                         className="h-11 w-full rounded-xl border border-border/60 bg-background/60 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground shadow-[0_0_18px_rgba(15,23,42,0.25)] transition focus-visible:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                         autoComplete="off"
                       />
@@ -276,6 +306,18 @@ export default function SettingsPage() {
                     <p className="text-[11px] text-muted-foreground">
                       Token URL: https://{storeHandle || 'store'}.myshopify.com/admin/oauth/access_token
                     </p>
+                  </div>
+                  <div className="space-y-2 md:col-span-1">
+                    <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
+                      Store name
+                    </label>
+                    <input
+                      value={storeDisplayName}
+                      onChange={(event) => setStoreDisplayName(event.target.value)}
+                      placeholder="Display name"
+                      className="h-11 w-full rounded-xl border border-border/60 bg-background/60 px-4 text-sm text-foreground placeholder:text-muted-foreground shadow-[0_0_18px_rgba(15,23,42,0.25)] transition focus-visible:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      autoComplete="off"
+                    />
                   </div>
                   <div className="space-y-2 md:col-span-1">
                     <label className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
@@ -302,7 +344,7 @@ export default function SettingsPage() {
                       autoComplete="off"
                     />
                   </div>
-                  <div className="md:col-span-3">
+                  <div className="md:col-span-4">
                     <Button type="submit" className="w-full">
                       <RefreshCw className="h-4 w-4" />
                       Refresh access token
@@ -345,6 +387,27 @@ export default function SettingsPage() {
                         {store.handle}
                       </div>
                       <div className="mt-2 text-sm text-foreground">{store.domain}</div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <input
+                          value={storeEdits[store.handle] ?? store.displayName ?? store.handle}
+                          onChange={(event) =>
+                            setStoreEdits((prev) => ({
+                              ...prev,
+                              [store.handle]: event.target.value,
+                            }))
+                          }
+                          className="h-9 flex-1 rounded-xl border border-border/60 bg-background/70 px-3 text-xs text-foreground shadow-[0_0_18px_rgba(15,23,42,0.2)]"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleStoreNameUpdate(store.handle)}
+                          className="h-9 border-border/60 bg-background/70 text-[11px] uppercase tracking-[0.2em]"
+                        >
+                          Save name
+                        </Button>
+                      </div>
                       <div className="mt-2 text-xs text-muted-foreground">
                         Last token refresh: {formatTimestamp(store.lastTokenRefresh)}
                       </div>
@@ -354,19 +417,6 @@ export default function SettingsPage() {
                     </div>
                   ))
                 )}
-                {envStores.length > 0 ? (
-                  <div className="rounded-2xl border border-border/50 bg-background/60 px-4 py-3 text-xs text-muted-foreground">
-                    <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
-                      Environment stores
-                    </div>
-                    {envStores.map((store) => (
-                      <div key={store.domain} className="mt-2 flex items-center justify-between">
-                        <span>{store.name}</span>
-                        <span className="text-foreground">{store.domain}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
           </div>

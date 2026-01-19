@@ -5,6 +5,10 @@ interface FetchOrdersOptions {
   limit?: number;
   createdAtMin?: string;
   createdAtMax?: string;
+  grossSalesRange?: {
+    startDate: string;
+    endDate: string;
+  };
 }
 
 function getNextPageUrl(linkHeader: string | null): string | null {
@@ -79,32 +83,160 @@ export async function fetchAllStoresOrders(
 ): Promise<{ ordersData: OrderData[]; errors: Array<{ storeName: string; message: string }> }> {
   const results = await Promise.all(
     stores.map(async (store) => {
+      const errors: string[] = [];
+      let orders: ShopifyOrder[] = [];
+      let grossSales: number | undefined;
+
       try {
-        const orders = await fetchShopifyOrders(store, options);
-        return {
-          storeName: store.name,
-          orders,
-          error: null as string | null,
-        };
+        orders = await fetchShopifyOrders(store, options);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         console.error(`Failed to fetch orders for ${store.name}:`, error);
-        return {
-          storeName: store.name,
-          orders: [],
-          error: message,
-        };
+        errors.push(`Orders: ${message}`);
       }
+
+      if (options.grossSalesRange) {
+        try {
+          grossSales = await fetchStoreGrossSales(store, options.grossSalesRange);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`Failed to fetch gross sales for ${store.name}:`, error);
+          errors.push(`Gross sales: ${message}`);
+        }
+      }
+
+      return {
+        storeName: store.name,
+        orders,
+        grossSales,
+        errors,
+      };
     })
   );
 
   return {
-    ordersData: results.map(({ storeName, orders }) => ({ storeName, orders })),
-    errors: results
-      .filter((result) => result.error)
-      .map((result) => ({
-        storeName: result.storeName,
-        message: result.error ?? 'Unknown error',
-      })),
+    ordersData: results.map(({ storeName, orders, grossSales }) => ({
+      storeName,
+      orders,
+      grossSales,
+    })),
+    errors: results.flatMap((result) =>
+      result.errors.map((message) => ({ storeName: result.storeName, message }))
+    ),
   };
+}
+
+async function fetchStoreGrossSales(
+  store: ShopifyStore,
+  range: { startDate: string; endDate: string }
+): Promise<number> {
+  const query = `
+    query ($query: String!) {
+      shopifyqlQuery(query: $query) {
+        __typename
+        ... on TableResponse {
+          tableData {
+            rowData
+          }
+        }
+        ... on TableResponseWithPagination {
+          tableData {
+            rowData
+          }
+        }
+      }
+    }
+  `;
+  const shopifyQL = `FROM sales SHOW gross_sales SINCE ${range.startDate} UNTIL ${range.endDate}`;
+  const response = await fetch(
+    `https://${store.domain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': store.accessToken,
+      },
+      body: JSON.stringify({
+        query,
+        variables: { query: shopifyQL },
+      }),
+    }
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMessage =
+      payload?.errors?.[0]?.message ||
+      payload?.error ||
+      `ShopifyQL request failed (${response.status})`;
+    throw new Error(errorMessage);
+  }
+
+  if (payload?.errors?.length) {
+    throw new Error(payload.errors[0]?.message || 'ShopifyQL error');
+  }
+
+  const tableData = payload?.data?.shopifyqlQuery?.tableData;
+  const grossValue = extractGrossValue(tableData);
+  if (grossValue === null || Number.isNaN(grossValue)) {
+    throw new Error('Unable to parse gross sales from ShopifyQL response.');
+  }
+  return grossValue;
+}
+
+function extractGrossValue(tableData: unknown): number | null {
+  const candidates: unknown[] = [];
+
+  if (!tableData) {
+    return null;
+  }
+
+  if (Array.isArray(tableData)) {
+    tableData.forEach((entry) => {
+      if (entry && typeof entry === 'object') {
+        const rowData = (entry as { rowData?: unknown }).rowData;
+        const rows = (entry as { rows?: unknown }).rows;
+        if (rowData) {
+          candidates.push(rowData);
+        }
+        if (rows) {
+          candidates.push(rows);
+        }
+      }
+    });
+  } else if (typeof tableData === 'object') {
+    const rowData = (tableData as { rowData?: unknown }).rowData;
+    const rows = (tableData as { rows?: unknown }).rows;
+    if (rowData) {
+      candidates.push(rowData);
+    }
+    if (rows) {
+      candidates.push(rows);
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate) || candidate.length === 0) {
+      continue;
+    }
+    const firstRow = candidate[0];
+    const value = Array.isArray(firstRow) ? firstRow[0] : firstRow;
+    const parsed = parseAmount(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function parseAmount(value: unknown): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.replace(/[^0-9.-]/g, '');
+    return Number(normalized);
+  }
+  return Number.NaN;
 }

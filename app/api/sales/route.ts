@@ -5,7 +5,13 @@ import { aggregateSalesData } from '@/lib/sales-aggregator';
 
 function getRangeStart(
   range: string
-): { range: string; createdAtMin: string; createdAtMax: string } {
+): {
+  range: string;
+  createdAtMin: string;
+  createdAtMax: string;
+  rangeStartDate: string;
+  rangeEndDate: string;
+} {
   const normalizedRange = ['today', 'yesterday', '7d', '30d'].includes(range)
     ? range
     : 'today';
@@ -34,29 +40,51 @@ function getRangeStart(
     return new Date(utcMidnight - IST_OFFSET_MS);
   };
 
+  const formatISTDate = (date: Date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+
   const startOfTodayIST = startOfISTDay(now);
   let startDate = new Date(startOfTodayIST);
   let endDate = new Date(now);
+  let rangeStartDate = formatISTDate(startDate);
+  let rangeEndDate = formatISTDate(startOfTodayIST);
 
   if (normalizedRange === 'yesterday') {
     startDate = new Date(startOfTodayIST.getTime() - DAY_MS);
     endDate = new Date(startOfTodayIST);
+    rangeStartDate = formatISTDate(startDate);
+    rangeEndDate = formatISTDate(startDate);
   } else if (normalizedRange === '7d' || normalizedRange === '30d') {
     const daysBack = normalizedRange === '7d' ? 6 : 29;
     startDate = new Date(startOfTodayIST.getTime() - daysBack * DAY_MS);
+    rangeStartDate = formatISTDate(startDate);
+    rangeEndDate = formatISTDate(startOfTodayIST);
   }
 
   return {
     range: normalizedRange,
     createdAtMin: startDate.toISOString(),
     createdAtMax: endDate.toISOString(),
+    rangeStartDate,
+    rangeEndDate,
   };
 }
 
 function getCustomRange(
   start: string,
   end?: string
-): { range: string; createdAtMin: string; createdAtMax: string } {
+): {
+  range: string;
+  createdAtMin: string;
+  createdAtMax: string;
+  rangeStartDate: string;
+  rangeEndDate: string;
+} {
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
   const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -92,6 +120,8 @@ function getCustomRange(
     range: 'custom',
     createdAtMin: startDate.toISOString(),
     createdAtMax: endDate.toISOString(),
+    rangeStartDate: start,
+    rangeEndDate: end ?? start,
   };
 }
 
@@ -101,7 +131,7 @@ export async function GET(request: Request) {
 
     if (stores.length === 0) {
       return NextResponse.json(
-        { error: 'No Shopify stores configured. Add store credentials in Settings or .env.local.' },
+        { error: 'No Shopify stores configured. Add store credentials in Settings.' },
         { status: 400 }
       );
     }
@@ -110,7 +140,13 @@ export async function GET(request: Request) {
     const rangeParam = searchParams.get('range') ?? 'today';
     const startParam = searchParams.get('start');
     const endParam = searchParams.get('end');
-    let rangeWindow: { range: string; createdAtMin: string; createdAtMax: string };
+    let rangeWindow: {
+      range: string;
+      createdAtMin: string;
+      createdAtMax: string;
+      rangeStartDate: string;
+      rangeEndDate: string;
+    };
     try {
       rangeWindow =
         rangeParam === 'custom' && startParam
@@ -120,10 +156,14 @@ export async function GET(request: Request) {
       const message = error instanceof Error ? error.message : 'Invalid date range.';
       return NextResponse.json({ error: message }, { status: 400 });
     }
-    const { range, createdAtMin, createdAtMax } = rangeWindow;
+    const { range, createdAtMin, createdAtMax, rangeStartDate, rangeEndDate } = rangeWindow;
     const { ordersData, errors } = await fetchAllStoresOrders(stores, {
       createdAtMin,
       createdAtMax,
+      grossSalesRange: {
+        startDate: rangeStartDate,
+        endDate: rangeEndDate,
+      },
     });
     const salesMetrics = aggregateSalesData(ordersData);
 

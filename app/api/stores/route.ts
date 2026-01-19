@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getEnvStoreSummaries } from '@/lib/shopify-config';
-import { getRegisteredStores, registerStore } from '@/lib/store-registry';
+import { getRegisteredStores, registerStore, updateStoreDisplayName } from '@/lib/store-registry';
 
 export async function GET() {
   return NextResponse.json({
     stores: getRegisteredStores(),
-    envStores: getEnvStoreSummaries(),
   });
 }
 
@@ -14,6 +12,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const store = await registerStore({
       handle: body.handle ?? '',
+      displayName: body.displayName ?? '',
       clientId: body.clientId ?? '',
       clientSecret: body.clientSecret ?? '',
     });
@@ -23,6 +22,7 @@ export async function POST(request: Request) {
       store: {
         handle: store.handle,
         domain: store.domain,
+        displayName: store.displayName ?? null,
         lastTokenRefresh: store.tokenFetchedAt
           ? new Date(store.tokenFetchedAt).toISOString()
           : null,
@@ -35,6 +35,28 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Failed to register store.',
+      },
+      { status: 400 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const store = updateStoreDisplayName(body.handle ?? '', body.displayName ?? '');
+    return NextResponse.json({
+      success: true,
+      store: {
+        handle: store.handle,
+        domain: store.domain,
+        displayName: store.displayName ?? null,
+      },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : 'Failed to update store.',
       },
       { status: 400 }
     );
