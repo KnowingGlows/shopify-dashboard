@@ -355,7 +355,7 @@ export function Dashboard() {
         </div>
 
       {/* Store Breakdown */}
-        {selectedStore === 'all' && salesData.storeBreakdown.length > 1 && (
+        {selectedStore === 'all' && salesData.storeBreakdown.length > 0 && (
           <StoreBreakdown stores={salesData.storeBreakdown} />
         )}
 

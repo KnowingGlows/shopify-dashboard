@@ -32,7 +32,6 @@ export interface ShopifyOrder {
 export interface OrderData {
   storeName: string;
   orders: ShopifyOrder[];
-  grossSales?: number;
 }
 
 export interface SalesMetrics {

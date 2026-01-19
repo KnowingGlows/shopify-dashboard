@@ -39,23 +39,19 @@ export function aggregateSalesData(ordersData: OrderData[]): SalesMetrics {
   let totalOrders = 0;
   const storeBreakdown: StoreMetrics[] = [];
 
-  ordersData.forEach(({ storeName, orders, grossSales }) => {
+  ordersData.forEach(({ storeName, orders }) => {
     let storeSales = 0;
-    const storeOrderCount = orders.length;
-    const storeCurrency = orders[0]?.currency ?? 'INR';
+    let storeOrderCount = 0;
 
-    if (typeof grossSales === 'number') {
-      storeSales = convertToINR(grossSales, storeCurrency);
-    } else {
-      orders.forEach((order: ShopifyOrder) => {
-        const orderAmount = getGrossOrderAmount(order);
-        const amountInINR = convertToINR(orderAmount, order.currency);
-        storeSales += amountInINR;
-      });
-    }
+    orders.forEach((order: ShopifyOrder) => {
+      const orderAmount = getGrossOrderAmount(order);
+      const amountInINR = convertToINR(orderAmount, order.currency);
 
-    totalSalesINR += storeSales;
-    totalOrders += storeOrderCount;
+      storeSales += amountInINR;
+      storeOrderCount++;
+      totalSalesINR += amountInINR;
+      totalOrders++;
+    });
 
     const storeAvg = storeOrderCount > 0 ? storeSales / storeOrderCount : 0;
 
