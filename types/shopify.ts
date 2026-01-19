@@ -10,9 +10,17 @@ export interface ShopifyOrder {
   email: string;
   created_at: string;
   total_price: string;
+  current_total_price?: string;
+  total_refunded?: string;
+  cancelled_at?: string | null;
   currency: string;
   financial_status: string;
   fulfillment_status: string | null;
+  refunds?: Array<{
+    transactions?: Array<{
+      amount: string;
+    }>;
+  }>;
   line_items: Array<{
     id: string;
     title: string;

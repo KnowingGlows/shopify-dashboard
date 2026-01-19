@@ -17,9 +17,14 @@ export function Dashboard() {
   const [salesData, setSalesData] = useState<SalesMetrics | null>(null);
   const [ordersData, setOrdersData] = useState<OrderData[]>([]);
   const [selectedStore, setSelectedStore] = useState<string>('all');
-  const [dateRange, setDateRange] = useState<'today' | 'yesterday' | '7d' | '30d'>(
+  const [dateRange, setDateRange] = useState<'today' | 'yesterday' | '7d' | '30d' | 'custom'>(
     'today'
   );
+  const [customRange, setCustomRange] = useState<{ start: string; end: string }>({
+    start: '',
+    end: '',
+  });
+  const [customRangeError, setCustomRangeError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>('');
@@ -47,7 +52,10 @@ export function Dashboard() {
     storeErrors: [],
   });
 
-  const fetchData = async (range = dateRange) => {
+  const fetchData = async (
+    range = dateRange,
+    customDates?: { start?: string; end?: string }
+  ) => {
     const attemptStamp = new Date().toLocaleString('en-IN');
     try {
       setLoading(true);
@@ -59,7 +67,14 @@ export function Dashboard() {
         error: null,
         note: null,
       }));
-      const response = await fetch(`/api/sales?range=${range}`);
+      const params = new URLSearchParams({ range });
+      if (range === 'custom' && customDates?.start) {
+        params.set('start', customDates.start);
+        if (customDates.end) {
+          params.set('end', customDates.end);
+        }
+      }
+      const response = await fetch(`/api/sales?${params.toString()}`);
       let result: {
         data?: SalesMetrics;
         ordersData?: OrderData[];
@@ -130,7 +145,9 @@ export function Dashboard() {
   };
 
   useEffect(() => {
-    fetchData();
+    if (dateRange !== 'custom') {
+      fetchData();
+    }
   }, [dateRange]);
 
   useEffect(() => {
@@ -169,7 +186,12 @@ export function Dashboard() {
             <CardDescription>{error}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => fetchData()} className="w-full">
+            <Button
+              onClick={() =>
+                fetchData(dateRange, dateRange === 'custom' ? customRange : undefined)
+              }
+              className="w-full"
+            >
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
             </Button>
@@ -186,16 +208,29 @@ export function Dashboard() {
 
   const storeNames = ordersData.map((data) => data.storeName);
   const rangeOptions: Array<{
-    value: 'today' | 'yesterday' | '7d' | '30d';
+    value: 'today' | 'yesterday' | '7d' | '30d' | 'custom';
     label: string;
   }> = [
     { value: 'today', label: 'Today' },
     { value: 'yesterday', label: 'Yesterday' },
     { value: '7d', label: 'Past 7 Days' },
     { value: '30d', label: 'Past 30 Days' },
+    { value: 'custom', label: 'Custom' },
   ];
   const activeRangeLabel =
-    rangeOptions.find((option) => option.value === dateRange)?.label ?? 'Today';
+    dateRange === 'custom' && customRange.start
+      ? `${customRange.start}${customRange.end ? ` → ${customRange.end}` : ''}`
+      : rangeOptions.find((option) => option.value === dateRange)?.label ?? 'Today';
+
+  const applyCustomRange = () => {
+    if (!customRange.start) {
+      setCustomRangeError('Select a start date to apply a custom range.');
+      return;
+    }
+    setCustomRangeError(null);
+    setDateRange('custom');
+    fetchData('custom', customRange);
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
@@ -243,7 +278,9 @@ export function Dashboard() {
                 onStoreChange={setSelectedStore}
               />
               <Button
-                onClick={() => fetchData()}
+                onClick={() =>
+                  fetchData(dateRange, dateRange === 'custom' ? customRange : undefined)
+                }
                 variant="outline"
                 size="icon"
                 className="bg-background/60 backdrop-blur border-border/60 hover:border-primary/50 hover:text-primary"
@@ -251,6 +288,44 @@ export function Dashboard() {
                 <RefreshCw className="h-4 w-4" />
               </Button>
             </div>
+            {dateRange === 'custom' ? (
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/50 bg-background/60 p-3 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span>Start</span>
+                  <input
+                    type="date"
+                    value={customRange.start}
+                    onChange={(event) => {
+                      setCustomRangeError(null);
+                      setCustomRange((prev) => ({ ...prev, start: event.target.value }));
+                    }}
+                    className="h-9 rounded-xl border border-border/60 bg-background/70 px-3 text-[11px] text-foreground shadow-[0_0_18px_rgba(15,23,42,0.2)]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>End</span>
+                  <input
+                    type="date"
+                    value={customRange.end}
+                    onChange={(event) => {
+                      setCustomRangeError(null);
+                      setCustomRange((prev) => ({ ...prev, end: event.target.value }));
+                    }}
+                    className="h-9 rounded-xl border border-border/60 bg-background/70 px-3 text-[11px] text-foreground shadow-[0_0_18px_rgba(15,23,42,0.2)]"
+                  />
+                </div>
+                <Button
+                  onClick={applyCustomRange}
+                  variant="outline"
+                  className="h-9 border-border/60 bg-background/70 text-[11px] uppercase tracking-[0.2em]"
+                >
+                  Apply
+                </Button>
+                {customRangeError ? (
+                  <span className="text-[11px] text-rose-200">{customRangeError}</span>
+                ) : null}
+              </div>
+            ) : null}
             <div className="text-xs text-muted-foreground">
               Showing: {activeRangeLabel} · Last sync: {lastUpdated}
             </div>
