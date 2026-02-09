@@ -1,4 +1,5 @@
 import type { ShopifyStore } from '@/types/shopify';
+import { getFirestore, COLLECTIONS } from './firebase';
 
 type StoreCredentialInput = {
   handle: string;
@@ -18,8 +19,12 @@ type StoreCredentialRecord = {
   tokenExpiresAt?: number;
 };
 
-const TOKEN_TTL_MS = 23 * 60 * 60 * 1000;
+// Token TTL: 24 hours (refresh slightly before to be safe)
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+// In-memory cache for performance
 const storeRegistry = new Map<string, StoreCredentialRecord>();
+let isInitialized = false;
 
 const normalizeHandle = (input: string) => {
   const trimmed = input.trim();
@@ -66,10 +71,87 @@ const fetchAccessToken = async (store: StoreCredentialRecord) => {
   store.accessToken = payload.access_token;
   store.tokenFetchedAt = Date.now();
   store.tokenExpiresAt = store.tokenFetchedAt + TOKEN_TTL_MS;
+
+  // Persist the updated token to Firestore
+  await persistStoreToFirestore(store);
+
   return store.accessToken;
 };
 
+// Persist a store record to Firestore
+const persistStoreToFirestore = async (store: StoreCredentialRecord) => {
+  try {
+    const db = getFirestore();
+    await db.collection(COLLECTIONS.STORES).doc(store.handle).set({
+      handle: store.handle,
+      domain: store.domain,
+      displayName: store.displayName || null,
+      clientId: store.clientId,
+      clientSecret: store.clientSecret,
+      accessToken: store.accessToken || null,
+      tokenFetchedAt: store.tokenFetchedAt || null,
+      tokenExpiresAt: store.tokenExpiresAt || null,
+      updatedAt: Date.now(),
+    });
+  } catch (error) {
+    console.error(`Failed to persist store ${store.handle} to Firestore:`, error);
+    // Don't throw - allow in-memory operation to continue
+  }
+};
+
+// Delete a store from Firestore
+const deleteStoreFromFirestore = async (handle: string) => {
+  try {
+    const db = getFirestore();
+    await db.collection(COLLECTIONS.STORES).doc(handle).delete();
+  } catch (error) {
+    console.error(`Failed to delete store ${handle} from Firestore:`, error);
+  }
+};
+
+// Load all stores from Firestore into memory
+const loadStoresFromFirestore = async () => {
+  if (isInitialized) {
+    return;
+  }
+
+  try {
+    const db = getFirestore();
+    const snapshot = await db.collection(COLLECTIONS.STORES).get();
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const record: StoreCredentialRecord = {
+        handle: data.handle,
+        domain: data.domain,
+        displayName: data.displayName || undefined,
+        clientId: data.clientId,
+        clientSecret: data.clientSecret,
+        accessToken: data.accessToken || undefined,
+        tokenFetchedAt: data.tokenFetchedAt || undefined,
+        tokenExpiresAt: data.tokenExpiresAt || undefined,
+      };
+      storeRegistry.set(record.handle, record);
+    });
+
+    isInitialized = true;
+    console.log(`Loaded ${snapshot.size} stores from Firestore`);
+  } catch (error) {
+    console.error('Failed to load stores from Firestore:', error);
+    isInitialized = true; // Mark as initialized to prevent infinite retries
+  }
+};
+
+// Ensure stores are loaded before any operation
+const ensureInitialized = async () => {
+  if (!isInitialized) {
+    await loadStoresFromFirestore();
+  }
+};
+
 export const registerStore = async (input: StoreCredentialInput) => {
+  await ensureInitialized();
+
   const handle = normalizeHandle(input.handle);
   if (!handle) {
     throw new Error('Store handle is required.');
@@ -92,8 +174,22 @@ export const registerStore = async (input: StoreCredentialInput) => {
   return record;
 };
 
-export const getRegisteredStores = () =>
-  Array.from(storeRegistry.values()).map((store) => ({
+export const unregisterStore = async (handleInput: string) => {
+  await ensureInitialized();
+
+  const handle = normalizeHandle(handleInput);
+  if (!storeRegistry.has(handle)) {
+    throw new Error('Store not found.');
+  }
+
+  storeRegistry.delete(handle);
+  await deleteStoreFromFirestore(handle);
+};
+
+export const getRegisteredStores = async () => {
+  await ensureInitialized();
+
+  return Array.from(storeRegistry.values()).map((store) => ({
     handle: store.handle,
     domain: store.domain,
     displayName: store.displayName ?? null,
@@ -104,8 +200,11 @@ export const getRegisteredStores = () =>
       ? new Date(store.tokenExpiresAt).toISOString()
       : null,
   }));
+};
 
-export const updateStoreDisplayName = (handleInput: string, displayName: string) => {
+export const updateStoreDisplayName = async (handleInput: string, displayName: string) => {
+  await ensureInitialized();
+
   const handle = normalizeHandle(handleInput);
   const record = storeRegistry.get(handle);
   if (!record) {
@@ -113,15 +212,20 @@ export const updateStoreDisplayName = (handleInput: string, displayName: string)
   }
   record.displayName = displayName.trim() || undefined;
   storeRegistry.set(handle, record);
+  await persistStoreToFirestore(record);
   return record;
 };
 
 export const getRegisteredStoresWithTokens = async (): Promise<ShopifyStore[]> => {
+  await ensureInitialized();
+
   const stores = Array.from(storeRegistry.values());
 
   const shopifyStores = await Promise.all(
     stores.map(async (store) => {
+      // Check if token is expired and refresh if needed
       if (tokenExpired(store)) {
+        console.log(`Token expired for ${store.handle}, refreshing...`);
         await fetchAccessToken(store);
       }
       if (!store.accessToken) {
@@ -136,4 +240,22 @@ export const getRegisteredStoresWithTokens = async (): Promise<ShopifyStore[]> =
   );
 
   return shopifyStores;
+};
+
+// Manually refresh token for a specific store
+export const refreshStoreToken = async (handleInput: string) => {
+  await ensureInitialized();
+
+  const handle = normalizeHandle(handleInput);
+  const record = storeRegistry.get(handle);
+  if (!record) {
+    throw new Error('Store not found.');
+  }
+
+  await fetchAccessToken(record);
+  return {
+    handle: record.handle,
+    tokenFetchedAt: new Date(record.tokenFetchedAt!).toISOString(),
+    tokenExpiresAt: new Date(record.tokenExpiresAt!).toISOString(),
+  };
 };

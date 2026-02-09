@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { getRegisteredStores, registerStore, updateStoreDisplayName } from '@/lib/store-registry';
 
 export async function GET() {
+  const stores = await getRegisteredStores();
   return NextResponse.json({
-    stores: getRegisteredStores(),
+    stores,
   });
 }
 
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const store = updateStoreDisplayName(body.handle ?? '', body.displayName ?? '');
+    const store = await updateStoreDisplayName(body.handle ?? '', body.displayName ?? '');
     return NextResponse.json({
       success: true,
       store: {
