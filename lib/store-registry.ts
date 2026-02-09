@@ -1,5 +1,5 @@
 import type { ShopifyStore } from '@/types/shopify';
-import { getFirestore, COLLECTIONS } from './firebase';
+import { getFirestore, isFirebaseAvailable, COLLECTIONS } from './firebase';
 
 type StoreCredentialInput = {
   handle: string;
@@ -72,16 +72,22 @@ const fetchAccessToken = async (store: StoreCredentialRecord) => {
   store.tokenFetchedAt = Date.now();
   store.tokenExpiresAt = store.tokenFetchedAt + TOKEN_TTL_MS;
 
-  // Persist the updated token to Firestore
+  // Persist the updated token to Firestore (if available)
   await persistStoreToFirestore(store);
 
   return store.accessToken;
 };
 
-// Persist a store record to Firestore
+// Persist a store record to Firestore (only if Firebase is available)
 const persistStoreToFirestore = async (store: StoreCredentialRecord) => {
+  if (!isFirebaseAvailable()) {
+    return;
+  }
+
   try {
     const db = getFirestore();
+    if (!db) return;
+
     await db.collection(COLLECTIONS.STORES).doc(store.handle).set({
       handle: store.handle,
       domain: store.domain,
@@ -101,8 +107,14 @@ const persistStoreToFirestore = async (store: StoreCredentialRecord) => {
 
 // Delete a store from Firestore
 const deleteStoreFromFirestore = async (handle: string) => {
+  if (!isFirebaseAvailable()) {
+    return;
+  }
+
   try {
     const db = getFirestore();
+    if (!db) return;
+
     await db.collection(COLLECTIONS.STORES).doc(handle).delete();
   } catch (error) {
     console.error(`Failed to delete store ${handle} from Firestore:`, error);
@@ -115,8 +127,19 @@ const loadStoresFromFirestore = async () => {
     return;
   }
 
+  if (!isFirebaseAvailable()) {
+    console.log('Firebase not available - using in-memory storage only');
+    isInitialized = true;
+    return;
+  }
+
   try {
     const db = getFirestore();
+    if (!db) {
+      isInitialized = true;
+      return;
+    }
+
     const snapshot = await db.collection(COLLECTIONS.STORES).get();
 
     snapshot.forEach((doc) => {

@@ -5,9 +5,9 @@ import { StatsCard } from './stats-card';
 import { StoreBreakdown } from './store-breakdown';
 import { StoreFilter } from './store-filter';
 import { BackgroundDecor } from './background-decor';
-import { IndianRupee, ShoppingCart, TrendingUp, RefreshCw, AlertCircle } from 'lucide-react';
+import { IndianRupee, ShoppingCart, TrendingUp, RefreshCw, AlertCircle, Code2, X } from 'lucide-react';
 import { SalesMetrics, OrderData } from '@/types/shopify';
-import { formatINR } from '@/lib/currency-converter';
+import { formatCurrency } from '@/lib/currency-converter';
 import { aggregateSalesData, filterByStore } from '@/lib/sales-aggregator';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
@@ -25,6 +25,7 @@ export function Dashboard() {
     end: '',
   });
   const [customRangeError, setCustomRangeError] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<'INR' | 'USD'>('INR');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>('');
@@ -277,6 +278,23 @@ export function Dashboard() {
                 selectedStore={selectedStore}
                 onStoreChange={setSelectedStore}
               />
+              <div className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 p-1">
+                {(['INR', 'USD'] as const).map((curr) => (
+                  <button
+                    key={curr}
+                    type="button"
+                    onClick={() => setCurrency(curr)}
+                    className={cn(
+                      'rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] transition-all',
+                      currency === curr
+                        ? 'bg-primary/20 text-primary shadow-[0_0_16px_rgba(34,211,238,0.45)]'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {curr}
+                  </button>
+                ))}
+              </div>
               <Button
                 onClick={() =>
                   fetchData(dateRange, dateRange === 'custom' ? customRange : undefined)
@@ -336,8 +354,8 @@ export function Dashboard() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <StatsCard
           title="Total Sales"
-          value={formatINR(salesData.totalSalesINR)}
-          icon={IndianRupee}
+          value={formatCurrency(salesData.totalSalesINR, currency)}
+          icon={currency === 'INR' ? IndianRupee : TrendingUp}
           description={selectedStore === 'all' ? 'Across all stores' : selectedStore}
         />
         <StatsCard
@@ -348,15 +366,15 @@ export function Dashboard() {
         />
         <StatsCard
           title="Average Order Value"
-          value={formatINR(salesData.averageOrderValue)}
-          icon={TrendingUp}
+          value={formatCurrency(salesData.averageOrderValue, currency)}
+          icon={currency === 'INR' ? IndianRupee : TrendingUp}
           description="Per order"
         />
         </div>
 
       {/* Store Breakdown */}
         {selectedStore === 'all' && salesData.storeBreakdown.length > 0 && (
-          <StoreBreakdown stores={salesData.storeBreakdown} />
+          <StoreBreakdown stores={salesData.storeBreakdown} currency={currency} />
         )}
 
       {/* Footer */}
@@ -385,6 +403,8 @@ function DeveloperModePanel({
     storeErrors: Array<{ storeName: string; message: string }>;
   };
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+
   const statusColor =
     log.status === 'Error'
       ? 'bg-rose-400'
@@ -398,63 +418,86 @@ function DeveloperModePanel({
 
   return (
     <div className="pointer-events-none fixed bottom-6 right-6 z-20 hidden md:block">
-      <div className="pointer-events-auto w-72 rounded-2xl border border-border/60 bg-background/70 p-4 text-xs text-muted-foreground shadow-[0_0_30px_rgba(15,23,42,0.4)] backdrop-blur">
-        <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-          <span>Developer mode</span>
-          <span className={cn('h-2 w-2 rounded-full', statusColor)} />
+      {isOpen ? (
+        <div className="pointer-events-auto w-72 rounded-2xl border border-border/60 bg-background/70 p-4 text-xs text-muted-foreground shadow-[0_0_30px_rgba(15,23,42,0.4)] backdrop-blur">
+          <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
+            <span>Developer mode</span>
+            <div className="flex items-center gap-2">
+              <span className={cn('h-2 w-2 rounded-full', statusColor)} />
+              <button
+                onClick={() => setIsOpen(false)}
+                className="rounded-md p-1 hover:bg-background/80 transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 space-y-2 text-[11px]">
+            <div className="flex items-center justify-between">
+              <span>Range</span>
+              <span className="text-foreground">{log.range ? log.range.toUpperCase() : '—'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Status</span>
+              <span className="text-foreground">{log.status}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Last attempt</span>
+              <span className="text-foreground">{log.lastAttempt || '—'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Last sync</span>
+              <span className="text-foreground">{log.lastSync || '—'}</span>
+            </div>
+            <div className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[10px] text-muted-foreground">
+              <div>Window start: {log.rangeStart || '—'}</div>
+              <div>Window end: {log.rangeEnd || '—'}</div>
+            </div>
+          </div>
+          {log.storeCounts.length > 0 ? (
+            <div className="mt-3 rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
+              {log.storeCounts.map((store) => (
+                <div key={store.name} className="flex items-center justify-between">
+                  <span>{store.name}</span>
+                  <span className="text-foreground">{store.count}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {log.note ? (
+            <div className="mt-3 rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
+              {log.note}
+            </div>
+          ) : null}
+          {log.storeErrors.length > 0 ? (
+            <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
+              {log.storeErrors.map((storeError) => (
+                <div key={storeError.storeName}>
+                  {storeError.storeName}: {storeError.message}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {log.error ? (
+            <div className="mt-3 rounded-xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+              {log.error}
+            </div>
+          ) : null}
         </div>
-        <div className="mt-3 space-y-2 text-[11px]">
-          <div className="flex items-center justify-between">
-            <span>Range</span>
-            <span className="text-foreground">{log.range ? log.range.toUpperCase() : '—'}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Status</span>
-            <span className="text-foreground">{log.status}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Last attempt</span>
-            <span className="text-foreground">{log.lastAttempt || '—'}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Last sync</span>
-            <span className="text-foreground">{log.lastSync || '—'}</span>
-          </div>
-          <div className="rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[10px] text-muted-foreground">
-            <div>Window start: {log.rangeStart || '—'}</div>
-            <div>Window end: {log.rangeEnd || '—'}</div>
-          </div>
-        </div>
-        {log.storeCounts.length > 0 ? (
-          <div className="mt-3 rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
-            {log.storeCounts.map((store) => (
-              <div key={store.name} className="flex items-center justify-between">
-                <span>{store.name}</span>
-                <span className="text-foreground">{store.count}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {log.note ? (
-          <div className="mt-3 rounded-xl border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground">
-            {log.note}
-          </div>
-        ) : null}
-        {log.storeErrors.length > 0 ? (
-          <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200">
-            {log.storeErrors.map((storeError) => (
-              <div key={storeError.storeName}>
-                {storeError.storeName}: {storeError.message}
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {log.error ? (
-          <div className="mt-3 rounded-xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
-            {log.error}
-          </div>
-        ) : null}
-      </div>
+      ) : (
+        <button
+          onClick={() => setIsOpen(true)}
+          className={cn(
+            'pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border border-border/60 bg-background/70 shadow-[0_0_30px_rgba(15,23,42,0.4)] backdrop-blur transition-colors hover:bg-background/90',
+            log.status === 'Error' && 'border-rose-400/50',
+            log.status === 'Warning' && 'border-amber-400/50'
+          )}
+          title="Open developer panel"
+        >
+          <Code2 className="h-4 w-4 text-muted-foreground" />
+          <span className={cn('absolute top-2 right-2 h-2 w-2 rounded-full', statusColor)} />
+        </button>
+      )}
     </div>
   );
 }

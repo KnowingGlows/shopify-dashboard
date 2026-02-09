@@ -2,14 +2,15 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { StoreMetrics } from '@/types/shopify';
-import { formatINR } from '@/lib/currency-converter';
+import { formatCurrency } from '@/lib/currency-converter';
 import { Store, TrendingUp, Package } from 'lucide-react';
 
 interface StoreBreakdownProps {
   stores: StoreMetrics[];
+  currency: 'INR' | 'USD';
 }
 
-export function StoreBreakdown({ stores }: StoreBreakdownProps) {
+export function StoreBreakdown({ stores, currency }: StoreBreakdownProps) {
   const maxSales = Math.max(...stores.map((s) => s.totalSalesINR));
 
   return (
@@ -37,13 +38,13 @@ export function StoreBreakdown({ stores }: StoreBreakdownProps) {
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <TrendingUp className="h-3 w-3" />
-                        {formatINR(store.totalSalesINR)}
+                        {formatCurrency(store.totalSalesINR, currency)}
                       </span>
                       <span className="flex items-center gap-1">
                         <Package className="h-3 w-3" />
                         {store.totalOrders} orders
                       </span>
-                      <span>Avg: {formatINR(store.averageOrderValue)}</span>
+                      <span>Avg: {formatCurrency(store.averageOrderValue, currency)}</span>
                     </div>
                   </div>
                 </div>
