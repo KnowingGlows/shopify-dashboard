@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Shopify Sales Dashboard",
-  description: "Multi-store Shopify sales analytics dashboard",
+  title: "Vaultik",
+  description: "Multi-store Shopify analytics command center",
 };
 
 export default function RootLayout({

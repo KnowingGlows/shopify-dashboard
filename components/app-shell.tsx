@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BarChart3, Home, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { SplashScreen } from './splash-screen';
 
 type NavItem = {
   href: string;
@@ -110,7 +111,7 @@ function SideNavContent({
           </div>
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Shopify</p>
-            <p className="text-lg font-semibold text-foreground">Pulse Board</p>
+            <p className="text-lg font-semibold text-foreground">Vaultik</p>
           </div>
         </div>
         {showClose ? (
@@ -151,6 +152,7 @@ function SideNavContent({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [navOpen, setNavOpen] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
   const activeItem = useMemo(
     () => navItems.find((item) => item.href === pathname) ?? navItems[0],
     [pathname]
@@ -162,6 +164,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {!splashDone && <SplashScreen onComplete={() => setSplashDone(true)} />}
       <div className="flex min-h-screen">
         <aside className="relative hidden w-72 flex-col border-r border-border/40 bg-sidebar/70 px-6 py-6 shadow-[0_0_40px_rgba(15,23,42,0.4)] backdrop-blur md:flex">
           <SideNavContent activePath={pathname} />

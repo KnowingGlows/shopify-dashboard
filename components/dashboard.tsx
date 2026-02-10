@@ -245,7 +245,7 @@ export function Dashboard() {
               Live Insights
             </div>
             <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-              Sales Dashboard
+              Sales Overview
             </h1>
             <p className="text-muted-foreground mt-2">
               Track your Shopify stores performance in one place.
@@ -379,7 +379,7 @@ export function Dashboard() {
 
       {/* Footer */}
         <div className="text-center text-xs uppercase tracking-[0.2em] text-muted-foreground">
-          Shopify sales analytics
+          Vaultik analytics
         </div>
       </div>
       <DeveloperModePanel log={devLog} />
