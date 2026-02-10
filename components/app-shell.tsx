@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, ClipboardList, Home, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
+import { BarChart3, Home, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type NavItem = {
@@ -25,12 +25,6 @@ const navItems: NavItem[] = [
     label: 'Brands',
     helper: 'Kairova and Mavric',
     icon: Store,
-  },
-  {
-    href: '/daily-tasks',
-    label: 'Daily Tasks',
-    helper: 'Team summaries',
-    icon: ClipboardList,
   },
   {
     href: '/p-and-l',

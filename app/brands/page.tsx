@@ -1,21 +1,62 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import { BackgroundDecor } from '@/components/background-decor';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Store, ArrowUpRight, Sparkles } from 'lucide-react';
+import { formatINR } from '@/lib/currency-converter';
+import { Store, ArrowUpRight, Sparkles, Loader2 } from 'lucide-react';
 
-const brands = [
-  {
-    name: 'Kairova',
+const brandInfo: Record<string, { description: string; highlight: string }> = {
+  Kairova: {
     description: 'Luxury essentials, curated and fast moving.',
     highlight: 'Top performer this week',
   },
-  {
-    name: 'Mavric',
+  Mavric: {
     description: 'Street luxe drops with bold, high energy edits.',
     highlight: 'New arrivals trending',
   },
-];
+};
+
+type BrandData = {
+  brand: string;
+  profit: number;
+  cashflow: number;
+  adspend: number;
+};
 
 export default function BrandsPage() {
+  const [brands, setBrands] = useState<BrandData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBrands = async () => {
+      try {
+        const res = await fetch('/api/pnl');
+        const data = await res.json();
+        const entries: BrandData[] = data.entries ?? [];
+
+        // Ensure both brands are present even if no data
+        const allBrands: BrandData[] = ['Kairova', 'Mavric'].map((name) => {
+          const existing = entries.find((e) => e.brand === name);
+          return existing ?? { brand: name, profit: 0, cashflow: 0, adspend: 0 };
+        });
+        setBrands(allBrands);
+      } catch {
+        setBrands(
+          ['Kairova', 'Mavric'].map((name) => ({
+            brand: name,
+            profit: 0,
+            cashflow: 0,
+            adspend: 0,
+          }))
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBrands();
+  }, []);
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-background">
       <BackgroundDecor />
@@ -36,56 +77,68 @@ export default function BrandsPage() {
                 </p>
               </div>
               <div className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                2 active brands
+                {brands.length} active brands
               </div>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {brands.map((brand) => (
-            <Card
-              key={brand.name}
-              className="group relative overflow-hidden border-border/50 bg-card/70 shadow-[0_0_30px_rgba(15,23,42,0.25)] transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_0_40px_rgba(34,211,238,0.2)]"
-            >
-              <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(34,211,238,0.08),transparent_60%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-              <CardHeader className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/60 text-primary shadow-[0_0_18px_rgba(34,211,238,0.2)]">
-                    <Store className="h-6 w-6" />
-                  </span>
-                  <div>
-                    <CardTitle className="text-2xl">{brand.name}</CardTitle>
-                    <CardDescription>{brand.highlight}</CardDescription>
-                  </div>
-                </div>
-                <span className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-background/50 text-muted-foreground transition-all duration-300 group-hover:border-primary/40 group-hover:text-primary">
-                  <ArrowUpRight className="h-4 w-4" />
-                </span>
-              </CardHeader>
-              <CardContent className="relative space-y-4">
-                <p className="text-sm text-muted-foreground">{brand.description}</p>
-                <div className="grid gap-3 text-xs uppercase tracking-[0.2em] text-muted-foreground sm:grid-cols-3">
-                  <div className="rounded-2xl border border-border/50 bg-background/50 px-3 py-2">
-                    Live orders
-                    <div className="mt-2 text-lg font-semibold text-foreground">23</div>
-                  </div>
-                  <div className="rounded-2xl border border-border/50 bg-background/50 px-3 py-2">
-                    Revenue
-                    <div className="mt-2 text-lg font-semibold text-foreground">INR 2.4L</div>
-                  </div>
-                  <div className="rounded-2xl border border-border/50 bg-background/50 px-3 py-2">
-                    AOV
-                    <div className="mt-2 text-lg font-semibold text-foreground">INR 3.2K</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {brands.map((brand) => {
+              const info = brandInfo[brand.brand] ?? {
+                description: '',
+                highlight: '',
+              };
+              return (
+                <Card
+                  key={brand.brand}
+                  className="group relative overflow-hidden border-border/50 bg-card/70 shadow-[0_0_30px_rgba(15,23,42,0.25)] transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_0_40px_rgba(34,211,238,0.2)]"
+                >
+                  <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(34,211,238,0.08),transparent_60%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+                  <CardHeader className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-background/60 text-primary shadow-[0_0_18px_rgba(34,211,238,0.2)]">
+                        <Store className="h-6 w-6" />
+                      </span>
+                      <div>
+                        <CardTitle className="text-2xl">{brand.brand}</CardTitle>
+                        <CardDescription>{info.highlight}</CardDescription>
+                      </div>
+                    </div>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-background/50 text-muted-foreground transition-all duration-300 group-hover:border-primary/40 group-hover:text-primary">
+                      <ArrowUpRight className="h-4 w-4" />
+                    </span>
+                  </CardHeader>
+                  <CardContent className="relative space-y-4">
+                    <p className="text-sm text-muted-foreground">{info.description}</p>
+                    <div className="grid gap-3 text-xs uppercase tracking-[0.2em] text-muted-foreground sm:grid-cols-2">
+                      <div className="rounded-2xl border border-border/50 bg-background/50 px-3 py-2">
+                        Net Profit
+                        <div className="mt-2 text-lg font-semibold text-foreground">
+                          {formatINR(brand.profit)}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-border/50 bg-background/50 px-3 py-2">
+                        Cashflow
+                        <div className="mt-2 text-lg font-semibold text-foreground">
+                          {formatINR(brand.cashflow)}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
         <div className="rounded-3xl border border-border/50 bg-card/60 p-6 text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          Unified brand intelligence
+          Showing today&apos;s figures. Enter data in P&amp;L to update.
         </div>
       </div>
     </div>

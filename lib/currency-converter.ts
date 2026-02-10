@@ -1,12 +1,7 @@
-import { ExchangeRates } from '@/types/shopify';
+// 1 USD = 90.7 INR
+const INR_TO_USD_RATE = 1 / 90.7;
 
-// Approximate INR to USD rate (can be made dynamic later)
-const INR_TO_USD_RATE = 0.012; // ~83 INR = 1 USD
-
-export function convertToINR(
-  amount: number,
-  currency: string
-): number {
+export function convertToINR(amount: number, _currency: string): number {
   // All stores are in INR, so just return the amount
   return amount;
 }
