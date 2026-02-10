@@ -26,6 +26,14 @@ export async function POST(request: Request) {
 
     const user = await getUserByEmail(email);
     if (!user) {
+      // Distinguish between "no user found" and "Firebase not configured"
+      const { isFirebaseAvailable } = await import('@/lib/firebase');
+      if (!isFirebaseAvailable()) {
+        return NextResponse.json(
+          { error: 'Database not configured. Check FIREBASE_SERVICE_ACCOUNT_KEY.' },
+          { status: 500 }
+        );
+      }
       return NextResponse.json(
         { error: 'Invalid credentials.' },
         { status: 401 }

@@ -260,20 +260,42 @@ export async function updateUserPermissions(
 
 // ── Auto-seed admin ─────────────────────────────────────────────────────────
 
+const DEFAULT_ADMIN_EMAIL = 'tsovansh@gmail.com';
+const DEFAULT_ADMIN_PASSWORD = 'Sovansh@1234';
+
 let adminSeedChecked = false;
 
 export async function ensureAdminSeeded(): Promise<void> {
   if (adminSeedChecked) return;
   adminSeedChecked = true;
 
-  const adminEmail = process.env.ADMIN_EMAIL;
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminEmail || !adminPassword) return;
+  const adminEmail = process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
 
   if (!isFirebaseAvailable()) return;
 
   const existing = await getUserByEmail(adminEmail);
-  if (existing) return;
+
+  if (existing) {
+    // Sync password if it was changed
+    const passwordMatches = await verifyPassword(
+      adminPassword,
+      existing.passwordHash,
+      existing.salt
+    );
+    if (!passwordMatches) {
+      const db = getFirestore();
+      if (db) {
+        const { hash, salt } = await hashPassword(adminPassword);
+        await db.collection(COLLECTIONS.USERS).doc(existing.id).update({
+          passwordHash: hash,
+          salt,
+        });
+        console.log(`Admin password synced: ${adminEmail}`);
+      }
+    }
+    return;
+  }
 
   await createUser(adminEmail, adminPassword, 'admin', 'active');
   console.log(`Admin user seeded: ${adminEmail}`);
