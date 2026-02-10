@@ -10,13 +10,18 @@ import {
 } from 'react';
 import { useRouter } from 'next/navigation';
 
-type User = { email: string };
+type User = {
+  email: string;
+  role: 'admin' | 'user';
+  permissions: string[];
+};
 
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  refreshPermissions: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue>({
@@ -24,6 +29,7 @@ const AuthContext = createContext<AuthContextValue>({
   loading: true,
   login: async () => ({ success: false }),
   logout: async () => {},
+  refreshPermissions: async () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -31,15 +37,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.user) setUser(data.user);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const fetchMe = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data?.user ?? null;
+    } catch {
+      return null;
+    }
   }, []);
+
+  useEffect(() => {
+    fetchMe()
+      .then((u) => { if (u) setUser(u); })
+      .finally(() => setLoading(false));
+  }, [fetchMe]);
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -53,14 +66,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!res.ok) {
           return { success: false, error: data.error || 'Login failed.' };
         }
-        setUser(data.user);
+        // Fetch full user with permissions
+        const me = await fetchMe();
+        if (me) setUser(me);
+        else setUser(data.user);
         router.push('/');
         return { success: true };
       } catch {
         return { success: false, error: 'Network error.' };
       }
     },
-    [router]
+    [router, fetchMe]
   );
 
   const logout = useCallback(async () => {
@@ -69,8 +85,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push('/login');
   }, [router]);
 
+  const refreshPermissions = useCallback(async () => {
+    const me = await fetchMe();
+    if (me) setUser(me);
+  }, [fetchMe]);
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshPermissions }}>
       {children}
     </AuthContext.Provider>
   );

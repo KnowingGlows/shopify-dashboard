@@ -3,12 +3,16 @@ import {
   getUserByEmail,
   verifyPassword,
   createSessionToken,
+  ensureAdminSeeded,
   COOKIE_NAME,
   SESSION_MAX_AGE,
 } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
+    // Auto-seed admin from env vars on first run
+    await ensureAdminSeeded();
+
     const body = await request.json();
     const email = (body.email ?? '').trim();
     const password = body.password ?? '';
@@ -28,6 +32,20 @@ export async function POST(request: Request) {
       );
     }
 
+    if (user.status === 'pending') {
+      return NextResponse.json(
+        { error: 'Your account is pending approval.' },
+        { status: 403 }
+      );
+    }
+
+    if (user.status === 'rejected') {
+      return NextResponse.json(
+        { error: 'Your access request was denied.' },
+        { status: 403 }
+      );
+    }
+
     const valid = await verifyPassword(password, user.passwordHash, user.salt);
     if (!valid) {
       return NextResponse.json(
@@ -36,11 +54,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const token = await createSessionToken({ sub: user.id, email: user.email });
+    const token = await createSessionToken({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
 
     const response = NextResponse.json({
       success: true,
-      user: { email: user.email },
+      user: { email: user.email, role: user.role },
     });
 
     response.cookies.set(COOKIE_NAME, token, {

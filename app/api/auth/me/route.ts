@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifySessionToken, COOKIE_NAME } from '@/lib/auth';
+import { verifySessionToken, getUserById, COOKIE_NAME, DEFAULT_PERMISSIONS } from '@/lib/auth';
 import { cookies } from 'next/headers';
 
 export async function GET() {
@@ -22,8 +22,16 @@ export async function GET() {
       );
     }
 
+    // Fetch live permissions from Firestore
+    const dbUser = await getUserById(payload.sub);
+    const permissions = dbUser?.permissions ?? DEFAULT_PERMISSIONS;
+
     return NextResponse.json({
-      user: { email: payload.email },
+      user: {
+        email: payload.email,
+        role: payload.role,
+        permissions,
+      },
     });
   } catch {
     return NextResponse.json(

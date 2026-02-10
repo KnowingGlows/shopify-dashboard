@@ -5,18 +5,8 @@ import { isFirebaseAvailable } from '@/lib/firebase';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const seedSecret = body.seedSecret ?? '';
     const email = (body.email ?? '').trim();
     const password = body.password ?? '';
-    const role = body.role ?? 'admin';
-
-    const expectedSecret = process.env.SEED_SECRET;
-    if (!expectedSecret || seedSecret !== expectedSecret) {
-      return NextResponse.json(
-        { error: 'Invalid seed secret.' },
-        { status: 403 }
-      );
-    }
 
     if (!email || !password) {
       return NextResponse.json(
@@ -25,26 +15,36 @@ export async function POST(request: Request) {
       );
     }
 
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: 'Password must be at least 6 characters.' },
+        { status: 400 }
+      );
+    }
+
     if (!isFirebaseAvailable()) {
       return NextResponse.json(
-        { error: 'Firebase is not configured.' },
+        { error: 'Service unavailable.' },
         { status: 500 }
       );
     }
 
-    const result = await createUser(email, password, role, 'active');
+    const result = await createUser(email, password, 'user', 'pending');
     if (!result) {
       return NextResponse.json(
-        { error: 'User already exists or creation failed.' },
+        { error: 'An account with this email already exists.' },
         { status: 409 }
       );
     }
 
-    return NextResponse.json({ success: true, email: result.email });
+    return NextResponse.json({
+      success: true,
+      message: 'Your access request has been submitted. You will be able to log in once an admin approves your account.',
+    });
   } catch (error) {
-    console.error('Seed error:', error);
+    console.error('Signup error:', error);
     return NextResponse.json(
-      { error: 'Failed to seed user.' },
+      { error: 'Signup failed.' },
       { status: 500 }
     );
   }

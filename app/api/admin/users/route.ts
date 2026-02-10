@@ -1,0 +1,86 @@
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import {
+  verifySessionToken,
+  getAllUsers,
+  getUsersByStatus,
+  updateUserStatus,
+  updateUserPermissions,
+  COOKIE_NAME,
+  type UserStatus,
+} from '@/lib/auth';
+
+async function requireAdmin() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(COOKIE_NAME)?.value;
+  if (!token) return null;
+  const payload = await verifySessionToken(token);
+  if (!payload || payload.role !== 'admin') return null;
+  return payload;
+}
+
+export async function GET(request: Request) {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const status = searchParams.get('status');
+
+  // If status is specified, filter by it; otherwise return all users
+  const users = status
+    ? await getUsersByStatus(status as UserStatus)
+    : await getAllUsers();
+
+  return NextResponse.json({ users });
+}
+
+export async function PATCH(request: Request) {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  }
+
+  try {
+    const body = await request.json();
+    const userId = body.userId ?? '';
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'userId is required.' },
+        { status: 400 }
+      );
+    }
+
+    // Update status if provided
+    if (body.status && ['active', 'rejected'].includes(body.status)) {
+      const success = await updateUserStatus(userId, body.status as UserStatus);
+      if (!success) {
+        return NextResponse.json(
+          { error: 'Failed to update user status.' },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Update permissions if provided
+    if (Array.isArray(body.permissions)) {
+      const success = await updateUserPermissions(userId, body.permissions);
+      if (!success) {
+        return NextResponse.json(
+          { error: 'Failed to update permissions.' },
+          { status: 500 }
+        );
+      }
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('User update error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update user.' },
+      { status: 500 }
+    );
+  }
+}

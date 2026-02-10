@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/components/auth-provider';
 import { Button } from '@/components/ui/button';
 import { Lock, Mail, Loader2 } from 'lucide-react';
@@ -117,6 +118,13 @@ export default function LoginPage() {
               </span>
             </Button>
           </form>
+
+          <Link
+            href="/signup"
+            className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground transition hover:text-foreground"
+          >
+            Don&apos;t have access? Request it
+          </Link>
 
           {/* Footer */}
           <p className="text-[9px] uppercase tracking-[0.3em] text-muted-foreground/40">

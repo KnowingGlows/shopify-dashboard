@@ -3,16 +3,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Home, LogOut, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
+import { BarChart3, Home, LogOut, Menu, Settings, Store, Users, X, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
 import { useAuth } from './auth-provider';
+import { PendingUsersNotification } from './pending-users';
+import { RestrictedPage } from './restricted-page';
 
 type NavItem = {
   href: string;
   label: string;
   helper: string;
   icon: typeof Home;
+  adminOnly?: boolean;
 };
 
 const navItems: NavItem[] = [
@@ -37,8 +40,15 @@ const navItems: NavItem[] = [
   {
     href: '/settings',
     label: 'Settings',
-    helper: 'Access control',
+    helper: 'Store integrations',
     icon: Settings,
+  },
+  {
+    href: '/users',
+    label: 'Users',
+    helper: 'Manage access',
+    icon: Users,
+    adminOnly: true,
   },
 ];
 
@@ -128,18 +138,23 @@ function SideNavContent({
           </button>
         ) : null}
       </div>
-      <div className="rounded-2xl border border-border/50 bg-card/40 p-3 text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[inset_0_0_20px_rgba(15,23,42,0.4)]">
-        Live sync enabled
+      <div className="flex items-center gap-2">
+        <div className="flex-1 rounded-2xl border border-border/50 bg-card/40 p-3 text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[inset_0_0_20px_rgba(15,23,42,0.4)]">
+          Live sync enabled
+        </div>
+        <PendingUsersNotification />
       </div>
       <nav className="flex flex-col gap-3">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.href}
-            item={item}
-            isActive={activePath === item.href}
-            onNavigate={onNavigate}
-          />
-        ))}
+        {navItems
+          .filter((item) => !item.adminOnly || user?.role === 'admin')
+          .map((item) => (
+            <NavLink
+              key={item.href}
+              item={item}
+              isActive={activePath === item.href}
+              onNavigate={onNavigate}
+            />
+          ))}
       </nav>
       <div className="mt-auto space-y-3">
         {user && (
@@ -163,12 +178,21 @@ function SideNavContent({
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [navOpen, setNavOpen] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
   const activeItem = useMemo(
     () => navItems.find((item) => item.href === pathname) ?? navItems[0],
     [pathname]
   );
+
+  // Permission gate: admins always pass, users check their permissions array
+  // /users page is admin-only (handled by the page itself)
+  const hasPermission =
+    !user ||
+    user.role === 'admin' ||
+    pathname === '/users' || // let the page handle its own admin check
+    (user.permissions ?? []).includes(pathname);
 
   useEffect(() => {
     setNavOpen(false);
@@ -196,7 +220,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="h-9 w-9" aria-hidden="true" />
           </div>
-          {children}
+          {hasPermission ? children : <RestrictedPage />}
         </main>
       </div>
 
