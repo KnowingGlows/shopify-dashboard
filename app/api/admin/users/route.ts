@@ -20,20 +20,28 @@ async function requireAdmin() {
 }
 
 export async function GET(request: Request) {
-  const admin = await requireAdmin();
-  if (!admin) {
-    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  try {
+    const admin = await requireAdmin();
+    if (!admin) {
+      return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status');
+
+    // If status is specified, filter by it; otherwise return all users
+    const users = status
+      ? await getUsersByStatus(status as UserStatus)
+      : await getAllUsers();
+
+    return NextResponse.json({ users });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch users.' },
+      { status: 500 }
+    );
   }
-
-  const { searchParams } = new URL(request.url);
-  const status = searchParams.get('status');
-
-  // If status is specified, filter by it; otherwise return all users
-  const users = status
-    ? await getUsersByStatus(status as UserStatus)
-    : await getAllUsers();
-
-  return NextResponse.json({ users });
 }
 
 export async function PATCH(request: Request) {

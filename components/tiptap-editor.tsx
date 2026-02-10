@@ -2,7 +2,6 @@
 
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import {
   Bold,
@@ -15,7 +14,6 @@ import {
   Heading2,
   Quote,
   Minus,
-  Link as LinkIcon,
   Undo,
   Redo,
 } from 'lucide-react';
@@ -59,7 +57,6 @@ export function TiptapEditor({ content, onChange, placeholder }: TiptapEditorPro
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Link.configure({ openOnClick: false }),
       Placeholder.configure({
         placeholder: placeholder ?? 'Write your daily log...',
       }),
@@ -154,19 +151,6 @@ export function TiptapEditor({ content, onChange, placeholder }: TiptapEditorPro
           title="Horizontal Rule"
         >
           <Minus className="h-4 w-4" />
-        </ToolbarButton>
-
-        <div className="mx-1 h-5 w-px bg-border/40" />
-
-        <ToolbarButton
-          onClick={() => {
-            const url = window.prompt('Enter URL:');
-            if (url) editor.chain().focus().setLink({ href: url }).run();
-          }}
-          isActive={editor.isActive('link')}
-          title="Link"
-        >
-          <LinkIcon className="h-4 w-4" />
         </ToolbarButton>
 
         <div className="ml-auto flex items-center gap-1">
