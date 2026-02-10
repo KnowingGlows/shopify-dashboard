@@ -54,4 +54,5 @@ export const COLLECTIONS = {
   STORES: 'shopify_stores',
   PNL_ENTRIES: 'pnl_entries',
   USERS: 'users',
+  DAILY_LOGS: 'daily_logs',
 } as const;

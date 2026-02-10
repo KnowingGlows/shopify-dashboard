@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { BackgroundDecor } from '@/components/background-decor';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatINR } from '@/lib/currency-converter';
-import { Store, ArrowUpRight, Sparkles, Loader2 } from 'lucide-react';
+import { Store, ArrowUpRight, ShoppingCart, Sparkles, Loader2 } from 'lucide-react';
 
 const brandInfo: Record<string, { description: string; highlight: string }> = {
   Kairova: {
@@ -130,6 +131,13 @@ export default function BrandsPage() {
                         </div>
                       </div>
                     </div>
+                    <Link
+                      href={`/brands/orders?store=${encodeURIComponent(brand.brand)}`}
+                      className="inline-flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-primary transition hover:bg-primary/20 hover:shadow-[0_0_12px_rgba(34,211,238,0.15)]"
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      View Orders
+                    </Link>
                   </CardContent>
                 </Card>
               );

@@ -27,6 +27,13 @@ export interface ShopifyOrder {
     quantity: number;
     price: string;
   }>;
+  customer?: {
+    first_name: string;
+    last_name: string;
+    phone: string | null;
+  };
+  phone?: string;
+  order_number?: number;
 }
 
 export interface OrderData {

@@ -17,6 +17,7 @@ export const CONFIGURABLE_PAGES = [
   { path: '/brands', label: 'Brands' },
   { path: '/p-and-l', label: 'P&L' },
   { path: '/settings', label: 'Settings' },
+  { path: '/logs', label: 'Daily Logs' },
 ] as const;
 
 export const DEFAULT_PERMISSIONS = CONFIGURABLE_PAGES.map((p) => p.path);

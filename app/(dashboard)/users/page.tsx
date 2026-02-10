@@ -29,6 +29,7 @@ const PAGES = [
   { path: '/brands', label: 'Brands' },
   { path: '/p-and-l', label: 'P&L' },
   { path: '/settings', label: 'Settings' },
+  { path: '/logs', label: 'Daily Logs' },
 ];
 
 function StatusBadge({ status }: { status: string }) {

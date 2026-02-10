@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Home, LogOut, Menu, Settings, Store, Users, X, Sparkles } from 'lucide-react';
+import { BarChart3, ClipboardList, Home, LogOut, Menu, Settings, Store, Users, X, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
 import { useAuth } from './auth-provider';
@@ -42,6 +42,12 @@ const navItems: NavItem[] = [
     label: 'Settings',
     helper: 'Store integrations',
     icon: Settings,
+  },
+  {
+    href: '/logs',
+    label: 'Daily Logs',
+    helper: 'Team activity',
+    icon: ClipboardList,
   },
   {
     href: '/users',
@@ -188,11 +194,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Permission gate: admins always pass, users check their permissions array
   // /users page is admin-only (handled by the page itself)
+  // Sub-pages inherit parent permission (e.g., /brands/orders inherits /brands)
+  const perms = user?.permissions ?? [];
   const hasPermission =
     !user ||
     user.role === 'admin' ||
-    pathname === '/users' || // let the page handle its own admin check
-    (user.permissions ?? []).includes(pathname);
+    pathname === '/users' ||
+    perms.includes(pathname) ||
+    perms.some((p) => p !== '/' && pathname.startsWith(p + '/'));
 
   useEffect(() => {
     setNavOpen(false);
