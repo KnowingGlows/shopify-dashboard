@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchShopifyOrders } from '@/lib/shopify-api';
 
+// Brand name → store index mapping (Store 1 = Kairova, Store 2 = Mavric)
+const BRAND_STORE_INDEX: Record<string, number> = {
+  kairova: 0,
+  mavric: 1,
+};
+
 // GET /api/orders?store=StoreName&search=query
 export async function GET(request: Request) {
   try {
@@ -17,13 +23,21 @@ export async function GET(request: Request) {
     }
 
     const stores = await getShopifyStores();
-    const store = stores.find(
+
+    // Try matching by store name/displayName first, then by brand-to-index mapping
+    let store = stores.find(
       (s) => s.name.toLowerCase() === storeName.toLowerCase()
     );
+    if (!store) {
+      const idx = BRAND_STORE_INDEX[storeName.toLowerCase()];
+      if (idx !== undefined && idx < stores.length) {
+        store = stores[idx];
+      }
+    }
 
     if (!store) {
       return NextResponse.json(
-        { error: `Store "${storeName}" not found.` },
+        { error: `Store "${storeName}" not found. ${stores.length} stores registered.` },
         { status: 404 }
       );
     }
