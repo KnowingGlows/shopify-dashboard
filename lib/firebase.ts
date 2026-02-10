@@ -53,4 +53,5 @@ export const getFirestore = () => {
 export const COLLECTIONS = {
   STORES: 'shopify_stores',
   PNL_ENTRIES: 'pnl_entries',
+  USERS: 'users',
 } as const;

@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Home, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
+import { BarChart3, Home, LogOut, Menu, Settings, Store, X, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
+import { useAuth } from './auth-provider';
 
 type NavItem = {
   href: string;
@@ -102,6 +103,8 @@ function SideNavContent({
   onNavigate?: () => void;
   showClose?: boolean;
 }) {
+  const { logout, user } = useAuth();
+
   return (
     <div className="flex h-full flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -138,12 +141,21 @@ function SideNavContent({
           />
         ))}
       </nav>
-      <div className="mt-auto rounded-2xl border border-border/50 bg-background/60 p-4 text-sm text-muted-foreground">
-        <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Today</p>
-        <p className="mt-2 text-base font-semibold text-foreground">Sales at a glance</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Jump between stores and settings with a single tap.
-        </p>
+      <div className="mt-auto space-y-3">
+        {user && (
+          <div className="rounded-2xl border border-border/50 bg-background/60 px-4 py-3">
+            <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Signed in as</p>
+            <p className="mt-1 truncate text-xs font-medium text-foreground">{user.email}</p>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={logout}
+          className="flex w-full items-center gap-3 rounded-2xl border border-border/50 bg-background/60 px-4 py-3 text-muted-foreground transition hover:border-destructive/40 hover:text-destructive"
+        >
+          <LogOut className="h-4 w-4" />
+          <span className="text-xs font-semibold uppercase tracking-[0.2em]">Sign out</span>
+        </button>
       </div>
     </div>
   );
