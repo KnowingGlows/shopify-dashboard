@@ -237,117 +237,110 @@ export function Dashboard() {
     <div className="relative min-h-screen overflow-hidden bg-background">
       <BackgroundDecor />
       <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 md:px-8">
-      {/* Header */}
-        <div className="flex flex-col gap-6 rounded-3xl border border-border/50 bg-card/60 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.7)]" />
-              Live Insights
-            </div>
-            <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-              Sales Overview
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Track your Shopify stores performance in one place.
-            </p>
-          </div>
-          <div className="flex flex-col items-start gap-4 md:items-end">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 p-1">
-                {rangeOptions.map((option) => {
-                  const isActive = option.value === dateRange;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setDateRange(option.value)}
-                      className={cn(
-                        'rounded-full px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] transition-all',
-                        isActive
-                          ? 'bg-primary/20 text-primary shadow-[0_0_16px_rgba(34,211,238,0.45)]'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <StoreFilter
-                stores={storeNames}
-                selectedStore={selectedStore}
-                onStoreChange={setSelectedStore}
-              />
-              <div className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 p-1">
-                {(['INR', 'USD'] as const).map((curr) => (
+      {/* Controls */}
+        <div className="flex flex-col gap-4 rounded-3xl border border-border/50 bg-card/60 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
+          {/* Row 1: Date range + sync info */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 p-1">
+              {rangeOptions.map((option) => {
+                const isActive = option.value === dateRange;
+                return (
                   <button
-                    key={curr}
+                    key={option.value}
                     type="button"
-                    onClick={() => setCurrency(curr)}
+                    onClick={() => setDateRange(option.value)}
                     className={cn(
-                      'rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] transition-all',
-                      currency === curr
+                      'rounded-full px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] transition-all',
+                      isActive
                         ? 'bg-primary/20 text-primary shadow-[0_0_16px_rgba(34,211,238,0.45)]'
                         : 'text-muted-foreground hover:text-foreground'
                     )}
                   >
-                    {curr}
+                    {option.label}
                   </button>
-                ))}
-              </div>
-              <Button
-                onClick={() =>
-                  fetchData(dateRange, dateRange === 'custom' ? customRange : undefined)
-                }
-                variant="outline"
-                size="icon"
-                className="bg-background/60 backdrop-blur border-border/60 hover:border-primary/50 hover:text-primary"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
+                );
+              })}
             </div>
-            {dateRange === 'custom' ? (
-              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/50 bg-background/60 p-3 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <span>Start</span>
-                  <input
-                    type="date"
-                    value={customRange.start}
-                    onChange={(event) => {
-                      setCustomRangeError(null);
-                      setCustomRange((prev) => ({ ...prev, start: event.target.value }));
-                    }}
-                    className="h-9 rounded-xl border border-border/60 bg-background/70 px-3 text-[11px] text-foreground shadow-[0_0_18px_rgba(15,23,42,0.2)]"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span>End</span>
-                  <input
-                    type="date"
-                    value={customRange.end}
-                    onChange={(event) => {
-                      setCustomRangeError(null);
-                      setCustomRange((prev) => ({ ...prev, end: event.target.value }));
-                    }}
-                    className="h-9 rounded-xl border border-border/60 bg-background/70 px-3 text-[11px] text-foreground shadow-[0_0_18px_rgba(15,23,42,0.2)]"
-                  />
-                </div>
-                <Button
-                  onClick={applyCustomRange}
-                  variant="outline"
-                  className="h-9 border-border/60 bg-background/70 text-[11px] uppercase tracking-[0.2em]"
-                >
-                  Apply
-                </Button>
-                {customRangeError ? (
-                  <span className="text-[11px] text-rose-200">{customRangeError}</span>
-                ) : null}
-              </div>
-            ) : null}
-            <div className="text-xs text-muted-foreground">
-              Showing: {activeRangeLabel} · Last sync: {lastUpdated}
+            <div className="text-[11px] text-muted-foreground">
+              {activeRangeLabel} · {lastUpdated}
             </div>
           </div>
+
+          {/* Row 2: Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <StoreFilter
+              stores={storeNames}
+              selectedStore={selectedStore}
+              onStoreChange={setSelectedStore}
+            />
+            <div className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/70 p-1">
+              {(['INR', 'USD'] as const).map((curr) => (
+                <button
+                  key={curr}
+                  type="button"
+                  onClick={() => setCurrency(curr)}
+                  className={cn(
+                    'rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] transition-all',
+                    currency === curr
+                      ? 'bg-primary/20 text-primary shadow-[0_0_16px_rgba(34,211,238,0.45)]'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {curr}
+                </button>
+              ))}
+            </div>
+            <Button
+              onClick={() =>
+                fetchData(dateRange, dateRange === 'custom' ? customRange : undefined)
+              }
+              variant="outline"
+              size="icon"
+              className="bg-background/60 backdrop-blur border-border/60 hover:border-primary/50 hover:text-primary"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Custom date picker (conditional) */}
+          {dateRange === 'custom' ? (
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/50 bg-background/60 p-3 text-xs uppercase tracking-[0.2em] text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span>Start</span>
+                <input
+                  type="date"
+                  value={customRange.start}
+                  onChange={(event) => {
+                    setCustomRangeError(null);
+                    setCustomRange((prev) => ({ ...prev, start: event.target.value }));
+                  }}
+                  className="h-9 rounded-xl border border-border/60 bg-background/70 px-3 text-[11px] text-foreground shadow-[0_0_18px_rgba(15,23,42,0.2)]"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span>End</span>
+                <input
+                  type="date"
+                  value={customRange.end}
+                  onChange={(event) => {
+                    setCustomRangeError(null);
+                    setCustomRange((prev) => ({ ...prev, end: event.target.value }));
+                  }}
+                  className="h-9 rounded-xl border border-border/60 bg-background/70 px-3 text-[11px] text-foreground shadow-[0_0_18px_rgba(15,23,42,0.2)]"
+                />
+              </div>
+              <Button
+                onClick={applyCustomRange}
+                variant="outline"
+                className="h-9 border-border/60 bg-background/70 text-[11px] uppercase tracking-[0.2em]"
+              >
+                Apply
+              </Button>
+              {customRangeError ? (
+                <span className="text-[11px] text-rose-200">{customRangeError}</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
       {/* Stats Cards */}
@@ -377,10 +370,6 @@ export function Dashboard() {
           <StoreBreakdown stores={salesData.storeBreakdown} currency={currency} />
         )}
 
-      {/* Footer */}
-        <div className="text-center text-xs uppercase tracking-[0.2em] text-muted-foreground">
-          Vaultik analytics
-        </div>
       </div>
       <DeveloperModePanel log={devLog} />
     </div>
