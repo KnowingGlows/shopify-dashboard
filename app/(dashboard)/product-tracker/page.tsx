@@ -1,11 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { BackgroundDecor } from '@/components/background-decor';
-import { Button } from '@/components/ui/button';
 import {
-  Package,
-  Plus,
   Trash2,
   ExternalLink,
   Loader2,
@@ -24,6 +20,17 @@ const PRODUCT_STAGES = [
   'Dropped',
   'Research Phase',
 ];
+
+const stageColorClass = (stage: string) => {
+  switch (stage) {
+    case 'Testing Store Page Done': return 'text-blue-400';
+    case 'Winner - Moved To OPS': return 'text-emerald-400';
+    case 'Testing Ads': return 'text-amber-400';
+    case 'Dropped': return 'text-red-400';
+    case 'Research Phase': return 'text-violet-400';
+    default: return '';
+  }
+};
 
 export default function ProductTrackerPage() {
   const [entries, setEntries] = useState<ProductTrackerEntry[]>([]);
@@ -157,202 +164,170 @@ export default function ProductTrackerPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      <BackgroundDecor />
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-8 md:px-8">
-        {/* Header card */}
-        <div className="flex flex-col gap-6 rounded-3xl border border-border/50 bg-card/60 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            <Package className="h-3.5 w-3.5 text-primary" />
-            Product Tracker
-          </div>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                Product Tracker
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Track products from research to launch. Auto-saves on edit.
-              </p>
-            </div>
-            <Button
-              onClick={addEntry}
-              disabled={adding}
-              variant="outline"
-              className="border-border/60 bg-background/60"
-            >
-              {adding ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-              <span className="ml-2 text-[10px] uppercase tracking-[0.2em]">
-                Add Product
-              </span>
-            </Button>
-          </div>
+    <div className="mx-auto max-w-7xl p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Product Tracker</h1>
+          <p className="text-[11px] text-muted-foreground">Track products from research to launch</p>
         </div>
-
-        {/* Table */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : entries.length === 0 ? (
-          <div className="rounded-3xl border border-border/50 bg-card/60 p-12 text-center text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-            No products yet. Click &quot;Add Product&quot; to get started.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {/* Column headers */}
-            <div className="hidden gap-3 px-4 text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:grid md:grid-cols-[1fr_1fr_180px_100px_1fr_40px_24px]">
-              <span>Product Name</span>
-              <span>Product File Link</span>
-              <span>Product Stage</span>
-              <span>Total Spent</span>
-              <span>Remarks</span>
-              <span />
-              <span />
-            </div>
-
-            {/* Rows */}
-            {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="group grid gap-3 rounded-2xl border border-border/50 bg-card/60 p-4 backdrop-blur transition-colors hover:bg-card/80 md:grid-cols-[1fr_1fr_180px_100px_1fr_40px_24px] md:items-center"
-              >
-                {/* Product Name */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Product Name
-                  </span>
-                  <input
-                    type="text"
-                    value={entry.productName}
-                    onChange={(e) => updateLocalField(entry.id, 'productName', e.target.value)}
-                    onBlur={(e) => handleBlur(entry.id, 'productName', e.target.value)}
-                    placeholder="Product name..."
-                    className="bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
-                  />
-                </div>
-
-                {/* Product File Link */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Product File Link
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={entry.productFileLink}
-                      onChange={(e) => updateLocalField(entry.id, 'productFileLink', e.target.value)}
-                      onBlur={(e) => handleBlur(entry.id, 'productFileLink', e.target.value)}
-                      placeholder="https://..."
-                      className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
-                    />
-                    {entry.productFileLink && (
-                      <a
-                        href={entry.productFileLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-shrink-0 text-primary/60 transition-colors hover:text-primary"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Product Stage */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Product Stage
-                  </span>
-                  <select
-                    value={entry.productStage}
-                    onChange={(e) => handleSelectChange(entry.id, e.target.value)}
-                    className="cursor-pointer rounded-lg border border-border/40 bg-transparent px-2 py-1 text-xs text-foreground outline-none transition-colors hover:border-border/80 focus:border-primary/50"
-                  >
-                    {PRODUCT_STAGES.map((stage) => (
-                      <option key={stage} value={stage} className="bg-card text-foreground">
-                        {stage || '— Select —'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Total Spent */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Total Spent
-                  </span>
-                  <input
-                    type="number"
-                    value={entry.totalSpent || ''}
-                    onChange={(e) =>
-                      updateLocalField(
-                        entry.id,
-                        'totalSpent',
-                        e.target.value === '' ? 0 : Number(e.target.value)
-                      )
-                    }
-                    onBlur={(e) =>
-                      handleBlur(
-                        entry.id,
-                        'totalSpent',
-                        e.target.value === '' ? 0 : Number(e.target.value)
-                      )
-                    }
-                    placeholder="0"
-                    className="bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  />
-                </div>
-
-                {/* Remarks */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Remarks
-                  </span>
-                  <input
-                    type="text"
-                    value={entry.remarks}
-                    onChange={(e) => updateLocalField(entry.id, 'remarks', e.target.value)}
-                    onBlur={(e) => handleBlur(entry.id, 'remarks', e.target.value)}
-                    placeholder="Notes..."
-                    className="bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
-                  />
-                </div>
-
-                {/* Save status indicator */}
-                <div className="flex items-center justify-center">
-                  {getStatusIcon(entry.id)}
-                </div>
-
-                {/* Delete button */}
-                <div className="flex items-center justify-center">
-                  <button
-                    onClick={() => deleteEntry(entry.id)}
-                    disabled={deletingIds.has(entry.id)}
-                    className="text-muted-foreground/40 transition-colors hover:text-destructive disabled:opacity-50"
-                    title="Delete product"
-                  >
-                    {deletingIds.has(entry.id) ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="rounded-3xl border border-border/50 bg-card/60 p-6 text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          {entries.length} product{entries.length !== 1 ? 's' : ''} tracked. Changes auto-save on blur.
-        </div>
+        <button
+          onClick={addEntry}
+          disabled={adding}
+          className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-secondary"
+        >
+          {adding ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <span>+</span>
+          )}
+          Add Product
+        </button>
       </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          {entries.length === 0 ? (
+            <div className="py-12 text-center text-[12px] text-muted-foreground">
+              No products yet. Click &quot;+ Add Product&quot; to get started.
+            </div>
+          ) : (
+            <table className="tracker-table">
+              <thead>
+                <tr>
+                  <th>Product Name</th>
+                  <th>File Link</th>
+                  <th>Stage</th>
+                  <th>Total Spent</th>
+                  <th>Remarks</th>
+                  <th className="w-[52px]" />
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="group">
+                    {/* Product Name */}
+                    <td>
+                      <input
+                        type="text"
+                        value={entry.productName}
+                        onChange={(e) => updateLocalField(entry.id, 'productName', e.target.value)}
+                        onBlur={(e) => handleBlur(entry.id, 'productName', e.target.value)}
+                        placeholder="Product name..."
+                        className="tracker-input"
+                      />
+                    </td>
+
+                    {/* File Link */}
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={entry.productFileLink}
+                          onChange={(e) => updateLocalField(entry.id, 'productFileLink', e.target.value)}
+                          onBlur={(e) => handleBlur(entry.id, 'productFileLink', e.target.value)}
+                          placeholder="https://..."
+                          className="tracker-input min-w-0 flex-1"
+                        />
+                        {entry.productFileLink && (
+                          <a
+                            href={entry.productFileLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-shrink-0 text-muted-foreground transition-colors hover:text-primary"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Stage */}
+                    <td>
+                      <select
+                        value={entry.productStage}
+                        onChange={(e) => handleSelectChange(entry.id, e.target.value)}
+                        className={`tracker-select ${stageColorClass(entry.productStage)}`}
+                      >
+                        {PRODUCT_STAGES.map((stage) => (
+                          <option key={stage} value={stage} className="bg-card text-foreground">
+                            {stage || '-- Select --'}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+
+                    {/* Total Spent */}
+                    <td>
+                      <input
+                        type="number"
+                        value={entry.totalSpent || ''}
+                        onChange={(e) =>
+                          updateLocalField(
+                            entry.id,
+                            'totalSpent',
+                            e.target.value === '' ? 0 : Number(e.target.value)
+                          )
+                        }
+                        onBlur={(e) =>
+                          handleBlur(
+                            entry.id,
+                            'totalSpent',
+                            e.target.value === '' ? 0 : Number(e.target.value)
+                          )
+                        }
+                        placeholder="0"
+                        className="tracker-input [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                    </td>
+
+                    {/* Remarks */}
+                    <td>
+                      <input
+                        type="text"
+                        value={entry.remarks}
+                        onChange={(e) => updateLocalField(entry.id, 'remarks', e.target.value)}
+                        onBlur={(e) => handleBlur(entry.id, 'remarks', e.target.value)}
+                        placeholder="Notes..."
+                        className="tracker-input"
+                      />
+                    </td>
+
+                    {/* Actions: status + delete */}
+                    <td>
+                      <div className="flex items-center justify-end gap-2">
+                        {getStatusIcon(entry.id)}
+                        <button
+                          onClick={() => deleteEntry(entry.id)}
+                          disabled={deletingIds.has(entry.id)}
+                          className="text-muted-foreground/30 transition-colors hover:text-destructive group-hover:text-muted-foreground disabled:opacity-50"
+                          title="Delete product"
+                        >
+                          {deletingIds.has(entry.id) ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Footer */}
+      <p className="text-[11px] text-muted-foreground">
+        {entries.length} product{entries.length !== 1 ? 's' : ''} · Auto-saves on edit
+      </p>
     </div>
   );
 }

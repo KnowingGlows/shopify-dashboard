@@ -1,10 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { BackgroundDecor } from '@/components/background-decor';
-import { Button } from '@/components/ui/button';
 import {
-  Megaphone,
   Plus,
   Trash2,
   ExternalLink,
@@ -19,6 +16,21 @@ type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 const CREATIVE_TYPES = ['', 'UGC', 'Static', 'Video', 'Carousel', 'Story'];
 
 const CREATIVE_BATCH_RESULTS = ['', 'Winner', 'Loser', 'Testing', 'Scaled'];
+
+const CREATIVE_TYPE_COLORS: Record<string, string> = {
+  UGC: 'text-violet-400',
+  Static: 'text-blue-400',
+  Video: 'text-amber-400',
+  Carousel: 'text-emerald-400',
+  Story: 'text-pink-400',
+};
+
+const BATCH_RESULT_COLORS: Record<string, string> = {
+  Winner: 'text-emerald-400',
+  Loser: 'text-red-400',
+  Testing: 'text-amber-400',
+  Scaled: 'text-blue-400',
+};
 
 export default function AdsTrackerPage() {
   const [entries, setEntries] = useState<AdsTrackerEntry[]>([]);
@@ -155,250 +167,210 @@ export default function AdsTrackerPage() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      <BackgroundDecor />
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-8 md:px-8">
-        {/* Header card */}
-        <div className="flex flex-col gap-6 rounded-3xl border border-border/50 bg-card/60 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            <Megaphone className="h-3.5 w-3.5 text-primary" />
-            Ads Tracker
-          </div>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                Ads Tracker
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Track ad creatives, spend, and performance. Auto-saves on edit.
-              </p>
-            </div>
-            <Button
-              onClick={addEntry}
-              disabled={adding}
-              variant="outline"
-              className="border-border/60 bg-background/60"
-            >
-              {adding ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-              <span className="ml-2 text-[10px] uppercase tracking-[0.2em]">
-                Add Entry
-              </span>
-            </Button>
-          </div>
+    <div className="mx-auto max-w-7xl p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Ads Tracker</h1>
+          <p className="text-[11px] text-muted-foreground">Track creative batches and performance</p>
         </div>
+        <button
+          onClick={addEntry}
+          disabled={adding}
+          className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-secondary"
+        >
+          {adding ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Plus className="h-3.5 w-3.5" />
+          )}
+          Add Entry
+        </button>
+      </div>
 
-        {/* Table */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : entries.length === 0 ? (
-          <div className="rounded-3xl border border-border/50 bg-card/60 p-12 text-center text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-            No ads tracked yet. Click &quot;Add Entry&quot; to get started.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {/* Column headers */}
-            <div className="hidden gap-3 px-4 text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:grid md:grid-cols-[1fr_1fr_0.8fr_140px_100px_100px_140px_40px_24px]">
-              <span>Product Name</span>
-              <span>Creative Folder Link</span>
-              <span>Batch Name</span>
-              <span>Creative Type</span>
-              <span>Daily Ad Spend</span>
-              <span>Weekly ROAS</span>
-              <span>Batch Result</span>
-              <span />
-              <span />
-            </div>
-
-            {/* Rows */}
-            {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="group grid gap-3 rounded-2xl border border-border/50 bg-card/60 p-4 backdrop-blur transition-colors hover:bg-card/80 md:grid-cols-[1fr_1fr_0.8fr_140px_100px_100px_140px_40px_24px] md:items-center"
-              >
-                {/* Product Name */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Product Name
-                  </span>
-                  <input
-                    type="text"
-                    value={entry.productName}
-                    onChange={(e) => updateLocalField(entry.id, 'productName', e.target.value)}
-                    onBlur={(e) => handleBlur(entry.id, 'productName', e.target.value)}
-                    placeholder="Product name..."
-                    className="bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
-                  />
-                </div>
-
-                {/* Creative Folder Link */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Creative Folder Link
-                  </span>
-                  <div className="flex items-center gap-2">
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-xs text-muted-foreground">
+          No ads tracked yet. Click &quot;Add Entry&quot; to get started.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="tracker-table">
+            <thead>
+              <tr>
+                <th>Product Name</th>
+                <th>Creative Folder</th>
+                <th>Batch Name</th>
+                <th>Type</th>
+                <th>Daily Spend</th>
+                <th>Weekly ROAS</th>
+                <th>Result</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  {/* Product Name */}
+                  <td>
                     <input
                       type="text"
-                      value={entry.creativeFolderLink}
-                      onChange={(e) => updateLocalField(entry.id, 'creativeFolderLink', e.target.value)}
-                      onBlur={(e) => handleBlur(entry.id, 'creativeFolderLink', e.target.value)}
-                      placeholder="https://..."
-                      className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
+                      value={entry.productName}
+                      onChange={(e) => updateLocalField(entry.id, 'productName', e.target.value)}
+                      onBlur={(e) => handleBlur(entry.id, 'productName', e.target.value)}
+                      placeholder="Product name..."
+                      className="tracker-input"
                     />
-                    {entry.creativeFolderLink && (
-                      <a
-                        href={entry.creativeFolderLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex-shrink-0 text-primary/60 transition-colors hover:text-primary"
+                  </td>
+
+                  {/* Creative Folder Link */}
+                  <td>
+                    <div className="flex items-center">
+                      <input
+                        type="text"
+                        value={entry.creativeFolderLink}
+                        onChange={(e) => updateLocalField(entry.id, 'creativeFolderLink', e.target.value)}
+                        onBlur={(e) => handleBlur(entry.id, 'creativeFolderLink', e.target.value)}
+                        placeholder="https://..."
+                        className="tracker-input min-w-0 flex-1"
+                      />
+                      {entry.creativeFolderLink && (
+                        <a
+                          href={entry.creativeFolderLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-shrink-0 px-2 text-primary/60 transition-colors hover:text-primary"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* Batch Name */}
+                  <td>
+                    <input
+                      type="text"
+                      value={entry.batchName}
+                      onChange={(e) => updateLocalField(entry.id, 'batchName', e.target.value)}
+                      onBlur={(e) => handleBlur(entry.id, 'batchName', e.target.value)}
+                      placeholder="Batch name..."
+                      className="tracker-input"
+                    />
+                  </td>
+
+                  {/* Creative Type */}
+                  <td>
+                    <select
+                      value={entry.creativeType}
+                      onChange={(e) => handleSelectChange(entry.id, 'creativeType', e.target.value)}
+                      className={`tracker-select ${CREATIVE_TYPE_COLORS[entry.creativeType] ?? ''}`}
+                    >
+                      {CREATIVE_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {type || '-- Select --'}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
+                  {/* Daily Spend */}
+                  <td>
+                    <input
+                      type="number"
+                      value={entry.dailyAdSpend || ''}
+                      onChange={(e) =>
+                        updateLocalField(
+                          entry.id,
+                          'dailyAdSpend',
+                          e.target.value === '' ? 0 : Number(e.target.value)
+                        )
+                      }
+                      onBlur={(e) =>
+                        handleBlur(
+                          entry.id,
+                          'dailyAdSpend',
+                          e.target.value === '' ? 0 : Number(e.target.value)
+                        )
+                      }
+                      placeholder="0"
+                      className="tracker-input text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                  </td>
+
+                  {/* Weekly ROAS */}
+                  <td>
+                    <input
+                      type="number"
+                      value={entry.weeklyRoas || ''}
+                      onChange={(e) =>
+                        updateLocalField(
+                          entry.id,
+                          'weeklyRoas',
+                          e.target.value === '' ? 0 : Number(e.target.value)
+                        )
+                      }
+                      onBlur={(e) =>
+                        handleBlur(
+                          entry.id,
+                          'weeklyRoas',
+                          e.target.value === '' ? 0 : Number(e.target.value)
+                        )
+                      }
+                      placeholder="0.00"
+                      step="0.01"
+                      className="tracker-input text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                  </td>
+
+                  {/* Batch Result */}
+                  <td>
+                    <select
+                      value={entry.creativeBatchResult}
+                      onChange={(e) => handleSelectChange(entry.id, 'creativeBatchResult', e.target.value)}
+                      className={`tracker-select ${BATCH_RESULT_COLORS[entry.creativeBatchResult] ?? ''}`}
+                    >
+                      {CREATIVE_BATCH_RESULTS.map((result) => (
+                        <option key={result} value={result}>
+                          {result || '-- Select --'}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
+                  {/* Actions */}
+                  <td>
+                    <div className="flex items-center justify-center gap-2 px-2">
+                      {getStatusIcon(entry.id)}
+                      <button
+                        onClick={() => deleteEntry(entry.id)}
+                        disabled={deletingIds.has(entry.id)}
+                        className="text-muted-foreground/40 transition-colors hover:text-destructive disabled:opacity-50"
+                        title="Delete entry"
                       >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Batch Name */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Batch Name
-                  </span>
-                  <input
-                    type="text"
-                    value={entry.batchName}
-                    onChange={(e) => updateLocalField(entry.id, 'batchName', e.target.value)}
-                    onBlur={(e) => handleBlur(entry.id, 'batchName', e.target.value)}
-                    placeholder="Batch name..."
-                    className="bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
-                  />
-                </div>
-
-                {/* Creative Type */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Creative Type
-                  </span>
-                  <select
-                    value={entry.creativeType}
-                    onChange={(e) => handleSelectChange(entry.id, 'creativeType', e.target.value)}
-                    className="cursor-pointer rounded-lg border border-border/40 bg-transparent px-2 py-1 text-xs text-foreground outline-none transition-colors hover:border-border/80 focus:border-primary/50"
-                  >
-                    {CREATIVE_TYPES.map((type) => (
-                      <option key={type} value={type} className="bg-card text-foreground">
-                        {type || '— Select —'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Daily Ad Spend */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Daily Ad Spend
-                  </span>
-                  <input
-                    type="number"
-                    value={entry.dailyAdSpend || ''}
-                    onChange={(e) =>
-                      updateLocalField(
-                        entry.id,
-                        'dailyAdSpend',
-                        e.target.value === '' ? 0 : Number(e.target.value)
-                      )
-                    }
-                    onBlur={(e) =>
-                      handleBlur(
-                        entry.id,
-                        'dailyAdSpend',
-                        e.target.value === '' ? 0 : Number(e.target.value)
-                      )
-                    }
-                    placeholder="0"
-                    className="bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  />
-                </div>
-
-                {/* Weekly ROAS */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Weekly ROAS
-                  </span>
-                  <input
-                    type="number"
-                    value={entry.weeklyRoas || ''}
-                    onChange={(e) =>
-                      updateLocalField(
-                        entry.id,
-                        'weeklyRoas',
-                        e.target.value === '' ? 0 : Number(e.target.value)
-                      )
-                    }
-                    onBlur={(e) =>
-                      handleBlur(
-                        entry.id,
-                        'weeklyRoas',
-                        e.target.value === '' ? 0 : Number(e.target.value)
-                      )
-                    }
-                    placeholder="0.00"
-                    step="0.01"
-                    className="bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  />
-                </div>
-
-                {/* Creative Batch Result */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Batch Result
-                  </span>
-                  <select
-                    value={entry.creativeBatchResult}
-                    onChange={(e) => handleSelectChange(entry.id, 'creativeBatchResult', e.target.value)}
-                    className="cursor-pointer rounded-lg border border-border/40 bg-transparent px-2 py-1 text-xs text-foreground outline-none transition-colors hover:border-border/80 focus:border-primary/50"
-                  >
-                    {CREATIVE_BATCH_RESULTS.map((result) => (
-                      <option key={result} value={result} className="bg-card text-foreground">
-                        {result || '— Select —'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Save status indicator */}
-                <div className="flex items-center justify-center">
-                  {getStatusIcon(entry.id)}
-                </div>
-
-                {/* Delete button */}
-                <div className="flex items-center justify-center">
-                  <button
-                    onClick={() => deleteEntry(entry.id)}
-                    disabled={deletingIds.has(entry.id)}
-                    className="text-muted-foreground/40 transition-colors hover:text-destructive disabled:opacity-50"
-                    title="Delete entry"
-                  >
-                    {deletingIds.has(entry.id) ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="rounded-3xl border border-border/50 bg-card/60 p-6 text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          {entries.length} entr{entries.length !== 1 ? 'ies' : 'y'} tracked. Changes auto-save on blur.
+                        {deletingIds.has(entry.id) ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
+      )}
+
+      {/* Footer */}
+      <p className="text-[11px] text-muted-foreground">
+        {entries.length} entr{entries.length !== 1 ? 'ies' : 'y'} tracked. Changes auto-save on blur.
+      </p>
     </div>
   );
 }

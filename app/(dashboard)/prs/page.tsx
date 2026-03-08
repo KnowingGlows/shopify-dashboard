@@ -1,10 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { BackgroundDecor } from '@/components/background-decor';
-import { Button } from '@/components/ui/button';
 import {
-  Search,
   Plus,
   Trash2,
   Loader2,
@@ -129,205 +126,181 @@ export default function PRSPage() {
 
   // ── Render ─────────────────────────────────────────────────────────
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      <BackgroundDecor />
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-8 md:px-8">
-        {/* Header card */}
-        <div className="flex flex-col gap-6 rounded-3xl border border-border/50 bg-card/60 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            <Search className="h-3.5 w-3.5 text-primary" />
-            Product Research
-          </div>
-
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                Product Research Sheet
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Track and manage products from discovery to launch.
-              </p>
-            </div>
-            <Button
-              onClick={addEntry}
-              disabled={adding}
-              className="shrink-0 gap-2"
-            >
-              {adding ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-              Add Product
-            </Button>
-          </div>
+    <div className="mx-auto max-w-7xl p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Product Research</h1>
+          <p className="text-[12px] text-muted-foreground">Discover and validate products</p>
         </div>
-
-        {/* Loading state */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : entries.length === 0 ? (
-          <div className="rounded-2xl border border-border/50 bg-card/60 p-12 text-center text-sm text-muted-foreground backdrop-blur">
-            No products yet. Click &quot;Add Product&quot; to get started.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {/* Table header */}
-            <div className="hidden grid-cols-[1fr_1fr_1fr_180px_44px_28px] gap-3 px-5 md:grid">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Product Name
-              </span>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Ad Link
-              </span>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Website Link
-              </span>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                Status
-              </span>
-              <span />
-              <span />
-            </div>
-
-            {/* Rows */}
-            {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="group grid grid-cols-1 gap-3 rounded-2xl border border-border/50 bg-card/60 p-4 backdrop-blur transition-colors hover:bg-card/80 md:grid-cols-[1fr_1fr_1fr_180px_44px_28px] md:items-center md:p-3 md:px-5"
-              >
-                {/* Product Name */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Product Name
-                  </span>
-                  <input
-                    type="text"
-                    defaultValue={entry.productName}
-                    placeholder="Product name..."
-                    onBlur={(e) =>
-                      e.target.value !== entry.productName &&
-                      patchEntry(entry.id, 'productName', e.target.value)
-                    }
-                    className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
-                  />
-                </div>
-
-                {/* Ad Link */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Ad Link
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      defaultValue={entry.adLink}
-                      placeholder="https://..."
-                      onBlur={(e) =>
-                        e.target.value !== entry.adLink &&
-                        patchEntry(entry.id, 'adLink', e.target.value)
-                      }
-                      className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
-                    />
-                    {entry.adLink && (
-                      <a
-                        href={entry.adLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 text-muted-foreground transition hover:text-primary"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Website Link */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Website Link
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      defaultValue={entry.websiteLink}
-                      placeholder="https://..."
-                      onBlur={(e) =>
-                        e.target.value !== entry.websiteLink &&
-                        patchEntry(entry.id, 'websiteLink', e.target.value)
-                      }
-                      className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
-                    />
-                    {entry.websiteLink && (
-                      <a
-                        href={entry.websiteLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 text-muted-foreground transition hover:text-primary"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Status */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground md:hidden">
-                    Status
-                  </span>
-                  <select
-                    value={entry.status}
-                    onChange={(e) =>
-                      patchEntry(entry.id, 'status', e.target.value)
-                    }
-                    className={`w-full cursor-pointer rounded-lg border border-border/40 bg-background/40 px-2.5 py-1.5 text-xs font-medium outline-none transition hover:border-border/60 ${STATUS_COLORS[entry.status] ?? 'text-muted-foreground/40'}`}
-                  >
-                    {STATUS_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt || '— Select —'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Save indicator */}
-                <div className="flex items-center justify-center">
-                  {saveState[entry.id] === 'saving' && (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                  )}
-                  {saveState[entry.id] === 'saved' && (
-                    <Check className="h-3.5 w-3.5 text-emerald-400" />
-                  )}
-                </div>
-
-                {/* Delete */}
-                <div className="flex items-center justify-center">
-                  <button
-                    onClick={() => deleteEntry(entry.id)}
-                    disabled={deletingId === entry.id}
-                    className="rounded-lg p-1 text-muted-foreground/40 transition hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    {deletingId === entry.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="rounded-3xl border border-border/50 bg-card/60 p-6 text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          {entries.length} product{entries.length !== 1 ? 's' : ''} tracked
-          &middot; Changes auto-save on blur
-        </div>
+        <button
+          onClick={addEntry}
+          disabled={adding}
+          className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-secondary"
+        >
+          {adding ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Plus className="h-3.5 w-3.5" />
+          )}
+          Add Product
+        </button>
       </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+          No products yet. Click &quot;Add Product&quot; to get started.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="tracker-table">
+            <thead>
+              <tr>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Product Name
+                </th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Ad Link
+                </th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Website Link
+                </th>
+                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Status
+                </th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr
+                  key={entry.id}
+                  className="border-t border-border/50 transition-colors hover:bg-secondary/30"
+                >
+                  {/* Product Name */}
+                  <td className="px-3 py-1.5">
+                    <input
+                      type="text"
+                      defaultValue={entry.productName}
+                      placeholder="Product name..."
+                      onBlur={(e) =>
+                        e.target.value !== entry.productName &&
+                        patchEntry(entry.id, 'productName', e.target.value)
+                      }
+                      className="tracker-input"
+                    />
+                  </td>
+
+                  {/* Ad Link */}
+                  <td className="px-3 py-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        defaultValue={entry.adLink}
+                        placeholder="https://..."
+                        onBlur={(e) =>
+                          e.target.value !== entry.adLink &&
+                          patchEntry(entry.id, 'adLink', e.target.value)
+                        }
+                        className="tracker-input"
+                      />
+                      {entry.adLink && (
+                        <a
+                          href={entry.adLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 text-muted-foreground transition hover:text-primary"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* Website Link */}
+                  <td className="px-3 py-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        defaultValue={entry.websiteLink}
+                        placeholder="https://..."
+                        onBlur={(e) =>
+                          e.target.value !== entry.websiteLink &&
+                          patchEntry(entry.id, 'websiteLink', e.target.value)
+                        }
+                        className="tracker-input"
+                      />
+                      {entry.websiteLink && (
+                        <a
+                          href={entry.websiteLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 text-muted-foreground transition hover:text-primary"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* Status */}
+                  <td className="px-3 py-1.5">
+                    <select
+                      value={entry.status}
+                      onChange={(e) =>
+                        patchEntry(entry.id, 'status', e.target.value)
+                      }
+                      className={`tracker-select ${STATUS_COLORS[entry.status] ?? 'text-muted-foreground/40'}`}
+                    >
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt || '— Select —'}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+
+                  {/* Actions */}
+                  <td className="px-3 py-1.5">
+                    <div className="flex items-center justify-end gap-2">
+                      {saveState[entry.id] === 'saving' && (
+                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                      )}
+                      {saveState[entry.id] === 'saved' && (
+                        <Check className="h-3 w-3 text-emerald-400" />
+                      )}
+                      <button
+                        onClick={() => deleteEntry(entry.id)}
+                        disabled={deletingId === entry.id}
+                        className="rounded p-1 text-muted-foreground/40 transition hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        {deletingId === entry.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Footer */}
+      <p className="text-[11px] text-muted-foreground">
+        {entries.length} product{entries.length !== 1 ? 's' : ''} tracked
+        &middot; Changes auto-save on blur
+      </p>
     </div>
   );
 }

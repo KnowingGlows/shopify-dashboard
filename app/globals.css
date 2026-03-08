@@ -47,7 +47,7 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -82,37 +82,37 @@
 }
 
 .dark {
-  --background: oklch(0.12 0.02 250);
-  --foreground: oklch(0.98 0.01 90);
-  --card: oklch(0.16 0.03 255);
-  --card-foreground: oklch(0.97 0.01 90);
-  --popover: oklch(0.16 0.03 255);
-  --popover-foreground: oklch(0.98 0.01 90);
-  --primary: oklch(0.78 0.15 190);
-  --primary-foreground: oklch(0.15 0.04 240);
-  --secondary: oklch(0.22 0.03 245);
-  --secondary-foreground: oklch(0.96 0.01 90);
-  --muted: oklch(0.21 0.02 250);
-  --muted-foreground: oklch(0.72 0.02 260);
-  --accent: oklch(0.72 0.12 85);
-  --accent-foreground: oklch(0.15 0.04 240);
-  --destructive: oklch(0.7 0.2 25);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.68 0.1 190);
-  --chart-1: oklch(0.74 0.16 190);
-  --chart-2: oklch(0.72 0.14 120);
-  --chart-3: oklch(0.7 0.15 40);
-  --chart-4: oklch(0.68 0.12 220);
-  --chart-5: oklch(0.75 0.14 150);
-  --sidebar: oklch(0.16 0.03 255);
-  --sidebar-foreground: oklch(0.97 0.01 90);
-  --sidebar-primary: oklch(0.78 0.15 190);
-  --sidebar-primary-foreground: oklch(0.15 0.04 240);
-  --sidebar-accent: oklch(0.22 0.03 245);
-  --sidebar-accent-foreground: oklch(0.96 0.01 90);
-  --sidebar-border: oklch(1 0 0 / 12%);
-  --sidebar-ring: oklch(0.68 0.1 190);
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #111113;
+  --card-foreground: #fafafa;
+  --popover: #111113;
+  --popover-foreground: #fafafa;
+  --primary: #a78bfa;
+  --primary-foreground: #09090b;
+  --secondary: #1a1a1f;
+  --secondary-foreground: #fafafa;
+  --muted: #18181b;
+  --muted-foreground: #71717a;
+  --accent: #a78bfa;
+  --accent-foreground: #09090b;
+  --destructive: #ef4444;
+  --border: #1e1e24;
+  --input: #1e1e24;
+  --ring: #a78bfa;
+  --chart-1: #a78bfa;
+  --chart-2: #34d399;
+  --chart-3: #f59e0b;
+  --chart-4: #60a5fa;
+  --chart-5: #f472b6;
+  --sidebar: #0c0c0e;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #a78bfa;
+  --sidebar-primary-foreground: #09090b;
+  --sidebar-accent: #1a1a1f;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #1e1e24;
+  --sidebar-ring: #a78bfa;
 }
 
 @layer base {
@@ -123,59 +123,43 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   html {
     color-scheme: dark;
   }
 
-  /* Custom scrollbar for dark theme */
   ::-webkit-scrollbar {
-    width: 8px;
+    width: 6px;
+    height: 6px;
   }
-
   ::-webkit-scrollbar-track {
-    background-color: var(--background);
+    background-color: transparent;
   }
-
   ::-webkit-scrollbar-thumb {
-    background-color: var(--muted);
-    border-radius: 0.5rem;
+    background-color: #27272a;
+    border-radius: 3px;
   }
-
   ::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in srgb, var(--muted-foreground) 50%, transparent);
+    background-color: #3f3f46;
   }
 }
 
 @keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-12px);
-  }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
 }
 
 @keyframes navPulse {
-  0%,
-  100% {
-    opacity: 0.6;
-    transform: translateY(-50%) scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: translateY(-50%) scale(1.08);
-  }
+  0%, 100% { opacity: 0.6; transform: translateY(-50%) scale(1); }
+  50% { opacity: 1; transform: translateY(-50%) scale(1.05); }
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 120% 50%;
-  }
+  0% { background-position: 0% 50%; }
+  100% { background-position: 120% 50%; }
 }
 
 /* Tiptap editor typography */
@@ -187,7 +171,7 @@
 .tiptap ul { list-style-type: disc; }
 .tiptap ol { list-style-type: decimal; }
 .tiptap blockquote {
-  border-left: 3px solid rgba(34, 211, 238, 0.4);
+  border-left: 3px solid #a78bfa40;
   padding-left: 1em;
   margin: 0.5em 0;
   color: var(--muted-foreground);
@@ -200,12 +184,12 @@
 }
 .tiptap pre {
   background: rgba(0, 0, 0, 0.3);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 0.75em 1em;
   overflow-x: auto;
 }
-.tiptap a { color: rgb(34, 211, 238); text-decoration: underline; }
-.tiptap hr { border-color: rgba(255, 255, 255, 0.1); margin: 1em 0; }
+.tiptap a { color: #a78bfa; text-decoration: underline; }
+.tiptap hr { border-color: #1e1e24; margin: 1em 0; }
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
@@ -213,4 +197,71 @@
   opacity: 0.5;
   pointer-events: none;
   height: 0;
+}
+
+/* Compact table styles for tracker pages */
+.tracker-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.tracker-table th {
+  padding: 6px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 1;
+}
+.tracker-table td {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.tracker-table tr:last-child td {
+  border-bottom: none;
+}
+.tracker-table tr:hover td {
+  background: #ffffff04;
+}
+.tracker-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: var(--foreground);
+  font-family: inherit;
+}
+.tracker-input::placeholder {
+  color: #3f3f46;
+}
+.tracker-input:focus {
+  background: #a78bfa08;
+}
+.tracker-select {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12px;
+  color: var(--foreground);
+  cursor: pointer;
+  font-family: inherit;
+}
+.tracker-select:focus {
+  background: #a78bfa08;
+}
+.tracker-select option {
+  background: #111113;
+  color: var(--foreground);
 }

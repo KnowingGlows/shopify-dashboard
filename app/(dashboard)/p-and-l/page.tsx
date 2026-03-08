@@ -1,14 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { BackgroundDecor } from '@/components/background-decor';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { formatINR } from '@/lib/currency-converter';
 import {
   ArrowDownRight,
   ArrowUpRight,
-  BarChart3,
   Megaphone,
   Save,
   Check,
@@ -129,170 +125,136 @@ export default function PandLPage() {
   const totalAdspend = BRANDS.reduce((sum, b) => sum + (entries[b]?.adspend ?? 0), 0);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      <BackgroundDecor />
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 md:px-8">
-        {/* Header */}
-        <div className="flex flex-col gap-6 rounded-3xl border border-border/50 bg-card/60 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            <BarChart3 className="h-3.5 w-3.5 text-primary" />
-            Daily P&amp;L
-          </div>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                P&amp;L
-              </h1>
-              <p className="text-muted-foreground mt-2">
-                Enter daily profit, cashflow, and ad spend for each brand.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setDate((d) => shiftDate(d, -1))}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/60 bg-background/60 text-muted-foreground transition hover:text-foreground"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <div className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                {formatDateLabel(date)}
-              </div>
-              <button
-                onClick={() => {
-                  const next = shiftDate(date, 1);
-                  if (next <= getTodayIST()) setDate(next);
-                }}
-                disabled={date >= getTodayIST()}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/60 bg-background/60 text-muted-foreground transition hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+    <div className="mx-auto max-w-6xl p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Daily P&amp;L</h1>
+          <p className="text-[11px] text-muted-foreground">Profit, cashflow, and ad spend per brand</p>
         </div>
-
-        {/* Totals row */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-border/50 bg-card/60 px-4 py-4 backdrop-blur">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              <ArrowUpRight className="h-3.5 w-3.5 text-emerald-400" />
-              Total Net Profit
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-foreground">{formatINR(totalProfit)}</div>
-          </div>
-          <div className="rounded-2xl border border-border/50 bg-card/60 px-4 py-4 backdrop-blur">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              <ArrowDownRight className="h-3.5 w-3.5 text-sky-300" />
-              Total Cashflow
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-foreground">{formatINR(totalCashflow)}</div>
-          </div>
-          <div className="rounded-2xl border border-border/50 bg-card/60 px-4 py-4 backdrop-blur">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-              <Megaphone className="h-3.5 w-3.5 text-amber-400" />
-              Total Ad Spend
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-foreground">{formatINR(totalAdspend)}</div>
-          </div>
-        </div>
-
-        {/* Brand cards */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {BRANDS.map((brand) => {
-              const entry = entries[brand] ?? { brand, profit: 0, cashflow: 0, adspend: 0 };
-              const status = saveStatus[brand] ?? 'idle';
-
-              return (
-                <Card
-                  key={brand}
-                  className="group relative overflow-hidden border-border/50 bg-card/70 shadow-[0_0_30px_rgba(15,23,42,0.25)]"
-                >
-                  <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(34,211,238,0.08),transparent_60%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-                  <CardHeader className="relative flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle className="text-2xl">{brand}</CardTitle>
-                      <CardDescription>Daily figures for {formatDateLabel(date)}</CardDescription>
-                    </div>
-                    <Button
-                      onClick={() => saveEntry(brand)}
-                      disabled={status === 'saving'}
-                      variant="outline"
-                      size="sm"
-                      className="border-border/60 bg-background/60"
-                    >
-                      {status === 'saving' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : status === 'saved' ? (
-                        <Check className="h-4 w-4 text-emerald-400" />
-                      ) : (
-                        <Save className="h-4 w-4" />
-                      )}
-                      <span className="ml-2 text-[10px] uppercase tracking-[0.2em]">
-                        {status === 'saving' ? 'Saving' : status === 'saved' ? 'Saved' : 'Save'}
-                      </span>
-                    </Button>
-                  </CardHeader>
-                  <CardContent className="relative grid gap-3 text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                    <div className="flex items-center justify-between rounded-2xl border border-border/50 bg-background/60 px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <ArrowUpRight className="h-4 w-4 text-emerald-400" />
-                        Net Profit
-                      </div>
-                      <input
-                        type="number"
-                        value={entry.profit || ''}
-                        onChange={(e) => updateField(brand, 'profit', e.target.value)}
-                        placeholder="0"
-                        className="w-32 bg-transparent text-right text-lg font-semibold text-foreground outline-none placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between rounded-2xl border border-border/50 bg-background/60 px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <ArrowDownRight className="h-4 w-4 text-sky-300" />
-                        Cashflow
-                      </div>
-                      <input
-                        type="number"
-                        value={entry.cashflow || ''}
-                        onChange={(e) => updateField(brand, 'cashflow', e.target.value)}
-                        placeholder="0"
-                        className="w-32 bg-transparent text-right text-lg font-semibold text-foreground outline-none placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between rounded-2xl border border-border/50 bg-background/60 px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Megaphone className="h-4 w-4 text-amber-400" />
-                        Ad Spend
-                      </div>
-                      <input
-                        type="number"
-                        value={entry.adspend || ''}
-                        onChange={(e) => updateField(brand, 'adspend', e.target.value)}
-                        placeholder="0"
-                        className="w-32 bg-transparent text-right text-lg font-semibold text-foreground outline-none placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      />
-                    </div>
-                    {status === 'error' && (
-                      <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] normal-case tracking-normal text-destructive">
-                        Failed to save. Check if Firebase is configured.
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="rounded-3xl border border-border/50 bg-card/60 p-6 text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          Enter values and hit Save. Data is persisted per brand per day.
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setDate((d) => shiftDate(d, -1))}
+            className="rounded-md border border-border bg-card p-1.5 text-muted-foreground hover:text-foreground"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="rounded-md border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-muted-foreground">
+            {formatDateLabel(date)}
+          </span>
+          <button
+            onClick={() => {
+              const next = shiftDate(date, 1);
+              if (next <= getTodayIST()) setDate(next);
+            }}
+            disabled={date >= getTodayIST()}
+            className="rounded-md border border-border bg-card p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
         </div>
       </div>
+
+      {/* Totals */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-lg border border-border bg-card px-3 py-2">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <ArrowUpRight className="h-3 w-3 text-emerald-400" /> Net Profit
+          </p>
+          <p className="mt-0.5 text-xl font-semibold text-foreground">{formatINR(totalProfit)}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card px-3 py-2">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <ArrowDownRight className="h-3 w-3 text-blue-400" /> Cashflow
+          </p>
+          <p className="mt-0.5 text-xl font-semibold text-foreground">{formatINR(totalCashflow)}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card px-3 py-2">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Megaphone className="h-3 w-3 text-amber-400" /> Ad Spend
+          </p>
+          <p className="mt-0.5 text-xl font-semibold text-foreground">{formatINR(totalAdspend)}</p>
+        </div>
+      </div>
+
+      {/* Brand cards */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {BRANDS.map((brand) => {
+            const entry = entries[brand] ?? { brand, profit: 0, cashflow: 0, adspend: 0 };
+            const status = saveStatus[brand] ?? 'idle';
+
+            return (
+              <div key={brand} className="rounded-lg border border-border bg-card">
+                <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                  <h3 className="text-sm font-medium text-foreground">{brand}</h3>
+                  <button
+                    onClick={() => saveEntry(brand)}
+                    disabled={status === 'saving'}
+                    className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  >
+                    {status === 'saving' ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : status === 'saved' ? (
+                      <Check className="h-3.5 w-3.5 text-emerald-400" />
+                    ) : (
+                      <Save className="h-3.5 w-3.5" />
+                    )}
+                    {status === 'saving' ? 'Saving' : status === 'saved' ? 'Saved' : 'Save'}
+                  </button>
+                </div>
+                <div className="divide-y divide-border">
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                      <ArrowUpRight className="h-3 w-3 text-emerald-400" /> Net Profit
+                    </span>
+                    <input
+                      type="number"
+                      value={entry.profit || ''}
+                      onChange={(e) => updateField(brand, 'profit', e.target.value)}
+                      placeholder="0"
+                      className="w-28 bg-transparent text-right text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                      <ArrowDownRight className="h-3 w-3 text-blue-400" /> Cashflow
+                    </span>
+                    <input
+                      type="number"
+                      value={entry.cashflow || ''}
+                      onChange={(e) => updateField(brand, 'cashflow', e.target.value)}
+                      placeholder="0"
+                      className="w-28 bg-transparent text-right text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-2">
+                    <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                      <Megaphone className="h-3 w-3 text-amber-400" /> Ad Spend
+                    </span>
+                    <input
+                      type="number"
+                      value={entry.adspend || ''}
+                      onChange={(e) => updateField(brand, 'adspend', e.target.value)}
+                      placeholder="0"
+                      className="w-28 bg-transparent text-right text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                  </div>
+                </div>
+                {status === 'error' && (
+                  <div className="mx-4 mb-3 mt-1 rounded-md bg-destructive/10 px-3 py-1.5 text-[11px] text-destructive">
+                    Failed to save. Check if Firebase is configured.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
