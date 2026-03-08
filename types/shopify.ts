@@ -59,3 +59,54 @@ export interface StoreMetrics {
 export interface ExchangeRates {
   [key: string]: number;
 }
+
+// Product Tracker
+export interface ProductTrackerEntry {
+  id: string;
+  productName: string;
+  productFileLink: string;
+  productStage: string;
+  totalSpent: number;
+  remarks: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Ads Tracker
+export interface AdsTrackerEntry {
+  id: string;
+  productName: string;
+  creativeFolderLink: string;
+  batchName: string;
+  creativeType: string;
+  dailyAdSpend: number;
+  weeklyRoas: number;
+  creativeBatchResult: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Product Research Sheet
+export interface PRSEntry {
+  id: string;
+  productName: string;
+  adLink: string;
+  websiteLink: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Inventory Tracker
+export interface InventoryEntry {
+  id: string;
+  productName: string;
+  sku: string;
+  currentStock: number;
+  reorderLevel: number;
+  supplier: string;
+  costPerUnit: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}

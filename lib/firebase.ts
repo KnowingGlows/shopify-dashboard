@@ -55,4 +55,8 @@ export const COLLECTIONS = {
   PNL_ENTRIES: 'pnl_entries',
   USERS: 'users',
   DAILY_LOGS: 'daily_logs',
+  PRODUCT_TRACKER: 'product_tracker',
+  ADS_TRACKER: 'ads_tracker',
+  PRS: 'prs_entries',
+  INVENTORY: 'inventory',
 } as const;

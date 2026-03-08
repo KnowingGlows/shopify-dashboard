@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, ClipboardList, Home, LogOut, Menu, Settings, Store, Users, X, Sparkles } from 'lucide-react';
+import { BarChart3, Box, ClipboardList, Home, LogOut, Megaphone, Menu, Package, Search, Settings, Store, Users, X, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
 import { useAuth } from './auth-provider';
@@ -36,6 +36,30 @@ const navItems: NavItem[] = [
     label: 'P&L',
     helper: 'Daily profit + cashflow',
     icon: BarChart3,
+  },
+  {
+    href: '/product-tracker',
+    label: 'Products',
+    helper: 'Product pipeline',
+    icon: Package,
+  },
+  {
+    href: '/ads-tracker',
+    label: 'Ads',
+    helper: 'Creative batches',
+    icon: Megaphone,
+  },
+  {
+    href: '/prs',
+    label: 'PRS',
+    helper: 'Product research',
+    icon: Search,
+  },
+  {
+    href: '/inventory',
+    label: 'Inventory',
+    helper: 'Stock levels',
+    icon: Box,
   },
   {
     href: '/settings',
