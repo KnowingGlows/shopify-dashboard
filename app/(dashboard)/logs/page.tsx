@@ -1,20 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { BackgroundDecor } from '@/components/background-decor';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ClipboardList, Save, Check, Loader2,
+  ChevronLeft, ChevronRight, AlertCircle, Users2,
+} from 'lucide-react';
 import { TiptapEditor } from '@/components/tiptap-editor';
 import { useAuth } from '@/components/auth-provider';
-import {
-  ClipboardList,
-  Save,
-  Check,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react';
+import { PageTransition } from '@/components/motion';
 
 type DailyLog = {
   userId: string;
@@ -60,15 +54,18 @@ function shiftDate(dateStr: string, days: number): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const ADMIN_ROLES = ['admin', 'ceo'];
+
 export default function LogsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user && ADMIN_ROLES.includes(user.role);
 
   const [date, setDate] = useState(getTodayIST);
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [myContent, setMyContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [activeTab, setActiveTab] = useState<string | null>(null);
 
   const fetchLogs = useCallback(
     async (targetDate: string) => {
@@ -78,7 +75,6 @@ export default function LogsPage() {
         const data = await res.json();
         const fetchedLogs: DailyLog[] = data.logs ?? [];
         setLogs(fetchedLogs);
-
         const myLog = fetchedLogs.find((l) => l.userEmail === user?.email);
         setMyContent(myLog?.content ?? '');
       } catch {
@@ -114,146 +110,156 @@ export default function LogsPage() {
 
   const otherLogs = logs.filter((l) => l.userEmail !== user?.email);
 
+  // Set initial active tab
+  useEffect(() => {
+    if (otherLogs.length > 0 && !activeTab) {
+      setActiveTab(otherLogs[0].userEmail);
+    }
+  }, [otherLogs, activeTab]);
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
-      <BackgroundDecor />
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 md:px-8">
-        {/* Header */}
-        <div className="flex flex-col gap-6 rounded-3xl border border-border/50 bg-card/60 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            <ClipboardList className="h-3.5 w-3.5 text-primary" />
-            Daily Logs
-          </div>
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-                Daily Logs
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Record your daily activity and progress updates.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setDate((d) => shiftDate(d, -1))}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/60 bg-background/60 text-muted-foreground transition hover:text-foreground"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <div className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                {formatDateLabel(date)}
-              </div>
-              <button
-                onClick={() => {
-                  const next = shiftDate(date, 1);
-                  if (next <= getTodayIST()) setDate(next);
-                }}
-                disabled={date >= getTodayIST()}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/60 bg-background/60 text-muted-foreground transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
+    <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Daily Logs</h1>
+          <p className="text-[11px] text-muted-foreground">Record your daily activity and progress</p>
         </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setDate((d) => shiftDate(d, -1))}
+            className="rounded-md p-1.5 border border-border bg-card text-muted-foreground hover:text-foreground transition"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <div className="rounded-lg border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground tabular-nums">
+            {formatDateLabel(date)}
           </div>
-        ) : (
-          <>
-            {/* Current user's editor */}
-            <Card className="border-border/50 bg-card/70 shadow-[0_0_30px_rgba(15,23,42,0.25)]">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Your Log</CardTitle>
-                <Button
-                  onClick={saveLog}
-                  disabled={saveStatus === 'saving'}
-                  variant="outline"
-                  size="sm"
-                  className="border-border/60 bg-background/60"
-                >
-                  {saveStatus === 'saving' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : saveStatus === 'saved' ? (
-                    <Check className="h-4 w-4 text-emerald-400" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  <span className="ml-2 text-[10px] uppercase tracking-[0.2em]">
-                    {saveStatus === 'saving'
-                      ? 'Saving'
-                      : saveStatus === 'saved'
-                        ? 'Saved'
-                        : 'Save'}
-                  </span>
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <TiptapEditor
-                  key={date}
-                  content={myContent}
-                  onChange={setMyContent}
-                  placeholder="What did you work on today?"
-                />
-                {saveStatus === 'error' && (
-                  <div className="mt-3 rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
-                    Failed to save. Check if Firebase is configured.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Admin: Other team members' logs */}
-            {isAdmin && otherLogs.length > 0 && (
-              <div>
-                <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
-                  Team Logs
-                </h2>
-                <Tabs defaultValue={otherLogs[0]?.userEmail}>
-                  <TabsList className="mb-4 flex-wrap">
-                    {otherLogs.map((log) => (
-                      <TabsTrigger key={log.userId} value={log.userEmail}>
-                        {log.userEmail.split('@')[0]}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  {otherLogs.map((log) => (
-                    <TabsContent key={log.userId} value={log.userEmail}>
-                      <Card className="border-border/50 bg-card/70">
-                        <CardHeader>
-                          <CardTitle className="text-sm">{log.userEmail}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div
-                            className="tiptap min-h-[100px] rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm text-foreground"
-                            dangerouslySetInnerHTML={{
-                              __html:
-                                log.content ||
-                                '<p class="text-muted-foreground">No log submitted.</p>',
-                            }}
-                          />
-                        </CardContent>
-                      </Card>
-                    </TabsContent>
-                  ))}
-                </Tabs>
-              </div>
-            )}
-
-            {isAdmin && otherLogs.length === 0 && (
-              <div className="rounded-2xl border border-border/50 bg-card/60 p-6 text-center text-sm text-muted-foreground">
-                No other team member logs for this date.
-              </div>
-            )}
-          </>
-        )}
-
-        <div className="rounded-3xl border border-border/50 bg-card/60 p-6 text-xs uppercase tracking-[0.25em] text-muted-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.03)] backdrop-blur">
-          Write your daily log and hit Save. One log per user per day.
+          <button
+            onClick={() => {
+              const next = shiftDate(date, 1);
+              if (next <= getTodayIST()) setDate(next);
+            }}
+            disabled={date >= getTodayIST()}
+            className="rounded-md p-1.5 border border-border bg-card text-muted-foreground hover:text-foreground transition disabled:opacity-30"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
         </div>
       </div>
-    </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <>
+          {/* Your Log */}
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="h-3.5 w-3.5 text-primary" />
+                <h2 className="text-sm font-medium text-foreground">Your Log</h2>
+              </div>
+              <button
+                onClick={saveLog}
+                disabled={saveStatus === 'saving'}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-accent transition disabled:opacity-50"
+              >
+                {saveStatus === 'saving' ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : saveStatus === 'saved' ? (
+                  <Check className="h-3 w-3 text-emerald-400" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}
+                {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Save'}
+              </button>
+            </div>
+            <div className="p-4">
+              <TiptapEditor
+                key={date}
+                content={myContent}
+                onChange={setMyContent}
+                placeholder="What did you work on today?"
+              />
+              <AnimatePresence>
+                {saveStatus === 'error' && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 flex items-center gap-2"
+                  >
+                    <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
+                    <p className="text-[11px] text-red-400">Failed to save. Check if Firebase is configured.</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+
+          {/* Team Logs (Admin) */}
+          {isAdmin && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+              <div className="flex items-center gap-2 mb-3">
+                <Users2 className="h-4 w-4 text-primary" />
+                <p className="text-sm font-medium text-foreground">Team Logs</p>
+                <span className="text-[11px] text-muted-foreground">({otherLogs.length})</span>
+              </div>
+
+              {otherLogs.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-card/50 py-10 text-center">
+                  <Users2 className="mx-auto h-6 w-6 text-muted-foreground/30 mb-2" />
+                  <p className="text-[12px] text-muted-foreground">No team logs for this date</p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-border bg-card overflow-hidden">
+                  {/* Tabs */}
+                  <div className="flex border-b border-border overflow-x-auto">
+                    {otherLogs.map((log) => (
+                      <button
+                        key={log.userId}
+                        onClick={() => setActiveTab(log.userEmail)}
+                        className={`px-4 py-2.5 text-[12px] font-medium whitespace-nowrap border-b-2 transition ${
+                          activeTab === log.userEmail
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {log.userEmail.split('@')[0]}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Active tab content */}
+                  {otherLogs.map((log) => (
+                    <AnimatePresence key={log.userId}>
+                      {activeTab === log.userEmail && (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="p-4"
+                        >
+                          <p className="text-[11px] text-muted-foreground mb-2">{log.userEmail}</p>
+                          <div
+                            className="tiptap min-h-[100px] rounded-lg border border-border bg-background/50 px-4 py-3 text-[13px] text-foreground"
+                            dangerouslySetInnerHTML={{
+                              __html: log.content || '<p class="text-muted-foreground">No log submitted.</p>',
+                            }}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </>
+      )}
+
+      <p className="text-[11px] text-muted-foreground">One log per user per day · Auto-saved to Firestore</p>
+    </PageTransition>
   );
 }
