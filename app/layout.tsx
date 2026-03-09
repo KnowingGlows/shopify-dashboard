@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Orbyt",
+  title: "Orbit",
   description: "Multi-store Shopify analytics command center",
 };
 

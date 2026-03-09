@@ -108,7 +108,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
             <Zap className="h-4 w-4" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">Orbyt</p>
+            <p className="text-sm font-semibold text-foreground">Orbit</p>
             <p className="text-[10px] text-muted-foreground">Management</p>
           </div>
         </motion.div>
