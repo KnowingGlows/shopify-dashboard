@@ -1,44 +1,52 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Trash2,
-  ExternalLink,
-  Loader2,
-  Check,
-  AlertCircle,
+  Trash2, ExternalLink, Loader2, Check, AlertCircle,
+  Plus, X, Package, ChevronDown,
 } from 'lucide-react';
 import { ProductTrackerEntry } from '@/types/shopify';
+import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const PRODUCT_STAGES = [
   '',
-  'Testing Store Page Done',
-  'Winner - Moved To OPS',
-  'Testing Ads',
-  'Dropped',
   'Research Phase',
+  'Testing Store Page Done',
+  'Testing Ads',
+  'Winner - Moved To OPS',
+  'Dropped',
 ];
 
-const stageColorClass = (stage: string) => {
-  switch (stage) {
-    case 'Testing Store Page Done': return 'text-blue-400';
-    case 'Winner - Moved To OPS': return 'text-emerald-400';
-    case 'Testing Ads': return 'text-amber-400';
-    case 'Dropped': return 'text-red-400';
-    case 'Research Phase': return 'text-violet-400';
-    default: return '';
-  }
+const STAGE_CONFIG: Record<string, { color: string; bg: string; dot: string }> = {
+  'Research Phase': { color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/30', dot: 'bg-violet-400' },
+  'Testing Store Page Done': { color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30', dot: 'bg-blue-400' },
+  'Testing Ads': { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', dot: 'bg-amber-400' },
+  'Winner - Moved To OPS': { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', dot: 'bg-emerald-400' },
+  'Dropped': { color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30', dot: 'bg-red-400' },
 };
+
+const formatINR = (v: number) =>
+  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
 
 export default function ProductTrackerPage() {
   const [entries, setEntries] = useState<ProductTrackerEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [adding, setAdding] = useState(false);
   const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>({});
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [editingId, setEditingId] = useState<string | null>(null);
   const saveTimeoutRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Form state
+  const [formName, setFormName] = useState('');
+  const [formLink, setFormLink] = useState('');
+  const [formStage, setFormStage] = useState('');
+  const [formSpent, setFormSpent] = useState('');
+  const [formRemarks, setFormRemarks] = useState('');
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -53,83 +61,65 @@ export default function ProductTrackerPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchEntries();
-  }, [fetchEntries]);
+  useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
+  const resetForm = () => {
+    setFormName(''); setFormLink(''); setFormStage(''); setFormSpent(''); setFormRemarks('');
+  };
 
   const addEntry = async () => {
+    if (!formName.trim()) return;
     setAdding(true);
     try {
       const res = await fetch('/api/product-tracker', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          productName: '',
-          productFileLink: '',
-          productStage: '',
-          totalSpent: 0,
-          remarks: '',
+          productName: formName,
+          productFileLink: formLink,
+          productStage: formStage,
+          totalSpent: Number(formSpent) || 0,
+          remarks: formRemarks,
         }),
       });
       const data = await res.json();
       if (data.entry) {
         setEntries((prev) => [data.entry, ...prev]);
+        resetForm();
+        setShowForm(false);
       }
+    } catch { /* silently fail */ }
+    finally { setAdding(false); }
+  };
+
+  const updateLocalField = (id: string, field: keyof ProductTrackerEntry, value: string | number) => {
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const saveEntry = useCallback(async (id: string, field: keyof ProductTrackerEntry, value: string | number) => {
+    setSaveStatus((prev) => ({ ...prev, [id]: 'saving' }));
+    try {
+      const res = await fetch('/api/product-tracker', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, [field]: value }),
+      });
+      if (!res.ok) throw new Error();
+      setSaveStatus((prev) => ({ ...prev, [id]: 'saved' }));
+      if (saveTimeoutRefs.current[id]) clearTimeout(saveTimeoutRefs.current[id]);
+      saveTimeoutRefs.current[id] = setTimeout(() => {
+        setSaveStatus((prev) => ({ ...prev, [id]: 'idle' }));
+      }, 1500);
     } catch {
-      // silently fail
-    } finally {
-      setAdding(false);
+      setSaveStatus((prev) => ({ ...prev, [id]: 'error' }));
     }
-  };
+  }, []);
 
-  const updateLocalField = (
-    id: string,
-    field: keyof ProductTrackerEntry,
-    value: string | number
-  ) => {
-    setEntries((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, [field]: value } : e))
-    );
-  };
-
-  const saveEntry = useCallback(
-    async (id: string, field: keyof ProductTrackerEntry, value: string | number) => {
-      setSaveStatus((prev) => ({ ...prev, [id]: 'saving' }));
-      try {
-        const res = await fetch('/api/product-tracker', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, [field]: value }),
-        });
-        if (!res.ok) throw new Error();
-        setSaveStatus((prev) => ({ ...prev, [id]: 'saved' }));
-
-        // Clear any existing timeout for this entry
-        if (saveTimeoutRefs.current[id]) {
-          clearTimeout(saveTimeoutRefs.current[id]);
-        }
-        saveTimeoutRefs.current[id] = setTimeout(() => {
-          setSaveStatus((prev) => ({ ...prev, [id]: 'idle' }));
-        }, 1500);
-      } catch {
-        setSaveStatus((prev) => ({ ...prev, [id]: 'error' }));
-      }
-    },
-    []
-  );
-
-  const handleBlur = (
-    id: string,
-    field: keyof ProductTrackerEntry,
-    value: string | number
-  ) => {
+  const handleBlur = (id: string, field: keyof ProductTrackerEntry, value: string | number) => {
     saveEntry(id, field, value);
   };
 
-  const handleSelectChange = (
-    id: string,
-    value: string
-  ) => {
+  const handleSelectChange = (id: string, value: string) => {
     updateLocalField(id, 'productStage', value);
     saveEntry(id, 'productStage', value);
   };
@@ -137,21 +127,12 @@ export default function ProductTrackerPage() {
   const deleteEntry = async (id: string) => {
     setDeletingIds((prev) => new Set(prev).add(id));
     try {
-      const res = await fetch('/api/product-tracker', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
+      const res = await fetch('/api/product-tracker', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       if (!res.ok) throw new Error();
       setEntries((prev) => prev.filter((e) => e.id !== id));
-    } catch {
-      // silently fail
-    } finally {
-      setDeletingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+    } catch { /* silently fail */ }
+    finally {
+      setDeletingIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
     }
   };
 
@@ -163,8 +144,15 @@ export default function ProductTrackerPage() {
     return null;
   };
 
+  // Stats
+  const stageStats = PRODUCT_STAGES.filter(Boolean).map((stage) => ({
+    stage,
+    count: entries.filter((e) => e.productStage === stage).length,
+    config: STAGE_CONFIG[stage],
+  }));
+
   return (
-    <div className="mx-auto max-w-7xl p-5 space-y-4">
+    <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -172,162 +160,283 @@ export default function ProductTrackerPage() {
           <p className="text-[11px] text-muted-foreground">Track products from research to launch</p>
         </div>
         <button
-          onClick={addEntry}
-          disabled={adding}
-          className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-secondary"
+          onClick={() => setShowForm(!showForm)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90"
         >
-          {adding ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <span>+</span>
-          )}
-          Add Product
+          {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+          {showForm ? 'Cancel' : 'Add Product'}
         </button>
       </div>
 
-      {/* Table */}
+      {/* Stage pills */}
+      <div className="flex flex-wrap gap-2">
+        {stageStats.map(({ stage, count, config }) => (
+          <div key={stage} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${config.bg}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
+            <span className={config.color}>{stage}</span>
+            <span className="text-muted-foreground">{count}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Add Form Panel */}
+      <AnimatePresence>
+        {showForm && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: 'auto', marginTop: 20 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="rounded-xl border border-primary/20 bg-card p-5 shadow-[0_0_30px_rgba(167,139,250,0.06)]">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                  <Package className="h-4 w-4" />
+                </div>
+                <h2 className="text-sm font-semibold text-foreground">New Product</h2>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label="Product Name" required>
+                  <input
+                    type="text"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    placeholder="e.g. Wireless Earbuds V2"
+                    className="form-input"
+                    autoFocus
+                  />
+                </FormField>
+                <FormField label="File / Drive Link">
+                  <input
+                    type="text"
+                    value={formLink}
+                    onChange={(e) => setFormLink(e.target.value)}
+                    placeholder="https://drive.google.com/..."
+                    className="form-input"
+                  />
+                </FormField>
+                <FormField label="Stage">
+                  <select
+                    value={formStage}
+                    onChange={(e) => setFormStage(e.target.value)}
+                    className="form-input"
+                  >
+                    {PRODUCT_STAGES.map((s) => (
+                      <option key={s} value={s}>{s || 'Select stage...'}</option>
+                    ))}
+                  </select>
+                </FormField>
+                <FormField label="Total Spent (INR)">
+                  <input
+                    type="number"
+                    value={formSpent}
+                    onChange={(e) => setFormSpent(e.target.value)}
+                    placeholder="0"
+                    className="form-input"
+                  />
+                </FormField>
+                <div className="sm:col-span-2">
+                  <FormField label="Remarks">
+                    <input
+                      type="text"
+                      value={formRemarks}
+                      onChange={(e) => setFormRemarks(e.target.value)}
+                      placeholder="Any notes about this product..."
+                      className="form-input"
+                    />
+                  </FormField>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center gap-3">
+                <button
+                  onClick={addEntry}
+                  disabled={adding || !formName.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-[13px] font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  Add Product
+                </button>
+                <button
+                  onClick={() => { resetForm(); setShowForm(false); }}
+                  className="rounded-lg px-4 py-2 text-[13px] font-medium text-muted-foreground transition hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Entries */}
       {loading ? (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-16">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
+      ) : entries.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="rounded-xl border border-dashed border-border bg-card/50 py-16 text-center"
+        >
+          <Package className="mx-auto h-8 w-8 text-muted-foreground/30 mb-3" />
+          <p className="text-sm text-muted-foreground">No products yet</p>
+          <p className="text-[11px] text-muted-foreground/60 mt-1">Click &quot;Add Product&quot; to get started</p>
+        </motion.div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
-          {entries.length === 0 ? (
-            <div className="py-12 text-center text-[12px] text-muted-foreground">
-              No products yet. Click &quot;+ Add Product&quot; to get started.
-            </div>
-          ) : (
-            <table className="tracker-table">
-              <thead>
-                <tr>
-                  <th>Product Name</th>
-                  <th>File Link</th>
-                  <th>Stage</th>
-                  <th>Total Spent</th>
-                  <th>Remarks</th>
-                  <th className="w-[52px]" />
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((entry) => (
-                  <tr key={entry.id} className="group">
-                    {/* Product Name */}
-                    <td>
-                      <input
-                        type="text"
-                        value={entry.productName}
-                        onChange={(e) => updateLocalField(entry.id, 'productName', e.target.value)}
-                        onBlur={(e) => handleBlur(entry.id, 'productName', e.target.value)}
-                        placeholder="Product name..."
-                        className="tracker-input"
-                      />
-                    </td>
+        <StaggerContainer className="space-y-2">
+          {entries.map((entry) => {
+            const cfg = STAGE_CONFIG[entry.productStage] ?? { color: 'text-muted-foreground', bg: 'bg-border/30 border-border', dot: 'bg-muted-foreground' };
+            const isEditing = editingId === entry.id;
 
-                    {/* File Link */}
-                    <td>
-                      <div className="flex items-center gap-1.5">
+            return (
+              <StaggerItem key={entry.id}>
+                <motion.div
+                  layout
+                  className={`group rounded-xl border border-border bg-card transition-all hover:border-border/80 hover:shadow-[0_0_20px_rgba(167,139,250,0.04)] ${isEditing ? 'ring-1 ring-primary/20' : ''}`}
+                >
+                  {/* Card header - always visible */}
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />
+                    <div className="flex-1 min-w-0">
+                      {isEditing ? (
                         <input
                           type="text"
-                          value={entry.productFileLink}
-                          onChange={(e) => updateLocalField(entry.id, 'productFileLink', e.target.value)}
-                          onBlur={(e) => handleBlur(entry.id, 'productFileLink', e.target.value)}
-                          placeholder="https://..."
-                          className="tracker-input min-w-0 flex-1"
+                          value={entry.productName}
+                          onChange={(e) => updateLocalField(entry.id, 'productName', e.target.value)}
+                          onBlur={(e) => handleBlur(entry.id, 'productName', e.target.value)}
+                          className="w-full bg-transparent text-[14px] font-medium text-foreground outline-none"
+                          autoFocus
                         />
-                        {entry.productFileLink && (
-                          <a
-                            href={entry.productFileLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-shrink-0 text-muted-foreground transition-colors hover:text-primary"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        )}
-                      </div>
-                    </td>
+                      ) : (
+                        <p className="text-[14px] font-medium text-foreground truncate">
+                          {entry.productName || <span className="text-muted-foreground/40 italic">Unnamed product</span>}
+                        </p>
+                      )}
+                    </div>
 
-                    {/* Stage */}
-                    <td>
-                      <select
-                        value={entry.productStage}
-                        onChange={(e) => handleSelectChange(entry.id, e.target.value)}
-                        className={`tracker-select ${stageColorClass(entry.productStage)}`}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* Stage badge */}
+                      {entry.productStage && (
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${cfg.bg} ${cfg.color}`}>
+                          {entry.productStage}
+                        </span>
+                      )}
+
+                      {/* Spent */}
+                      {entry.totalSpent > 0 && (
+                        <span className="text-[12px] font-medium text-muted-foreground">{formatINR(entry.totalSpent)}</span>
+                      )}
+
+                      {/* Status indicator */}
+                      <span className="w-4">{getStatusIcon(entry.id)}</span>
+
+                      {/* Link */}
+                      {entry.productFileLink && (
+                        <a href={entry.productFileLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-primary transition">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+
+                      {/* Expand/Collapse */}
+                      <button
+                        onClick={() => setEditingId(isEditing ? null : entry.id)}
+                        className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition"
                       >
-                        {PRODUCT_STAGES.map((stage) => (
-                          <option key={stage} value={stage} className="bg-card text-foreground">
-                            {stage || '-- Select --'}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+                  </div>
 
-                    {/* Total Spent */}
-                    <td>
-                      <input
-                        type="number"
-                        value={entry.totalSpent || ''}
-                        onChange={(e) =>
-                          updateLocalField(
-                            entry.id,
-                            'totalSpent',
-                            e.target.value === '' ? 0 : Number(e.target.value)
-                          )
-                        }
-                        onBlur={(e) =>
-                          handleBlur(
-                            entry.id,
-                            'totalSpent',
-                            e.target.value === '' ? 0 : Number(e.target.value)
-                          )
-                        }
-                        placeholder="0"
-                        className="tracker-input [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      />
-                    </td>
-
-                    {/* Remarks */}
-                    <td>
-                      <input
-                        type="text"
-                        value={entry.remarks}
-                        onChange={(e) => updateLocalField(entry.id, 'remarks', e.target.value)}
-                        onBlur={(e) => handleBlur(entry.id, 'remarks', e.target.value)}
-                        placeholder="Notes..."
-                        className="tracker-input"
-                      />
-                    </td>
-
-                    {/* Actions: status + delete */}
-                    <td>
-                      <div className="flex items-center justify-end gap-2">
-                        {getStatusIcon(entry.id)}
-                        <button
-                          onClick={() => deleteEntry(entry.id)}
-                          disabled={deletingIds.has(entry.id)}
-                          className="text-muted-foreground/30 transition-colors hover:text-destructive group-hover:text-muted-foreground disabled:opacity-50"
-                          title="Delete product"
-                        >
-                          {deletingIds.has(entry.id) ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                  {/* Expanded edit area */}
+                  <AnimatePresence>
+                    {isEditing && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="border-t border-border px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <FormField label="File Link">
+                            <input
+                              type="text"
+                              value={entry.productFileLink}
+                              onChange={(e) => updateLocalField(entry.id, 'productFileLink', e.target.value)}
+                              onBlur={(e) => handleBlur(entry.id, 'productFileLink', e.target.value)}
+                              placeholder="https://..."
+                              className="form-input"
+                            />
+                          </FormField>
+                          <FormField label="Stage">
+                            <select
+                              value={entry.productStage}
+                              onChange={(e) => handleSelectChange(entry.id, e.target.value)}
+                              className={`form-input ${cfg.color}`}
+                            >
+                              {PRODUCT_STAGES.map((s) => (
+                                <option key={s} value={s} className="bg-card text-foreground">{s || 'Select...'}</option>
+                              ))}
+                            </select>
+                          </FormField>
+                          <FormField label="Total Spent">
+                            <input
+                              type="number"
+                              value={entry.totalSpent || ''}
+                              onChange={(e) => updateLocalField(entry.id, 'totalSpent', e.target.value === '' ? 0 : Number(e.target.value))}
+                              onBlur={(e) => handleBlur(entry.id, 'totalSpent', e.target.value === '' ? 0 : Number(e.target.value))}
+                              placeholder="0"
+                              className="form-input"
+                            />
+                          </FormField>
+                          <FormField label="Remarks">
+                            <input
+                              type="text"
+                              value={entry.remarks}
+                              onChange={(e) => updateLocalField(entry.id, 'remarks', e.target.value)}
+                              onBlur={(e) => handleBlur(entry.id, 'remarks', e.target.value)}
+                              placeholder="Notes..."
+                              className="form-input"
+                            />
+                          </FormField>
+                        </div>
+                        <div className="border-t border-border px-4 py-2 flex justify-end">
+                          <button
+                            onClick={() => deleteEntry(entry.id)}
+                            disabled={deletingIds.has(entry.id)}
+                            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                          >
+                            {deletingIds.has(entry.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                            Delete
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              </StaggerItem>
+            );
+          })}
+        </StaggerContainer>
       )}
 
-      {/* Footer */}
       <p className="text-[11px] text-muted-foreground">
-        {entries.length} product{entries.length !== 1 ? 's' : ''} · Auto-saves on edit
+        {entries.length} product{entries.length !== 1 ? 's' : ''} · Click a row to edit · Auto-saves
       </p>
+    </PageTransition>
+  );
+}
+
+function FormField({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}{required && <span className="text-primary ml-0.5">*</span>}
+      </label>
+      {children}
     </div>
   );
 }

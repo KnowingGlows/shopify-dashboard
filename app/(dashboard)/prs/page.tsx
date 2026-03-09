@@ -1,33 +1,23 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Plus,
-  Trash2,
-  Loader2,
-  ExternalLink,
-  Check,
+  Plus, Trash2, Loader2, ExternalLink, Check,
+  X, Search, ChevronDown,
 } from 'lucide-react';
 import type { PRSEntry } from '@/types/shopify';
+import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 
-const STATUS_OPTIONS = [
-  '',
-  'Researching',
-  'Approved',
-  'Rejected',
-  'Ordered Sample',
-  'Sample Received',
-  'Ready to Launch',
-] as const;
+const STATUS_OPTIONS = ['', 'Researching', 'Approved', 'Rejected', 'Ordered Sample', 'Sample Received', 'Ready to Launch'] as const;
 
-const STATUS_COLORS: Record<string, string> = {
-  '': 'text-muted-foreground/40',
-  Researching: 'text-blue-400',
-  Approved: 'text-emerald-400',
-  Rejected: 'text-red-400',
-  'Ordered Sample': 'text-amber-400',
-  'Sample Received': 'text-violet-400',
-  'Ready to Launch': 'text-emerald-300',
+const STATUS_CONFIG: Record<string, { color: string; bg: string; dot: string }> = {
+  Researching: { color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30', dot: 'bg-blue-400' },
+  Approved: { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', dot: 'bg-emerald-400' },
+  Rejected: { color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30', dot: 'bg-red-400' },
+  'Ordered Sample': { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', dot: 'bg-amber-400' },
+  'Sample Received': { color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/30', dot: 'bg-violet-400' },
+  'Ready to Launch': { color: 'text-emerald-300', bg: 'bg-emerald-500/10 border-emerald-500/30', dot: 'bg-emerald-300' },
 };
 
 type SaveState = Record<string, 'idle' | 'saving' | 'saved'>;
@@ -35,272 +25,211 @@ type SaveState = Record<string, 'idle' | 'saving' | 'saved'>;
 export default function PRSPage() {
   const [entries, setEntries] = useState<PRSEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
   const savedTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  // ── Fetch ──────────────────────────────────────────────────────────
+  // Form state
+  const [formName, setFormName] = useState('');
+  const [formAdLink, setFormAdLink] = useState('');
+  const [formWebLink, setFormWebLink] = useState('');
+  const [formStatus, setFormStatus] = useState('');
+
   const fetchEntries = useCallback(async () => {
     try {
       const res = await fetch('/api/prs');
       const data = await res.json();
       setEntries(data.entries ?? []);
-    } catch {
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
+    } catch { setEntries([]); }
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    fetchEntries();
-  }, [fetchEntries]);
+  useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
-  // ── Add Row ────────────────────────────────────────────────────────
+  const resetForm = () => { setFormName(''); setFormAdLink(''); setFormWebLink(''); setFormStatus(''); };
+
   const addEntry = async () => {
+    if (!formName.trim()) return;
     setAdding(true);
     try {
       const res = await fetch('/api/prs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productName: '',
-          adLink: '',
-          websiteLink: '',
-          status: '',
-        }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productName: formName, adLink: formAdLink, websiteLink: formWebLink, status: formStatus }),
       });
       const data = await res.json();
-      if (data.entry) {
-        setEntries((prev) => [data.entry, ...prev]);
-      }
-    } catch {
-      // silently fail
-    } finally {
-      setAdding(false);
-    }
+      if (data.entry) { setEntries((prev) => [data.entry, ...prev]); resetForm(); setShowForm(false); }
+    } catch { /* silently fail */ }
+    finally { setAdding(false); }
   };
 
-  // ── Patch (auto-save on blur) ──────────────────────────────────────
   const patchEntry = async (id: string, field: string, value: string) => {
-    // Update local state immediately
-    setEntries((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, [field]: value } : e))
-    );
-
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
     setSaveState((prev) => ({ ...prev, [id]: 'saving' }));
-
-    // Clear any existing saved timer for this entry
-    if (savedTimers.current[id]) {
-      clearTimeout(savedTimers.current[id]);
-    }
-
+    if (savedTimers.current[id]) clearTimeout(savedTimers.current[id]);
     try {
-      await fetch('/api/prs', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, [field]: value }),
-      });
+      await fetch('/api/prs', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, [field]: value }) });
       setSaveState((prev) => ({ ...prev, [id]: 'saved' }));
-      savedTimers.current[id] = setTimeout(() => {
-        setSaveState((prev) => ({ ...prev, [id]: 'idle' }));
-      }, 1500);
-    } catch {
-      setSaveState((prev) => ({ ...prev, [id]: 'idle' }));
-    }
+      savedTimers.current[id] = setTimeout(() => setSaveState((prev) => ({ ...prev, [id]: 'idle' })), 1500);
+    } catch { setSaveState((prev) => ({ ...prev, [id]: 'idle' })); }
   };
 
-  // ── Delete ─────────────────────────────────────────────────────────
   const deleteEntry = async (id: string) => {
     setDeletingId(id);
-    try {
-      await fetch(`/api/prs?id=${id}`, { method: 'DELETE' });
-      setEntries((prev) => prev.filter((e) => e.id !== id));
-    } catch {
-      // silently fail
-    } finally {
-      setDeletingId(null);
-    }
+    try { await fetch(`/api/prs?id=${id}`, { method: 'DELETE' }); setEntries((prev) => prev.filter((e) => e.id !== id)); }
+    catch { /* silently fail */ }
+    finally { setDeletingId(null); }
   };
 
-  // ── Render ─────────────────────────────────────────────────────────
+  // Stats
+  const statusStats = STATUS_OPTIONS.filter(Boolean).map((s) => ({
+    status: s, count: entries.filter((e) => e.status === s).length, config: STATUS_CONFIG[s],
+  }));
+
   return (
-    <div className="mx-auto max-w-7xl p-5 space-y-4">
-      {/* Header */}
+    <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Product Research</h1>
-          <p className="text-[12px] text-muted-foreground">Discover and validate products</p>
+          <p className="text-[11px] text-muted-foreground">Discover and validate products</p>
         </div>
-        <button
-          onClick={addEntry}
-          disabled={adding}
-          className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-foreground transition hover:bg-secondary"
-        >
-          {adding ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Plus className="h-3.5 w-3.5" />
-          )}
-          Add Product
+        <button onClick={() => setShowForm(!showForm)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90">
+          {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+          {showForm ? 'Cancel' : 'Add Product'}
         </button>
       </div>
 
-      {/* Table */}
+      {/* Status pills */}
+      <div className="flex flex-wrap gap-2">
+        {statusStats.filter((s) => s.count > 0).map(({ status, count, config }) => (
+          <div key={status} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${config.bg}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
+            <span className={config.color}>{status}</span>
+            <span className="text-muted-foreground">{count}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Add Form */}
+      <AnimatePresence>
+        {showForm && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+            <div className="rounded-xl border border-primary/20 bg-card p-5 shadow-[0_0_30px_rgba(167,139,250,0.06)]">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary"><Search className="h-4 w-4" /></div>
+                <h2 className="text-sm font-semibold text-foreground">New Research Entry</h2>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label="Product Name" required>
+                  <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Product name..." className="form-input" autoFocus />
+                </FormField>
+                <FormField label="Status">
+                  <select value={formStatus} onChange={(e) => setFormStatus(e.target.value)} className="form-input">
+                    {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s || 'Select status...'}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Ad Link">
+                  <input type="text" value={formAdLink} onChange={(e) => setFormAdLink(e.target.value)} placeholder="https://..." className="form-input" />
+                </FormField>
+                <FormField label="Website Link">
+                  <input type="text" value={formWebLink} onChange={(e) => setFormWebLink(e.target.value)} placeholder="https://..." className="form-input" />
+                </FormField>
+              </div>
+              <div className="mt-4 flex items-center gap-3">
+                <button onClick={addEntry} disabled={adding || !formName.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-[13px] font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50">
+                  {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}Add Product
+                </button>
+                <button onClick={() => { resetForm(); setShowForm(false); }} className="rounded-lg px-4 py-2 text-[13px] font-medium text-muted-foreground transition hover:text-foreground">Cancel</button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Entries */}
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
+        <div className="flex items-center justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : entries.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          No products yet. Click &quot;Add Product&quot; to get started.
-        </div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-xl border border-dashed border-border bg-card/50 py-16 text-center">
+          <Search className="mx-auto h-8 w-8 text-muted-foreground/30 mb-3" />
+          <p className="text-sm text-muted-foreground">No products researched yet</p>
+          <p className="text-[11px] text-muted-foreground/60 mt-1">Click &quot;Add Product&quot; to get started</p>
+        </motion.div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
-          <table className="tracker-table">
-            <thead>
-              <tr>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Product Name
-                </th>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Ad Link
-                </th>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Website Link
-                </th>
-                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Status
-                </th>
-                <th className="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => (
-                <tr
-                  key={entry.id}
-                  className="border-t border-border/50 transition-colors hover:bg-secondary/30"
-                >
-                  {/* Product Name */}
-                  <td className="px-3 py-1.5">
-                    <input
-                      type="text"
-                      defaultValue={entry.productName}
-                      placeholder="Product name..."
-                      onBlur={(e) =>
-                        e.target.value !== entry.productName &&
-                        patchEntry(entry.id, 'productName', e.target.value)
-                      }
-                      className="tracker-input"
-                    />
-                  </td>
+        <StaggerContainer className="space-y-2">
+          {entries.map((entry) => {
+            const cfg = STATUS_CONFIG[entry.status];
+            const isEditing = editingId === entry.id;
 
-                  {/* Ad Link */}
-                  <td className="px-3 py-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        defaultValue={entry.adLink}
-                        placeholder="https://..."
-                        onBlur={(e) =>
-                          e.target.value !== entry.adLink &&
-                          patchEntry(entry.id, 'adLink', e.target.value)
-                        }
-                        className="tracker-input"
-                      />
-                      {entry.adLink && (
-                        <a
-                          href={entry.adLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 text-muted-foreground transition hover:text-primary"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
+            return (
+              <StaggerItem key={entry.id}>
+                <motion.div layout className={`group rounded-xl border border-border bg-card transition-all hover:border-border/80 hover:shadow-[0_0_20px_rgba(167,139,250,0.04)] ${isEditing ? 'ring-1 ring-primary/20' : ''}`}>
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    {cfg && <span className={`h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />}
+                    <div className="flex-1 min-w-0">
+                      {isEditing ? (
+                        <input type="text" defaultValue={entry.productName} onBlur={(e) => e.target.value !== entry.productName && patchEntry(entry.id, 'productName', e.target.value)} className="w-full bg-transparent text-[14px] font-medium text-foreground outline-none" autoFocus />
+                      ) : (
+                        <p className="text-[14px] font-medium text-foreground truncate">{entry.productName || <span className="text-muted-foreground/40 italic">Unnamed</span>}</p>
                       )}
                     </div>
-                  </td>
-
-                  {/* Website Link */}
-                  <td className="px-3 py-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        defaultValue={entry.websiteLink}
-                        placeholder="https://..."
-                        onBlur={(e) =>
-                          e.target.value !== entry.websiteLink &&
-                          patchEntry(entry.id, 'websiteLink', e.target.value)
-                        }
-                        className="tracker-input"
-                      />
-                      {entry.websiteLink && (
-                        <a
-                          href={entry.websiteLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 text-muted-foreground transition hover:text-primary"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {entry.status && cfg && (
+                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${cfg.bg} ${cfg.color}`}>{entry.status}</span>
                       )}
-                    </div>
-                  </td>
-
-                  {/* Status */}
-                  <td className="px-3 py-1.5">
-                    <select
-                      value={entry.status}
-                      onChange={(e) =>
-                        patchEntry(entry.id, 'status', e.target.value)
-                      }
-                      className={`tracker-select ${STATUS_COLORS[entry.status] ?? 'text-muted-foreground/40'}`}
-                    >
-                      {STATUS_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt || '— Select —'}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-
-                  {/* Actions */}
-                  <td className="px-3 py-1.5">
-                    <div className="flex items-center justify-end gap-2">
-                      {saveState[entry.id] === 'saving' && (
-                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                      )}
-                      {saveState[entry.id] === 'saved' && (
-                        <Check className="h-3 w-3 text-emerald-400" />
-                      )}
-                      <button
-                        onClick={() => deleteEntry(entry.id)}
-                        disabled={deletingId === entry.id}
-                        className="rounded p-1 text-muted-foreground/40 transition hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        {deletingId === entry.id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3 w-3" />
-                        )}
+                      {saveState[entry.id] === 'saving' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                      {saveState[entry.id] === 'saved' && <Check className="h-3 w-3 text-emerald-400" />}
+                      {entry.adLink && <a href={entry.adLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-primary transition"><ExternalLink className="h-3.5 w-3.5" /></a>}
+                      {entry.websiteLink && <a href={entry.websiteLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-blue-400 transition"><ExternalLink className="h-3.5 w-3.5" /></a>}
+                      <button onClick={() => setEditingId(isEditing ? null : entry.id)} className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition">
+                        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </div>
+
+                  <AnimatePresence>
+                    {isEditing && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                        <div className="border-t border-border px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <FormField label="Ad Link">
+                            <input type="text" defaultValue={entry.adLink} onBlur={(e) => e.target.value !== entry.adLink && patchEntry(entry.id, 'adLink', e.target.value)} placeholder="https://..." className="form-input" />
+                          </FormField>
+                          <FormField label="Website Link">
+                            <input type="text" defaultValue={entry.websiteLink} onBlur={(e) => e.target.value !== entry.websiteLink && patchEntry(entry.id, 'websiteLink', e.target.value)} placeholder="https://..." className="form-input" />
+                          </FormField>
+                          <FormField label="Status">
+                            <select value={entry.status} onChange={(e) => patchEntry(entry.id, 'status', e.target.value)} className={`form-input ${cfg?.color ?? ''}`}>
+                              {STATUS_OPTIONS.map((s) => <option key={s} value={s} className="bg-card text-foreground">{s || 'Select...'}</option>)}
+                            </select>
+                          </FormField>
+                        </div>
+                        <div className="border-t border-border px-4 py-2 flex justify-end">
+                          <button onClick={() => deleteEntry(entry.id)} disabled={deletingId === entry.id} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
+                            {deletingId === entry.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              </StaggerItem>
+            );
+          })}
+        </StaggerContainer>
       )}
 
-      {/* Footer */}
-      <p className="text-[11px] text-muted-foreground">
-        {entries.length} product{entries.length !== 1 ? 's' : ''} tracked
-        &middot; Changes auto-save on blur
-      </p>
+      <p className="text-[11px] text-muted-foreground">{entries.length} product{entries.length !== 1 ? 's' : ''} · Click a row to edit · Auto-saves</p>
+    </PageTransition>
+  );
+}
+
+function FormField({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}{required && <span className="text-primary ml-0.5">*</span>}</label>
+      {children}
     </div>
   );
 }
