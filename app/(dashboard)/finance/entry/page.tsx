@@ -10,7 +10,15 @@ import {
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Types & Helpers ──────────────────────────────────────────────────────────
+
+interface BrandEntry {
+  sales: number;
+  grossMargin: number; // 0-100 display, saved as 0-1
+  adSpend: number;
+  codSales: number;
+  deliveryRate: number; // 0-100
+}
 
 const formatINR = (v: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
@@ -36,10 +44,22 @@ function saveDeliveryRates(rates: Record<string, number>) {
   try { localStorage.setItem('orbyt-cod-delivery-rates', JSON.stringify(rates)); } catch { /* ignore */ }
 }
 
+function loadGrossMargins(): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const stored = localStorage.getItem('orbyt-gross-margins');
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveGrossMargins(margins: Record<string, number>) {
+  try { localStorage.setItem('orbyt-gross-margins', JSON.stringify(margins)); } catch { /* ignore */ }
+}
+
 const DAILY_BASELINE_CATEGORIES = ['Ad Spend', 'Payment Processing (3%)', 'Returns/RTO', 'Other Daily'];
 const MONTHLY_BASELINE_CATEGORIES = ['Inventory', 'Salaries', 'Subscriptions & Tools', 'Rent/Office', 'Other Monthly'];
 const EXPENSE_CATEGORIES = ['Operations', 'Marketing', 'Shipping', 'Returns', 'Tools/Software', 'Other'];
-const KNOWN_BRANDS = ['Kairova', 'Mavric'];
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
@@ -47,18 +67,16 @@ export default function FinanceEntryPage() {
   const { user } = useAuth();
   const isCMO = user?.role === 'cmo';
 
-  // Daily entry form
+  // Core state
   const [dailyDate, setDailyDate] = useState(getYesterday());
-  const [dailySales, setDailySales] = useState('');
-  const [dailySalesLoading, setDailySalesLoading] = useState(false);
-  const [codSalesByBrand, setCodSalesByBrand] = useState<Record<string, number>>({});
-  const [grossMargin, setGrossMargin] = useState('55');
-  const [adSpend, setAdSpend] = useState('');
+  const [salesLoading, setSalesLoading] = useState(false);
   const [savingDaily, setSavingDaily] = useState(false);
   const [dailySaveStatus, setDailySaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
-  // Per-brand delivery rates
-  const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
+  // Per-brand data
+  const [brands, setBrands] = useState<string[]>([]);
+  const [brandEntries, setBrandEntries] = useState<Record<string, BrandEntry>>({});
+  const [activeBrand, setActiveBrand] = useState<string | null>(null);
 
   // Baselines
   const [baselineType, setBaselineType] = useState<'daily' | 'monthly'>('daily');
@@ -76,62 +94,89 @@ export default function FinanceEntryPage() {
   const [addingExpense, setAddingExpense] = useState(false);
   const [expenseSaveStatus, setExpenseSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
-  // Load saved delivery rates
-  useEffect(() => {
-    const saved = loadDeliveryRates();
-    const rates: Record<string, number> = {};
-    for (const brand of KNOWN_BRANDS) {
-      rates[brand] = saved[brand] ?? 65;
-    }
-    setDeliveryRates(rates);
-  }, []);
-
-  // Auto-fetch yesterday's sales + COD data
+  // Auto-fetch sales
   const fetchSales = useCallback(async () => {
-    setDailySalesLoading(true);
+    setSalesLoading(true);
     try {
       const res = await fetch(`/api/finance?action=fetch-sales&date=${dailyDate}`);
       const data = await res.json();
-      if (data.totalSales) setDailySales(String(Math.round(data.totalSales)));
-      if (data.codSalesByBrand) setCodSalesByBrand(data.codSalesByBrand);
+      const salesByBrand: Record<string, number> = data.salesByBrand ?? {};
+      const codByBrand: Record<string, number> = data.codSalesByBrand ?? {};
+      const brandNames = Object.keys(salesByBrand);
+
+      if (brandNames.length > 0) {
+        const savedMargins = loadGrossMargins();
+        const savedRates = loadDeliveryRates();
+
+        const entries: Record<string, BrandEntry> = {};
+        for (const brand of brandNames) {
+          entries[brand] = {
+            sales: salesByBrand[brand] ?? 0,
+            grossMargin: savedMargins[brand] ?? 55,
+            adSpend: 0,
+            codSales: codByBrand[brand] ?? 0,
+            deliveryRate: savedRates[brand] ?? 65,
+          };
+        }
+        setBrands(brandNames);
+        setBrandEntries(entries);
+        if (!activeBrand || !brandNames.includes(activeBrand)) {
+          setActiveBrand(brandNames[0]);
+        }
+      }
     } catch { /* silently fail */ }
-    finally { setDailySalesLoading(false); }
-  }, [dailyDate]);
+    finally { setSalesLoading(false); }
+  }, [dailyDate, activeBrand]);
 
   useEffect(() => { if (dailyDate) fetchSales(); }, [dailyDate, fetchSales]);
 
-  const handleDeliveryRateChange = (brand: string, value: number) => {
-    const updated = { ...deliveryRates, [brand]: value };
-    setDeliveryRates(updated);
-    saveDeliveryRates(updated);
+  // Brand field update
+  const updateBrandField = (brand: string, field: keyof BrandEntry, value: number) => {
+    setBrandEntries((prev) => ({
+      ...prev,
+      [brand]: { ...prev[brand], [field]: value },
+    }));
+    // Persist margin & delivery rate to localStorage
+    if (field === 'grossMargin') {
+      const all = { ...Object.fromEntries(Object.entries(brandEntries).map(([b, e]) => [b, e.grossMargin])), [brand]: value };
+      saveGrossMargins(all);
+    }
+    if (field === 'deliveryRate') {
+      const all = { ...Object.fromEntries(Object.entries(brandEntries).map(([b, e]) => [b, e.deliveryRate])), [brand]: value };
+      saveDeliveryRates(all);
+    }
   };
 
-  // Handlers
+  // Save daily
   const handleSaveDaily = async () => {
     setSavingDaily(true);
     setDailySaveStatus('idle');
     try {
+      const brandData: Record<string, { sales: number; grossMargin: number; grossProfit: number; adSpend: number; codSales: number; deliveryRate: number }> = {};
+      for (const [brand, entry] of Object.entries(brandEntries)) {
+        brandData[brand] = {
+          sales: entry.sales,
+          grossMargin: entry.grossMargin / 100,
+          grossProfit: Math.round(entry.sales * (entry.grossMargin / 100)),
+          adSpend: entry.adSpend,
+          codSales: entry.codSales,
+          deliveryRate: entry.deliveryRate,
+        };
+      }
       const res = await fetch('/api/finance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'save-daily',
           date: dailyDate,
-          totalSales: Number(dailySales) || 0,
-          grossMargin: Number(grossMargin) / 100,
-          adSpend: Number(adSpend) || 0,
-          roas: 0,
-          shippingCost: 0,
-          codSalesByBrand,
+          brandData,
           enteredBy: user?.email ?? '',
         }),
       });
       if (res.ok) {
         setDailySaveStatus('saved');
         setTimeout(() => setDailySaveStatus('idle'), 3000);
-      } else {
-        setDailySaveStatus('error');
-      }
+      } else setDailySaveStatus('error');
     } catch { setDailySaveStatus('error'); }
     finally { setSavingDaily(false); }
   };
@@ -144,22 +189,10 @@ export default function FinanceEntryPage() {
       const res = await fetch('/api/finance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'save-baseline',
-          type: baselineType,
-          category: baselineCategory,
-          label: baselineLabel || baselineCategory,
-          amount: Number(baselineAmount),
-        }),
+        body: JSON.stringify({ action: 'save-baseline', type: baselineType, category: baselineCategory, label: baselineLabel || baselineCategory, amount: Number(baselineAmount) }),
       });
-      if (res.ok) {
-        setBaselineLabel('');
-        setBaselineAmount('');
-        setBaselineSaveStatus('saved');
-        setTimeout(() => setBaselineSaveStatus('idle'), 3000);
-      } else {
-        setBaselineSaveStatus('error');
-      }
+      if (res.ok) { setBaselineLabel(''); setBaselineAmount(''); setBaselineSaveStatus('saved'); setTimeout(() => setBaselineSaveStatus('idle'), 3000); }
+      else setBaselineSaveStatus('error');
     } catch { setBaselineSaveStatus('error'); }
     finally { setSavingBaseline(false); }
   };
@@ -172,36 +205,31 @@ export default function FinanceEntryPage() {
       const res = await fetch('/api/finance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add-expense',
-          category: expCategory,
-          description: expDescription,
-          amount: Number(expAmount),
-          date: expDate,
-        }),
+        body: JSON.stringify({ action: 'add-expense', category: expCategory, description: expDescription, amount: Number(expAmount), date: expDate }),
       });
-      if (res.ok) {
-        setExpDescription('');
-        setExpAmount('');
-        setExpenseSaveStatus('saved');
-        setTimeout(() => setExpenseSaveStatus('idle'), 3000);
-      } else {
-        setExpenseSaveStatus('error');
-      }
+      if (res.ok) { setExpDescription(''); setExpAmount(''); setExpenseSaveStatus('saved'); setTimeout(() => setExpenseSaveStatus('idle'), 3000); }
+      else setExpenseSaveStatus('error');
     } catch { setExpenseSaveStatus('error'); }
     finally { setAddingExpense(false); }
   };
 
-  // Live calculations
-  const calcTotalSales = Number(dailySales) || 0;
-  const calcGrossMargin = (Number(grossMargin) || 0) / 100;
-  const calcGrossProfit = calcTotalSales * calcGrossMargin;
-  const calcAdSpend = Number(adSpend) || 0;
-  const calcActualAdCost = Math.round(calcAdSpend * 1.14);
-  const calcNetProfit = calcGrossProfit - calcActualAdCost;
+  // Computed totals
+  const totals = Object.values(brandEntries).reduce(
+    (acc, e) => ({
+      sales: acc.sales + e.sales,
+      grossProfit: acc.grossProfit + Math.round(e.sales * (e.grossMargin / 100)),
+      adSpend: acc.adSpend + e.adSpend,
+      codSales: acc.codSales + e.codSales,
+    }),
+    { sales: 0, grossProfit: 0, adSpend: 0, codSales: 0 }
+  );
+  const totalActualAdCost = Math.round(totals.adSpend * 1.14);
+  const totalNetProfit = totals.grossProfit - totalActualAdCost;
 
-  const totalCOD = Object.values(codSalesByBrand).reduce((s, v) => s + v, 0);
-  const allBrands = [...new Set([...KNOWN_BRANDS, ...Object.keys(codSalesByBrand)])];
+  const currentBrand = activeBrand ? brandEntries[activeBrand] : null;
+  const brandGrossProfit = currentBrand ? Math.round(currentBrand.sales * (currentBrand.grossMargin / 100)) : 0;
+  const brandActualAdCost = currentBrand ? Math.round(currentBrand.adSpend * 1.14) : 0;
+  const brandNetProfit = brandGrossProfit - brandActualAdCost;
 
   return (
     <PageTransition className="mx-auto max-w-6xl p-5 space-y-5">
@@ -212,7 +240,7 @@ export default function FinanceEntryPage() {
         </Link>
         <div>
           <h1 className="text-lg font-semibold text-foreground">Enter Data</h1>
-          <p className="text-[11px] text-muted-foreground">Add daily P&L, baselines & expenses</p>
+          <p className="text-[11px] text-muted-foreground">Daily P&L, baselines & expenses</p>
         </div>
       </div>
 
@@ -221,126 +249,158 @@ export default function FinanceEntryPage() {
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <Calculator className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">Daily P&L</h2>
-        </div>
-        <div className="p-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <FormField label="Date">
-              <input type="date" value={dailyDate} onChange={(e) => setDailyDate(e.target.value)} className="form-input" />
-            </FormField>
-            <FormField label="Total Sales (auto-fetched)">
-              <div className="relative">
-                <input type="number" value={dailySales} onChange={(e) => setDailySales(e.target.value)} placeholder="0" className="form-input pr-10" />
-                {dailySalesLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-primary" />}
-              </div>
-            </FormField>
-            <FormField label="Gross Margin %">
-              <input type="number" value={grossMargin} onChange={(e) => setGrossMargin(e.target.value)} placeholder="55" className="form-input" />
-            </FormField>
+          <div className="ml-auto">
+            <input type="date" value={dailyDate} onChange={(e) => setDailyDate(e.target.value)} className="form-input text-[12px] py-1" />
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormField label={<span className="flex items-center gap-1"><Megaphone className="h-3 w-3 text-blue-400" />Ad Spend{isCMO && <span className="text-amber-400 normal-case">(required)</span>}</span>}>
-              <input type="number" value={adSpend} onChange={(e) => setAdSpend(e.target.value)} placeholder="0" className="form-input" />
-            </FormField>
-            <div className="flex items-end">
-              <div className="rounded-lg border border-border/60 bg-background/50 px-4 py-2.5 flex-1">
-                <p className="text-[10px] text-muted-foreground mb-0.5">Actual Ad Cost (14% fees)</p>
-                <p className="text-[15px] font-semibold text-orange-400">{formatINR(calcActualAdCost)}</p>
+        {/* Brand Tabs */}
+        {brands.length > 0 && (
+          <div className="flex items-center gap-1 px-4 pt-3 pb-1 overflow-x-auto">
+            {brands.map((brand) => (
+              <button
+                key={brand}
+                onClick={() => setActiveBrand(brand)}
+                className={`rounded-lg px-3 py-1.5 text-[12px] font-medium transition shrink-0 ${
+                  activeBrand === brand
+                    ? 'bg-primary/15 text-primary border border-primary/30'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/30 border border-transparent'
+                }`}
+              >
+                {brand}
+              </button>
+            ))}
+            {salesLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary ml-2 shrink-0" />}
+          </div>
+        )}
+
+        {/* Brand-specific form */}
+        {activeBrand && currentBrand && (
+          <div className="p-4 space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <FormField label="Sales (auto)">
+                <div className="rounded-lg border border-border/60 bg-background/50 px-3 py-2">
+                  <p className="text-[14px] font-semibold text-foreground tabular-nums">{formatINR(currentBrand.sales)}</p>
+                </div>
+              </FormField>
+              <FormField label="Gross Margin %">
+                <input
+                  type="number"
+                  value={currentBrand.grossMargin}
+                  onChange={(e) => updateBrandField(activeBrand, 'grossMargin', Number(e.target.value) || 0)}
+                  placeholder="55"
+                  className="form-input"
+                />
+              </FormField>
+              <FormField label={<span className="flex items-center gap-1"><Megaphone className="h-3 w-3 text-blue-400" />Ad Spend{isCMO && <span className="text-amber-400 normal-case text-[9px]">(req)</span>}</span>}>
+                <input
+                  type="number"
+                  value={currentBrand.adSpend || ''}
+                  onChange={(e) => updateBrandField(activeBrand, 'adSpend', Number(e.target.value) || 0)}
+                  placeholder="0"
+                  className="form-input"
+                />
+              </FormField>
+              <FormField label="COD Delivery %">
+                <input
+                  type="number"
+                  value={currentBrand.deliveryRate}
+                  onChange={(e) => updateBrandField(activeBrand, 'deliveryRate', Number(e.target.value) || 0)}
+                  placeholder="65"
+                  className="form-input"
+                  min={0}
+                  max={100}
+                />
+              </FormField>
+            </div>
+
+            {/* Brand metrics row */}
+            <div className="flex items-center gap-3 rounded-lg bg-background/50 border border-border/40 px-3 py-2 overflow-x-auto">
+              <PreviewPill label="Sales" value={formatINR(currentBrand.sales)} />
+              <span className="text-muted-foreground/20">|</span>
+              <PreviewPill label="Gross" value={formatINR(brandGrossProfit)} />
+              <span className="text-muted-foreground/30">-</span>
+              <PreviewPill label="Ads (14%)" value={formatINR(brandActualAdCost)} negative />
+              <span className="text-muted-foreground/30">=</span>
+              <PreviewPill label="Net" value={formatINR(brandNetProfit)} highlight positive={brandNetProfit >= 0} />
+              <span className="text-muted-foreground/20 ml-auto">|</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <BanknoteIcon className="h-3 w-3 text-emerald-400" />
+                <span className="text-[10px] text-muted-foreground">COD</span>
+                <span className="text-[12px] font-semibold text-emerald-400 font-mono">{formatINR(currentBrand.codSales)}</span>
               </div>
             </div>
           </div>
+        )}
 
-          {/* COD Sales auto-fetched */}
-          {Object.keys(codSalesByBrand).length > 0 && (
-            <div className="flex items-center gap-4 rounded-lg bg-background/50 border border-border/40 px-3 py-2">
-              <div className="flex items-center gap-1.5">
-                <BanknoteIcon className="h-3.5 w-3.5 text-emerald-400" />
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">COD Orders</span>
+        {/* Combined Totals */}
+        {brands.length > 1 && (
+          <div className="border-t border-border px-4 py-3">
+            <div className="flex items-center gap-4 overflow-x-auto">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground shrink-0">All Brands</span>
+              <PreviewPill label="Sales" value={formatINR(totals.sales)} />
+              <PreviewPill label="Gross" value={formatINR(totals.grossProfit)} />
+              <span className="text-muted-foreground/30">-</span>
+              <PreviewPill label="Ads (14%)" value={formatINR(totalActualAdCost)} negative />
+              <span className="text-muted-foreground/30">=</span>
+              <PreviewPill label="Net" value={formatINR(totalNetProfit)} highlight positive={totalNetProfit >= 0} />
+            </div>
+          </div>
+        )}
+
+        {/* Save */}
+        <div className="border-t border-border px-4 py-3 flex items-center gap-3">
+          <button onClick={handleSaveDaily} disabled={savingDaily || brands.length === 0} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50">
+            {savingDaily ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save All Brands
+          </button>
+          <StatusBadge status={dailySaveStatus} />
+        </div>
+      </motion.div>
+
+      {/* ═══ COD Overview ═══ */}
+      {brands.length > 0 && totals.codSales > 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-transparent overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-500/15">
+            <Truck className="h-4 w-4 text-emerald-400" />
+            <h2 className="text-sm font-semibold text-foreground">COD Summary</h2>
+          </div>
+          <div className="p-3">
+            <div className="space-y-1">
+              <div className="grid grid-cols-[1fr_80px_100px_100px] items-center gap-3 px-3 py-1">
+                <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Brand</span>
+                <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60 text-center">Delivery %</span>
+                <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60 text-right">COD Revenue</span>
+                <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60 text-right">Bank Deposit</span>
               </div>
-              {Object.entries(codSalesByBrand).map(([brand, amount]) => (
-                <div key={brand} className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-muted-foreground">{brand}:</span>
-                  <span className="text-[12px] font-semibold text-emerald-400 font-mono">{formatINR(amount)}</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-1.5 ml-auto">
-                <span className="text-[11px] text-muted-foreground">Total COD:</span>
-                <span className="text-[12px] font-semibold text-foreground font-mono">
-                  {formatINR(totalCOD)}
-                </span>
+              {brands.map((brand) => {
+                const entry = brandEntries[brand];
+                if (!entry) return null;
+                const projected = Math.round(entry.codSales * (entry.deliveryRate / 100));
+                return (
+                  <div key={brand} className="grid grid-cols-[1fr_80px_100px_100px] items-center gap-3 rounded-lg bg-card border border-border/40 px-3 py-2.5 hover:border-emerald-500/20 transition-colors">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
+                      <span className="text-[13px] font-medium text-foreground truncate">{brand}</span>
+                    </div>
+                    <p className="text-[12px] font-semibold text-center text-muted-foreground tabular-nums">{entry.deliveryRate}%</p>
+                    <p className="text-[12px] text-muted-foreground text-right font-mono tabular-nums">{formatINR(entry.codSales)}</p>
+                    <p className="text-[12px] font-semibold text-emerald-400 text-right font-mono tabular-nums">{formatINR(projected)}</p>
+                  </div>
+                );
+              })}
+              <div className="grid grid-cols-[1fr_80px_100px_100px] items-center gap-3 px-3 py-2 border-t border-border/30 mt-1">
+                <span className="text-[11px] font-semibold text-foreground">Total</span>
+                <span />
+                <p className="text-[12px] font-semibold text-foreground text-right font-mono tabular-nums">{formatINR(totals.codSales)}</p>
+                <p className="text-[12px] font-bold text-emerald-400 text-right font-mono tabular-nums">
+                  {formatINR(Object.values(brandEntries).reduce((s, e) => s + Math.round(e.codSales * (e.deliveryRate / 100)), 0))}
+                </p>
               </div>
             </div>
-          )}
-
-          {/* Compact live preview */}
-          <div className="flex items-center gap-3 rounded-lg bg-background/50 border border-border/40 px-3 py-2 overflow-x-auto">
-            <PreviewPill label="Gross" value={formatINR(calcGrossProfit)} />
-            <span className="text-muted-foreground/30">-</span>
-            <PreviewPill label="Ads (14%)" value={formatINR(calcActualAdCost)} negative />
-            <span className="text-muted-foreground/30">=</span>
-            <PreviewPill label="Net" value={formatINR(calcNetProfit)} highlight positive={calcNetProfit >= 0} />
           </div>
-
-          <div className="flex items-center gap-3">
-            <button onClick={handleSaveDaily} disabled={savingDaily || !dailySales} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50">
-              {savingDaily ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Save Entry
-            </button>
-            <StatusBadge status={dailySaveStatus} />
-          </div>
-        </div>
-      </motion.div>
-
-      {/* ═══ COD Delivery % (Per Brand) ═══ */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-transparent overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-500/15">
-          <Truck className="h-4 w-4 text-emerald-400" />
-          <h2 className="text-sm font-semibold text-foreground">COD Delivery %</h2>
-          <span className="text-[10px] text-emerald-400/70 ml-auto">Used for bank deposit projections</span>
-        </div>
-        <div className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {allBrands.map((brand) => {
-              const rate = deliveryRates[brand] ?? 65;
-              const codAmount = codSalesByBrand[brand] ?? 0;
-              const projected = Math.round(codAmount * (rate / 100));
-              return (
-                <div key={brand} className="rounded-lg border border-border/60 bg-card p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-[13px] font-semibold text-foreground">{brand}</p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        value={rate}
-                        onChange={(e) => handleDeliveryRateChange(brand, Number(e.target.value) || 0)}
-                        className="form-input w-16 text-center text-[13px] font-semibold"
-                        min={0}
-                        max={100}
-                      />
-                      <span className="text-[12px] text-muted-foreground font-medium">%</span>
-                    </div>
-                  </div>
-                  {codAmount > 0 && (
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-muted-foreground">Today&apos;s COD: {formatINR(codAmount)}</span>
-                      <span className="text-emerald-400 font-medium">Projected: {formatINR(projected)}</span>
-                    </div>
-                  )}
-                  {/* Rate slider visual */}
-                  <div className="mt-2.5 h-1.5 rounded-full bg-border/50 overflow-hidden">
-                    <motion.div
-                      className="h-full rounded-full bg-emerald-400"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(rate, 100)}%` }}
-                      transition={{ duration: 0.5, ease: 'easeOut' }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
 
       {/* ═══ Add Baseline ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="rounded-xl border border-border bg-card overflow-hidden">

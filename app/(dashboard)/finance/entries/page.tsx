@@ -173,17 +173,15 @@ export default function DailyEntriesPage() {
           {/* Entries Table */}
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="tracker-table">
+              <table className="w-full">
                 <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th className="text-right">Sales</th>
-                    <th className="text-right">Margin %</th>
-                    <th className="text-right">Gross Profit</th>
-                    <th className="text-right">Ad Spend</th>
-                    <th className="text-right">Ad Cost (14%)</th>
-                    <th className="text-right">Net Profit</th>
-                    <th className="text-center w-12"></th>
+                  <tr className="border-b border-border">
+                    <th className="px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Date</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Sales</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Gross Profit</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ad Cost (14%)</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Net Profit</th>
+                    <th className="w-12 px-2 py-3"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -194,18 +192,16 @@ export default function DailyEntriesPage() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0, x: -20 }}
-                        className="group"
+                        className="group border-b border-border/50 last:border-0 hover:bg-accent/5 transition-colors"
                       >
-                        <td className="px-3 py-2.5 text-[12px] text-muted-foreground font-medium">{entry.date}</td>
-                        <td className="px-3 py-2.5 text-[12px] text-right font-medium text-foreground">{formatINR(entry.totalSales)}</td>
-                        <td className="px-3 py-2.5 text-[12px] text-right text-muted-foreground">{Math.round((entry.grossMargin ?? 0) * 100)}%</td>
-                        <td className="px-3 py-2.5 text-[12px] text-right text-emerald-400 font-medium">{formatINR(entry.grossProfit)}</td>
-                        <td className="px-3 py-2.5 text-[12px] text-right text-amber-400">{formatINR(entry.adSpend)}</td>
-                        <td className="px-3 py-2.5 text-[12px] text-right text-orange-400">{formatINR(Math.round(entry.adSpend * 1.14))}</td>
-                        <td className={`px-3 py-2.5 text-[12px] font-semibold text-right ${entry.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <td className="px-4 py-3 text-[13px] text-muted-foreground font-medium">{entry.date}</td>
+                        <td className="px-4 py-3 text-[13px] text-right font-medium text-foreground tabular-nums">{formatINR(entry.totalSales)}</td>
+                        <td className="px-4 py-3 text-[13px] text-right font-medium text-emerald-400 tabular-nums">{formatINR(entry.grossProfit)}</td>
+                        <td className="px-4 py-3 text-[13px] text-right font-medium text-orange-400 tabular-nums">{formatINR(Math.round(entry.adSpend * 1.14))}</td>
+                        <td className={`px-4 py-3 text-[13px] font-semibold text-right tabular-nums ${entry.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                           {formatINR(entry.netProfit)}
                         </td>
-                        <td className="px-3 py-2.5 text-center">
+                        <td className="px-2 py-3 text-center">
                           <button
                             onClick={() => handleDelete(entry.date)}
                             disabled={deleting === entry.date}

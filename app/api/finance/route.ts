@@ -7,18 +7,28 @@ import { convertToINR } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+interface BrandDailyData {
+  sales: number;
+  grossMargin: number; // 0.55 = 55%
+  grossProfit: number;
+  adSpend: number;
+  codSales: number;
+  deliveryRate: number; // 0-100
+}
+
 interface FinanceDailyEntry {
   date: string; // YYYY-MM-DD
   totalSales: number;
-  grossMargin: number; // percentage e.g. 0.55 for 55%
-  grossProfit: number; // totalSales * grossMargin
+  grossMargin: number; // weighted avg or legacy single value
+  grossProfit: number;
   adSpend: number;
   roas: number;
-  revenue: number; // from ads: adSpend * roas
+  revenue: number;
   paymentProcessorFee: number;
   shippingCost: number;
   netProfit: number;
-  codSalesByBrand: Record<string, number>; // { Kairova: 12345, Mavric: 6789 }
+  codSalesByBrand: Record<string, number>;
+  brandData?: Record<string, BrandDailyData>; // per-brand breakdown
   enteredBy: string;
   updatedAt: string;
 }
@@ -29,6 +39,9 @@ interface OperationalBaseline {
   category: string;
   label: string;
   amount: number;
+  dueDay?: number; // day of month (1-31) when payment is due
+  isPaid?: boolean; // whether paid this month
+  paidDate?: string; // YYYY-MM-DD when last paid
   updatedAt: string;
 }
 
@@ -60,6 +73,7 @@ function getISTDateRange(startDate: string, endDate: string): string[] {
 
 interface SalesForDateResult {
   totalSales: number;
+  salesByBrand: Record<string, number>;
   codSalesByBrand: Record<string, number>;
 }
 
@@ -67,7 +81,7 @@ interface SalesForDateResult {
 async function fetchSalesForDate(dateStr: string): Promise<SalesForDateResult> {
   try {
     const stores = await getShopifyStores();
-    if (stores.length === 0) return { totalSales: 0, codSalesByBrand: {} };
+    if (stores.length === 0) return { totalSales: 0, salesByBrand: {}, codSalesByBrand: {} };
 
     const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
     const [year, month, day] = dateStr.split('-').map(Number);
@@ -81,7 +95,8 @@ async function fetchSalesForDate(dateStr: string): Promise<SalesForDateResult> {
 
     const metrics = aggregateSalesData(ordersData);
 
-    // Calculate COD sales per brand (financial_status = 'pending' means COD)
+    // Per-brand sales + COD breakdown
+    const salesByBrand: Record<string, number> = {};
     const codSalesByBrand: Record<string, number> = {};
     for (const { storeName, orders } of ordersData) {
       let codTotal = 0;
@@ -91,13 +106,15 @@ async function fetchSalesForDate(dateStr: string): Promise<SalesForDateResult> {
           codTotal += convertToINR(amount, order.currency);
         }
       }
+      const storeMetric = metrics.storeBreakdown.find((s) => s.storeName === storeName);
+      salesByBrand[storeName] = Math.round(storeMetric?.totalSalesINR ?? 0);
       codSalesByBrand[storeName] = Math.round(codTotal);
     }
 
-    return { totalSales: metrics.totalSalesINR, codSalesByBrand };
+    return { totalSales: metrics.totalSalesINR, salesByBrand, codSalesByBrand };
   } catch (error) {
     console.error('Error fetching sales for date:', dateStr, error);
-    return { totalSales: 0, codSalesByBrand: {} };
+    return { totalSales: 0, salesByBrand: {}, codSalesByBrand: {} };
   }
 }
 
@@ -147,6 +164,8 @@ export async function POST(request: Request) {
         return saveBaseline(body);
       case 'add-expense':
         return addExpense(body);
+      case 'delete-baseline':
+        return deleteBaseline(body);
       case 'dismiss-reminder':
         return dismissReminder(body);
       default:
@@ -182,8 +201,8 @@ export async function DELETE(request: Request) {
 
 async function fetchSalesData(params: URLSearchParams) {
   const date = params.get('date') ?? getISTDate(new Date(Date.now() - 86400000)); // default: yesterday
-  const { totalSales, codSalesByBrand } = await fetchSalesForDate(date);
-  return NextResponse.json({ date, totalSales, codSalesByBrand });
+  const { totalSales, salesByBrand, codSalesByBrand } = await fetchSalesForDate(date);
+  return NextResponse.json({ date, totalSales, salesByBrand, codSalesByBrand });
 }
 
 async function getDailyEntries(params: URLSearchParams) {
@@ -210,18 +229,34 @@ async function saveDailyEntry(body: Record<string, unknown>) {
   const firestore = db();
   const date = (body.date as string) ?? getISTDate(new Date(Date.now() - 86400000));
 
-  const totalSales = Number(body.totalSales) || 0;
-  const grossMargin = Number(body.grossMargin) || 0;
-  const grossProfit = totalSales * grossMargin;
-  const adSpend = Number(body.adSpend) || 0;
-  const actualAdCost = Math.round(adSpend * 1.14); // 14% platform fees
-  const roas = Number(body.roas) || 0;
-  const shippingCost = Number(body.shippingCost) || 0;
-  const paymentProcessorFee = 0; // processor fees already included in gross margin
-  const netProfit = grossProfit - actualAdCost - shippingCost;
+  // Per-brand data (new format)
+  const brandData = (body.brandData as Record<string, BrandDailyData>) ?? {};
+  const hasBrandData = Object.keys(brandData).length > 0;
 
-  // COD sales per brand (auto-fetched from Shopify)
-  const codSalesByBrand = (body.codSalesByBrand as Record<string, number>) ?? {};
+  // Compute totals from brand data if available, otherwise use legacy fields
+  let totalSales = 0;
+  let grossProfit = 0;
+  let adSpend = 0;
+  const codSalesByBrand: Record<string, number> = {};
+
+  if (hasBrandData) {
+    for (const [brand, data] of Object.entries(brandData)) {
+      totalSales += data.sales;
+      grossProfit += data.grossProfit;
+      adSpend += data.adSpend;
+      codSalesByBrand[brand] = data.codSales;
+    }
+  } else {
+    totalSales = Number(body.totalSales) || 0;
+    const gm = Number(body.grossMargin) || 0;
+    grossProfit = totalSales * gm;
+    adSpend = Number(body.adSpend) || 0;
+    Object.assign(codSalesByBrand, (body.codSalesByBrand as Record<string, number>) ?? {});
+  }
+
+  const grossMargin = totalSales > 0 ? grossProfit / totalSales : 0;
+  const actualAdCost = Math.round(adSpend * 1.14);
+  const netProfit = grossProfit - actualAdCost;
 
   const entry: FinanceDailyEntry = {
     date,
@@ -229,12 +264,13 @@ async function saveDailyEntry(body: Record<string, unknown>) {
     grossMargin,
     grossProfit,
     adSpend,
-    roas,
-    revenue: adSpend * roas,
-    paymentProcessorFee,
-    shippingCost,
+    roas: 0,
+    revenue: 0,
+    paymentProcessorFee: 0,
+    shippingCost: 0,
     netProfit,
     codSalesByBrand,
+    brandData: hasBrandData ? brandData : undefined,
     enteredBy: (body.enteredBy as string) ?? '',
     updatedAt: new Date().toISOString(),
   };
@@ -271,6 +307,9 @@ async function saveBaseline(body: Record<string, unknown>) {
     category: (body.category as string) ?? '',
     label: (body.label as string) ?? '',
     amount: Number(body.amount) || 0,
+    dueDay: body.dueDay ? Number(body.dueDay) : undefined,
+    isPaid: body.isPaid === true ? true : undefined,
+    paidDate: (body.paidDate as string) || undefined,
     updatedAt: new Date().toISOString(),
   };
 
@@ -453,6 +492,15 @@ async function getReminders() {
   }
 
   return NextResponse.json({ reminders });
+}
+
+async function deleteBaseline(body: Record<string, unknown>) {
+  const firestore = db();
+  const id = body.id as string;
+  if (!id) return NextResponse.json({ error: 'ID is required.' }, { status: 400 });
+  if (!firestore) return NextResponse.json({ success: true });
+  await firestore.collection(COLLECTIONS.FINANCE_BASELINES).doc(id).delete();
+  return NextResponse.json({ success: true });
 }
 
 async function dismissReminder(body: Record<string, unknown>) {

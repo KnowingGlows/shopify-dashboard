@@ -6,8 +6,8 @@ import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Box, ClipboardList, DollarSign, Home, LogOut,
-  Menu, Megaphone, Package, Search, Settings, Store, Users, X,
-  PenLine, Calculator, List,
+  Menu, Megaphone, Package, Search, Settings, Users, X,
+  PenLine, Calculator, List, Landmark,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -27,17 +27,17 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: Home, section: 'core' },
-  { href: '/brands', label: 'Brands', icon: Store, section: 'core' },
   { href: '/finance', label: 'Finance', icon: DollarSign, section: 'core' },
   { href: '/finance/entry', label: 'Enter Data', icon: PenLine, section: 'core', parent: '/finance' },
   { href: '/finance/entries', label: 'Daily Entries', icon: List, section: 'core', parent: '/finance' },
+  { href: '/finance/baselines', label: 'Baselines', icon: Landmark, section: 'core', parent: '/finance' },
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'core', parent: '/finance' },
-  { href: '/product-tracker', label: 'Products', icon: Package, section: 'ops' },
-  { href: '/ads-tracker', label: 'Ads', icon: Megaphone, section: 'ops' },
-  { href: '/prs', label: 'PRS', icon: Search, section: 'ops' },
+  { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
+  { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
+  { href: '/ads-tracker', label: 'OPS Ads', icon: Megaphone, section: 'marketing' },
   { href: '/inventory', label: 'Inventory', icon: Box, section: 'ops' },
+  { href: '/logs', label: 'Daily Logs', icon: ClipboardList, section: 'ops' },
   { href: '/settings', label: 'Settings', icon: Settings, section: 'system' },
-  { href: '/logs', label: 'Logs', icon: ClipboardList, section: 'system' },
   { href: '/users', label: 'Users', icon: Users, adminOnly: true, section: 'system' },
 ];
 
@@ -90,6 +90,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
 
   const sections = [
     { key: 'core', label: null },
+    { key: 'marketing', label: 'Marketing' },
     { key: 'ops', label: 'Operations' },
     { key: 'system', label: 'System' },
   ];

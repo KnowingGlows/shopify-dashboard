@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
-  RefreshCw, Loader2, DollarSign, TrendingUp, Wallet, Plus,
+  RefreshCw, Loader2, DollarSign, Wallet, Plus,
   AlertTriangle, BanknoteIcon, PiggyBank, BarChart3, Building2,
   Bell, X, Calendar, ArrowRight, Clock,
 } from 'lucide-react';
@@ -183,7 +183,7 @@ export default function FinancePage() {
           <MetricCard label="Total Sales (30d)" value={d.totalSales} icon={<DollarSign className="h-4 w-4 text-emerald-400" />} color="text-foreground" />
         </StaggerItem>
         <StaggerItem>
-          <MetricCard label="Gross Profit (30d)" value={d.totalGrossProfit} icon={<TrendingUp className="h-4 w-4 text-blue-400" />} color={d.totalGrossProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+          <MetricCard label="Bank Deposits (4wk)" value={codWeeks.reduce((s, w) => s + w.projectedAmount, 0)} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color="text-emerald-400" />
         </StaggerItem>
         <StaggerItem>
           <MetricCard label="Net Profit (30d)" value={d.totalNetProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={d.totalNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
