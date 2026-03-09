@@ -139,7 +139,7 @@ export default function SignupPage() {
                   </div>
                 )}
 
-                <Button type="submit" className="w-full h-11 mt-1 text-[13px] font-medium" disabled={loading}>
+                <Button type="submit" className="w-full h-11 mt-1 text-[13px] font-medium rounded-full" disabled={loading}>
                   {loading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (

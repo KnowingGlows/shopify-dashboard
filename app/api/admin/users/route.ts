@@ -105,3 +105,36 @@ export async function PATCH(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
+  }
+
+  try {
+    const body = await request.json();
+    const userId = body.userId ?? '';
+
+    if (!userId) {
+      return NextResponse.json({ error: 'userId is required.' }, { status: 400 });
+    }
+
+    // Prevent deleting yourself
+    if (userId === admin.userId) {
+      return NextResponse.json({ error: 'Cannot delete your own account.' }, { status: 400 });
+    }
+
+    if (isFirebaseAvailable()) {
+      const db = getFirestore();
+      if (db) {
+        await db.collection(COLLECTIONS.USERS).doc(userId).delete();
+      }
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('User delete error:', error);
+    return NextResponse.json({ error: 'Failed to delete user.' }, { status: 500 });
+  }
+}
