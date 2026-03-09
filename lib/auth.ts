@@ -2,9 +2,9 @@ import { SignJWT, jwtVerify } from 'jose';
 import { getFirestore, isFirebaseAvailable, COLLECTIONS } from './firebase';
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'vaultik-dev-secret-change-in-production'
+  process.env.JWT_SECRET || 'orbyt-dev-secret-change-in-production'
 );
-export const COOKIE_NAME = 'vaultik-session';
+export const COOKIE_NAME = 'orbyt-session';
 const SESSION_TTL = '7d';
 export const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 

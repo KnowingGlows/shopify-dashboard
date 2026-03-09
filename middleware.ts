@@ -3,9 +3,9 @@ import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
 const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || 'vaultik-dev-secret-change-in-production'
+  process.env.JWT_SECRET || 'orbyt-dev-secret-change-in-production'
 );
-const COOKIE_NAME = 'vaultik-session';
+const COOKIE_NAME = 'orbyt-session';
 
 const publicPaths = [
   '/login',

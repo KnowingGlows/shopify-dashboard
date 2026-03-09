@@ -46,12 +46,12 @@ export default function LoginPage() {
           <div className="flex flex-col items-center gap-4">
             <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-2 border-cyan-400/30 bg-cyan-400/5 shadow-[0_0_30px_rgba(34,211,238,0.15)]">
               <span className="text-3xl font-bold tracking-wider text-cyan-400 select-none">
-                V
+                O
               </span>
             </div>
             <div className="flex flex-col items-center gap-1">
               <h1 className="text-xl font-semibold uppercase tracking-[0.4em] text-foreground">
-                Vaultik
+                Orbyt
               </h1>
               <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
                 Authenticate to continue

@@ -36,7 +36,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
           <Zap className="h-6 w-6" />
         </div>
         <div className="text-center">
-          <h1 className="text-lg font-semibold tracking-wide text-foreground">Vaultik</h1>
+          <h1 className="text-lg font-semibold tracking-wide text-foreground">Orbyt</h1>
           <p className="mt-1 text-[11px] text-muted-foreground">Loading workspace...</p>
         </div>
         <div className="h-[2px] w-32 overflow-hidden rounded-full bg-white/5">
