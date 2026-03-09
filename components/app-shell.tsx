@@ -87,6 +87,15 @@ function NavLink({ item, isActive, onNavigate, index }: { item: NavItem; isActiv
 function SideNavContent({ activePath, onNavigate, showClose }: { activePath: string; onNavigate?: () => void; showClose?: boolean }) {
   const { logout, user } = useAuth();
   const isAdmin = user && ADMIN_ROLES.includes(user.role);
+  const perms = user?.permissions ?? [];
+
+  // Check if user has access to a given path
+  const hasAccess = (href: string): boolean => {
+    if (isAdmin) return true;
+    if (!user) return true; // not logged in yet, show all (page will block)
+    // Exact match or parent match (e.g. perm "/finance" grants access to "/finance/entry")
+    return perms.includes(href) || perms.some((p) => p !== '/' && href.startsWith(p + '/'));
+  };
 
   const sections = [
     { key: 'core', label: null },
@@ -128,6 +137,8 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
           const items = navItems.filter((i) => {
             if (i.section !== section.key) return false;
             if (i.adminOnly && !isAdmin) return false;
+            // Hide pages the user doesn't have permission for
+            if (!hasAccess(i.href)) return false;
             // Hide child items unless parent route is active
             if (i.parent && !activePath.startsWith(i.parent)) return false;
             return true;
