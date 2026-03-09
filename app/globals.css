@@ -326,3 +326,185 @@ select.form-input option {
   background: #111113;
   color: var(--foreground);
 }
+
+/* ── Ambient effects ─────────────────────────────────────────────────────── */
+
+/* Floating orb backgrounds */
+@keyframes orb-float-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(60px, 30px) scale(1.08); }
+  50% { transform: translate(30px, 60px) scale(0.94); }
+  75% { transform: translate(-20px, 30px) scale(1.04); }
+}
+@keyframes orb-float-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(-50px, -25px) scale(1.12); }
+  50% { transform: translate(-25px, -50px) scale(0.96); }
+  75% { transform: translate(15px, -25px) scale(1.08); }
+}
+@keyframes orb-float-3 {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  33% { transform: translate(-55%, -45%) scale(1.15); }
+  66% { transform: translate(-45%, -55%) scale(0.9); }
+}
+
+.ambient-orb {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.7;
+}
+.ambient-orb-1 {
+  width: 350px;
+  height: 350px;
+  background: rgba(167, 139, 250, 0.07);
+  top: -80px;
+  right: -60px;
+  animation: orb-float-1 22s ease-in-out infinite;
+}
+.ambient-orb-2 {
+  width: 280px;
+  height: 280px;
+  background: rgba(16, 185, 129, 0.05);
+  bottom: -40px;
+  left: 10%;
+  animation: orb-float-2 28s ease-in-out infinite;
+}
+.ambient-orb-3 {
+  width: 220px;
+  height: 220px;
+  background: rgba(139, 92, 246, 0.05);
+  top: 40%;
+  left: 50%;
+  animation: orb-float-3 20s ease-in-out infinite;
+}
+
+/* Diagonal shimmer sweep on hover */
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%) rotate(25deg); }
+  100% { transform: translateX(200%) rotate(25deg); }
+}
+
+.card-hover-glow {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.4s ease;
+}
+.card-hover-glow:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(167, 139, 250, 0.08), 0 0 20px rgba(167, 139, 250, 0.04);
+  border-color: rgba(167, 139, 250, 0.15);
+}
+/* Shimmer sweep on hover */
+.card-hover-glow::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    25deg,
+    transparent 40%,
+    rgba(167, 139, 250, 0.03) 45%,
+    rgba(167, 139, 250, 0.06) 50%,
+    rgba(167, 139, 250, 0.03) 55%,
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  z-index: 1;
+}
+.card-hover-glow:hover::after {
+  opacity: 1;
+  animation: shimmer-sweep 1.2s ease-out forwards;
+}
+
+/* Result row with gradient sweep on hover */
+.result-row-glow {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.result-row-glow::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, rgba(167, 139, 250, 0.08), transparent);
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.result-row-glow:hover {
+  background: rgba(255, 255, 255, 0.02);
+  transform: translateX(4px);
+}
+.result-row-glow:hover::before {
+  width: 100%;
+}
+
+/* Stat card continuous shimmer */
+@keyframes stat-shimmer {
+  0% { transform: translateX(-100%) rotate(45deg); }
+  100% { transform: translateX(100%) rotate(45deg); }
+}
+.stat-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.stat-shimmer::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(
+    45deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.02) 45%,
+    rgba(255, 255, 255, 0.04) 50%,
+    rgba(255, 255, 255, 0.02) 55%,
+    transparent 70%
+  );
+  animation: stat-shimmer 5s linear infinite;
+  pointer-events: none;
+}
+
+/* Gradient text animation for big numbers */
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.gradient-text-emerald {
+  background: linear-gradient(135deg, #10b981 0%, #34d399 50%, #10b981 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 3s ease-in-out infinite;
+}
+.gradient-text-primary {
+  background: linear-gradient(135deg, #a78bfa 0%, #c4b5fd 40%, #8b5cf6 70%, #a78bfa 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 3s ease-in-out infinite;
+}
+
+/* Pulsing glow for stat containers */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px var(--glow-color, rgba(167, 139, 250, 0.08)); }
+  50% { box-shadow: 0 0 40px var(--glow-color, rgba(167, 139, 250, 0.16)); }
+}
+.glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}

@@ -287,9 +287,9 @@ export default function InventoryPage() {
           { label: 'Total Value', value: formatINR(totalValue), color: 'text-foreground' },
         ].map((stat) => (
           <StaggerItem key={stat.label}>
-            <motion.div whileHover={{ y: -1 }} className="rounded-lg border border-border bg-card px-3 py-2 transition-shadow hover:shadow-[0_0_15px_rgba(167,139,250,0.04)]">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{stat.label}</p>
-              <p className={`mt-0.5 text-xl font-semibold ${stat.color}`}>{stat.value}</p>
+            <motion.div whileHover={{ y: -1 }} className="card-hover-glow rounded-lg border border-border bg-card px-3 py-2">
+              <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+              <p className={`relative z-10 mt-0.5 text-xl font-semibold ${stat.color}`}>{stat.value}</p>
             </motion.div>
           </StaggerItem>
         ))}

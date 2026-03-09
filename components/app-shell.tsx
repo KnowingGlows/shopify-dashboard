@@ -207,6 +207,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Main */}
         <main className="relative flex-1 overflow-x-hidden">
+          {/* Ambient orbs */}
+          <div className="ambient-orb ambient-orb-1" />
+          <div className="ambient-orb ambient-orb-2" />
+          <div className="ambient-orb ambient-orb-3" />
           {/* Mobile header */}
           <div className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/90 px-4 py-2.5 backdrop-blur md:hidden">
             <button type="button" onClick={() => setNavOpen(true)} className="rounded-md p-1.5 text-foreground" aria-label="Menu">

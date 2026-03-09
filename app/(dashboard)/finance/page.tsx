@@ -186,7 +186,7 @@ export default function FinancePage() {
       </StaggerContainer>
 
       {/* Cost Breakdown */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="rounded-lg border border-border bg-card px-4 py-3">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">30-Day Cost Breakdown</p>
           <p className="text-[11px] text-muted-foreground">
@@ -290,12 +290,12 @@ export default function FinancePage() {
 function MetricCard({ label, value, icon, color, formatter }: { label: string; value: number; icon: React.ReactNode; color: string; formatter?: (v: number) => string }) {
   const format = formatter ?? formatINR;
   return (
-    <motion.div whileHover={{ y: -2 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }} className="rounded-lg border border-border bg-card px-4 py-3 hover:shadow-[0_0_20px_rgba(167,139,250,0.06)] transition-shadow">
-      <div className="flex items-center justify-between">
+    <motion.div whileHover={{ y: -2 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }} className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
+      <div className="relative z-10 flex items-center justify-between">
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
         {icon}
       </div>
-      <p className={`mt-1.5 text-2xl font-semibold ${color}`}><AnimatedNumber value={value} formatter={format} /></p>
+      <p className={`relative z-10 mt-1.5 text-2xl font-semibold ${color}`}><AnimatedNumber value={value} formatter={format} /></p>
     </motion.div>
   );
 }

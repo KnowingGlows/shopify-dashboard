@@ -59,7 +59,7 @@ export default function ProfitCalculatorPage() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="rounded-xl border border-border bg-card overflow-hidden"
+          className="rounded-xl border border-border bg-card overflow-hidden card-hover-glow"
         >
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <Calculator className="h-4 w-4 text-primary" />
@@ -68,7 +68,7 @@ export default function ProfitCalculatorPage() {
               <p className="text-[10px] text-muted-foreground">Calculate true profit & return on investment</p>
             </div>
           </div>
-          <div className="p-4 space-y-4">
+          <div className="relative z-10 p-4 space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <CalcField label="Avg Profit Margin" hint="e.g. 0.6 = 60%">
                 <input type="text" value={margin} onChange={(e) => setMargin(e.target.value)} className="form-input" />
@@ -95,14 +95,13 @@ export default function ProfitCalculatorPage() {
             </div>
 
             {/* Big ROI stat */}
-            <motion.div
-              className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
-              animate={{ boxShadow: ['0 0 20px rgba(16, 185, 129, 0.08)', '0 0 40px rgba(16, 185, 129, 0.15)', '0 0 20px rgba(16, 185, 129, 0.08)'] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+            <div
+              className="stat-shimmer glow-pulse rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
+              style={{ '--glow-color': 'rgba(16, 185, 129, 0.12)' } as React.CSSProperties}
             >
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Return on Investment</p>
-              <p className="text-4xl font-bold text-emerald-400 font-mono">{roi}%</p>
-            </motion.div>
+              <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Return on Investment</p>
+              <p className="relative z-10 text-4xl font-bold font-mono gradient-text-emerald">{roi}%</p>
+            </div>
           </div>
         </motion.div>
 
@@ -111,7 +110,7 @@ export default function ProfitCalculatorPage() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="rounded-xl border border-border bg-card overflow-hidden"
+          className="rounded-xl border border-border bg-card overflow-hidden card-hover-glow"
         >
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <Percent className="h-4 w-4 text-violet-400" />
@@ -120,7 +119,7 @@ export default function ProfitCalculatorPage() {
               <p className="text-[10px] text-muted-foreground">Calculate your product&apos;s profit margin</p>
             </div>
           </div>
-          <div className="p-4 space-y-4">
+          <div className="relative z-10 p-4 space-y-4">
             <CalcField label="Selling Price (incl. shipping)">
               <input type="text" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} className="form-input" />
             </CalcField>
@@ -132,15 +131,14 @@ export default function ProfitCalculatorPage() {
             </CalcField>
 
             {/* Big margin stat */}
-            <motion.div
-              className="rounded-xl border border-primary/20 bg-primary/[0.04] p-8 text-center"
-              animate={{ boxShadow: ['0 0 20px rgba(99, 102, 241, 0.08)', '0 0 40px rgba(99, 102, 241, 0.15)', '0 0 20px rgba(99, 102, 241, 0.08)'] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+            <div
+              className="stat-shimmer glow-pulse rounded-xl border border-primary/20 bg-primary/[0.04] p-8 text-center"
+              style={{ '--glow-color': 'rgba(167, 139, 250, 0.12)' } as React.CSSProperties}
             >
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Your Profit Margin</p>
-              <p className="text-5xl font-bold text-primary font-mono">{finalMargin.toFixed(3)}</p>
-              <p className="text-lg text-muted-foreground mt-1">{(finalMargin * 100).toFixed(1)}%</p>
-            </motion.div>
+              <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Your Profit Margin</p>
+              <p className="relative z-10 text-5xl font-bold font-mono gradient-text-primary">{finalMargin.toFixed(3)}</p>
+              <p className="relative z-10 text-lg text-muted-foreground mt-1">{(finalMargin * 100).toFixed(1)}%</p>
+            </div>
           </div>
         </motion.div>
       </div>
@@ -162,13 +160,13 @@ function CalcField({ label, hint, children }: { label: string; hint?: string; ch
 
 function ResultRow({ label, value, highlight }: { label: string; value: string; highlight?: 'primary' | 'success' }) {
   return (
-    <div className={`flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors ${
+    <div className={`result-row-glow flex items-center justify-between rounded-lg px-3 py-2.5 ${
       highlight === 'primary' ? 'bg-primary/5 border border-primary/15' :
       highlight === 'success' ? 'bg-emerald-500/5 border border-emerald-500/15' :
-      'hover:bg-accent/30'
+      ''
     }`}>
-      <span className="text-[12px] text-muted-foreground">{label}</span>
-      <span className={`text-[13px] font-semibold font-mono ${
+      <span className="relative z-10 text-[12px] text-muted-foreground">{label}</span>
+      <span className={`relative z-10 text-[13px] font-semibold font-mono ${
         highlight === 'primary' ? 'text-primary' :
         highlight === 'success' ? 'text-emerald-400' :
         'text-foreground'
