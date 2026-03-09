@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   Loader2, Plus, Save, ArrowLeft, Calculator, Megaphone,
-  Receipt, PiggyBank,
+  Receipt, PiggyBank, BanknoteIcon,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -37,6 +37,7 @@ export default function FinanceEntryPage() {
   const [dailyDate, setDailyDate] = useState(getYesterday());
   const [dailySales, setDailySales] = useState('');
   const [dailySalesLoading, setDailySalesLoading] = useState(false);
+  const [codSalesByBrand, setCodSalesByBrand] = useState<Record<string, number>>({});
   const [grossMargin, setGrossMargin] = useState('55');
   const [adSpend, setAdSpend] = useState('');
   const [savingDaily, setSavingDaily] = useState(false);
@@ -58,13 +59,14 @@ export default function FinanceEntryPage() {
   const [addingExpense, setAddingExpense] = useState(false);
   const [expenseSaveStatus, setExpenseSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
-  // Auto-fetch yesterday's sales
+  // Auto-fetch yesterday's sales + COD data
   const fetchSales = useCallback(async () => {
     setDailySalesLoading(true);
     try {
       const res = await fetch(`/api/finance?action=fetch-sales&date=${dailyDate}`);
       const data = await res.json();
       if (data.totalSales) setDailySales(String(Math.round(data.totalSales)));
+      if (data.codSalesByBrand) setCodSalesByBrand(data.codSalesByBrand);
     } catch { /* silently fail */ }
     finally { setDailySalesLoading(false); }
   }, [dailyDate]);
@@ -87,6 +89,7 @@ export default function FinanceEntryPage() {
           adSpend: Number(adSpend) || 0,
           roas: 0,
           shippingCost: 0,
+          codSalesByBrand,
           enteredBy: user?.email ?? '',
         }),
       });
@@ -210,6 +213,28 @@ export default function FinanceEntryPage() {
               </div>
             </div>
           </div>
+
+          {/* COD Sales auto-fetched */}
+          {Object.keys(codSalesByBrand).length > 0 && (
+            <div className="flex items-center gap-4 rounded-lg bg-background/50 border border-border/40 px-3 py-2">
+              <div className="flex items-center gap-1.5">
+                <BanknoteIcon className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">COD Orders</span>
+              </div>
+              {Object.entries(codSalesByBrand).map(([brand, amount]) => (
+                <div key={brand} className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-muted-foreground">{brand}:</span>
+                  <span className="text-[12px] font-semibold text-emerald-400 font-mono">{formatINR(amount)}</span>
+                </div>
+              ))}
+              <div className="flex items-center gap-1.5 ml-auto">
+                <span className="text-[11px] text-muted-foreground">Total COD:</span>
+                <span className="text-[12px] font-semibold text-foreground font-mono">
+                  {formatINR(Object.values(codSalesByBrand).reduce((s, v) => s + v, 0))}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Compact live preview */}
           <div className="flex items-center gap-3 rounded-lg bg-background/50 border border-border/40 px-3 py-2 overflow-x-auto">

@@ -3,6 +3,7 @@ import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
 import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchAllStoresOrders } from '@/lib/shopify-api';
 import { aggregateSalesData } from '@/lib/sales-aggregator';
+import { convertToINR } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,9 +15,10 @@ interface FinanceDailyEntry {
   adSpend: number;
   roas: number;
   revenue: number; // from ads: adSpend * roas
-  paymentProcessorFee: number; // 3% of totalSales
+  paymentProcessorFee: number;
   shippingCost: number;
   netProfit: number;
+  codSalesByBrand: Record<string, number>; // { Kairova: 12345, Mavric: 6789 }
   enteredBy: string;
   updatedAt: string;
 }
@@ -56,11 +58,16 @@ function getISTDateRange(startDate: string, endDate: string): string[] {
   return dates;
 }
 
-// Fetch yesterday's sales from Shopify
-async function fetchSalesForDate(dateStr: string): Promise<number> {
+interface SalesForDateResult {
+  totalSales: number;
+  codSalesByBrand: Record<string, number>;
+}
+
+// Fetch yesterday's sales + COD breakdown from Shopify
+async function fetchSalesForDate(dateStr: string): Promise<SalesForDateResult> {
   try {
     const stores = await getShopifyStores();
-    if (stores.length === 0) return 0;
+    if (stores.length === 0) return { totalSales: 0, codSalesByBrand: {} };
 
     const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
     const [year, month, day] = dateStr.split('-').map(Number);
@@ -73,10 +80,24 @@ async function fetchSalesForDate(dateStr: string): Promise<number> {
     });
 
     const metrics = aggregateSalesData(ordersData);
-    return metrics.totalSalesINR;
+
+    // Calculate COD sales per brand (financial_status = 'pending' means COD)
+    const codSalesByBrand: Record<string, number> = {};
+    for (const { storeName, orders } of ordersData) {
+      let codTotal = 0;
+      for (const order of orders) {
+        if (order.financial_status === 'pending' && !order.cancelled_at) {
+          const amount = Number(order.current_total_price ?? order.total_price) || 0;
+          codTotal += convertToINR(amount, order.currency);
+        }
+      }
+      codSalesByBrand[storeName] = Math.round(codTotal);
+    }
+
+    return { totalSales: metrics.totalSalesINR, codSalesByBrand };
   } catch (error) {
     console.error('Error fetching sales for date:', dateStr, error);
-    return 0;
+    return { totalSales: 0, codSalesByBrand: {} };
   }
 }
 
@@ -141,8 +162,8 @@ export async function POST(request: Request) {
 
 async function fetchSalesData(params: URLSearchParams) {
   const date = params.get('date') ?? getISTDate(new Date(Date.now() - 86400000)); // default: yesterday
-  const sales = await fetchSalesForDate(date);
-  return NextResponse.json({ date, totalSales: sales });
+  const { totalSales, codSalesByBrand } = await fetchSalesForDate(date);
+  return NextResponse.json({ date, totalSales, codSalesByBrand });
 }
 
 async function getDailyEntries(params: URLSearchParams) {
@@ -179,6 +200,9 @@ async function saveDailyEntry(body: Record<string, unknown>) {
   const paymentProcessorFee = 0; // processor fees already included in gross margin
   const netProfit = grossProfit - actualAdCost - shippingCost;
 
+  // COD sales per brand (auto-fetched from Shopify)
+  const codSalesByBrand = (body.codSalesByBrand as Record<string, number>) ?? {};
+
   const entry: FinanceDailyEntry = {
     date,
     totalSales,
@@ -190,6 +214,7 @@ async function saveDailyEntry(body: Record<string, unknown>) {
     paymentProcessorFee,
     shippingCost,
     netProfit,
+    codSalesByBrand,
     enteredBy: (body.enteredBy as string) ?? '',
     updatedAt: new Date().toISOString(),
   };
@@ -290,19 +315,20 @@ async function addExpense(body: Record<string, unknown>) {
 async function getCODProjections(params: URLSearchParams) {
   const firestore = db();
   // COD takes 7-8 days to arrive in bank
-  // So for any week window, we look at sales from 7-8 days before that window
   const COD_DELAY_DAYS = 7;
+  const deliveryRate = Number(params.get('deliveryRate')) || 65; // default 65%
 
   const today = getISTDate();
   const startDate = params.get('start') ?? today;
 
-  // Get the next 4 weeks of projections
+  // Get the next 4 rolling weeks from today
   const weeks: Array<{
     weekLabel: string;
     startDate: string;
     endDate: string;
-    projectedAmount: number;
-    salesDates: string[];
+    projectedAmount: number; // after delivery rate
+    codRevenue: number; // raw COD revenue
+    brandBreakdown: Record<string, number>;
   }> = [];
 
   for (let w = 0; w < 4; w++) {
@@ -311,6 +337,7 @@ async function getCODProjections(params: URLSearchParams) {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 6);
 
+    // Look at sales from 7 days before (that's when these COD orders were placed)
     const salesStart = new Date(weekStart);
     salesStart.setDate(salesStart.getDate() - COD_DELAY_DAYS);
     const salesEnd = new Date(weekEnd);
@@ -319,8 +346,8 @@ async function getCODProjections(params: URLSearchParams) {
     const salesStartStr = getISTDate(salesStart);
     const salesEndStr = getISTDate(salesEnd);
 
-    let projectedAmount = 0;
-    const salesDates = getISTDateRange(salesStartStr, salesEndStr);
+    let codRevenue = 0;
+    const brandBreakdown: Record<string, number> = {};
 
     if (firestore) {
       const snapshot = await firestore
@@ -329,22 +356,31 @@ async function getCODProjections(params: URLSearchParams) {
         .where('date', '<=', salesEndStr)
         .get();
 
-      projectedAmount = snapshot.docs.reduce((sum, doc) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      snapshot.docs.forEach((doc: any) => {
         const data = doc.data();
-        return sum + (data.totalSales ?? 0);
-      }, 0);
+        const codByBrand = data.codSalesByBrand ?? {};
+        for (const [brand, amount] of Object.entries(codByBrand)) {
+          const val = Number(amount) || 0;
+          brandBreakdown[brand] = (brandBreakdown[brand] ?? 0) + val;
+          codRevenue += val;
+        }
+      });
     }
+
+    const projectedAmount = Math.round(codRevenue * (deliveryRate / 100));
 
     weeks.push({
       weekLabel: `Week ${w + 1}`,
       startDate: getISTDate(weekStart),
       endDate: getISTDate(weekEnd),
       projectedAmount,
-      salesDates,
+      codRevenue,
+      brandBreakdown,
     });
   }
 
-  return NextResponse.json({ weeks, codDelayDays: COD_DELAY_DAYS });
+  return NextResponse.json({ weeks, codDelayDays: COD_DELAY_DAYS, deliveryRate });
 }
 
 async function getReminders() {

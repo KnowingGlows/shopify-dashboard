@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   RefreshCw, Loader2, DollarSign, TrendingUp, Wallet, Plus,
   AlertTriangle, BanknoteIcon, PiggyBank, BarChart3, Building2,
-  Bell, X, ArrowRight, ClipboardList,
+  Bell, X, Calendar, ArrowRight, Clock,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -19,7 +19,6 @@ interface FinanceDailyEntry {
   grossMargin: number;
   grossProfit: number;
   adSpend: number;
-  paymentProcessorFee: number;
   netProfit: number;
 }
 
@@ -36,6 +35,8 @@ interface CODWeek {
   startDate: string;
   endDate: string;
   projectedAmount: number;
+  codRevenue: number;
+  brandBreakdown: Record<string, number>;
 }
 
 interface Reminder {
@@ -50,9 +51,7 @@ interface FinanceSummary {
   totalGrossProfit: number;
   totalAdSpend: number;
   totalNetProfit: number;
-  totalProcessorFees: number;
   totalExpenses: number;
-  inventoryValue: number;
   dailyBaselineTotal: number;
   monthlyBaselineTotal: number;
   dailyEntries: FinanceDailyEntry[];
@@ -65,27 +64,17 @@ interface FinanceSummary {
 const formatINR = (v: number) =>
   new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
 
-interface BrandCODConfig {
-  codRevenue: number;
-  deliveryRate: number;
-}
-
-const DEFAULT_BRANDS: Record<string, BrandCODConfig> = {
-  Kairova: { codRevenue: 0, deliveryRate: 65 },
-  Mavric: { codRevenue: 0, deliveryRate: 65 },
-};
-
-function loadBrandCOD(): Record<string, BrandCODConfig> {
-  if (typeof window === 'undefined') return DEFAULT_BRANDS;
+function loadDeliveryRate(): number {
+  if (typeof window === 'undefined') return 65;
   try {
-    const stored = localStorage.getItem('orbit-cod-config');
-    if (stored) return JSON.parse(stored);
+    const stored = localStorage.getItem('orbit-cod-delivery-rate');
+    if (stored) return Number(stored) || 65;
   } catch { /* ignore */ }
-  return DEFAULT_BRANDS;
+  return 65;
 }
 
-function saveBrandCOD(config: Record<string, BrandCODConfig>) {
-  try { localStorage.setItem('orbit-cod-config', JSON.stringify(config)); } catch { /* ignore */ }
+function saveDeliveryRate(rate: number) {
+  try { localStorage.setItem('orbit-cod-delivery-rate', String(rate)); } catch { /* ignore */ }
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -93,23 +82,27 @@ function saveBrandCOD(config: Record<string, BrandCODConfig>) {
 export default function FinancePage() {
   const { user } = useAuth();
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
+  const [codWeeks, setCodWeeks] = useState<CODWeek[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [brandCOD, setBrandCOD] = useState<Record<string, BrandCODConfig>>(DEFAULT_BRANDS);
+  const [deliveryRate, setDeliveryRate] = useState(65);
 
-  useEffect(() => { setBrandCOD(loadBrandCOD()); }, []);
+  useEffect(() => { setDeliveryRate(loadDeliveryRate()); }, []);
 
   const fetchAll = useCallback(async () => {
+    const dr = loadDeliveryRate();
     try {
-      const [summaryRes, remindersRes] = await Promise.all([
+      const [summaryRes, codRes, remindersRes] = await Promise.all([
         fetch('/api/finance'),
+        fetch(`/api/finance?action=cod-projections&deliveryRate=${dr}`),
         fetch('/api/finance?action=reminders'),
       ]);
-      const [summaryData, remindersData] = await Promise.all([
-        summaryRes.json(), remindersRes.json(),
+      const [summaryData, codData, remindersData] = await Promise.all([
+        summaryRes.json(), codRes.json(), remindersRes.json(),
       ]);
       setSummary(summaryData);
+      setCodWeeks(codData.weeks ?? []);
       setReminders(remindersData.reminders ?? []);
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
@@ -126,12 +119,9 @@ export default function FinancePage() {
     }).catch(() => {});
   };
 
-  const updateBrandCOD = (brand: string, field: keyof BrandCODConfig, value: number) => {
-    setBrandCOD((prev) => {
-      const next = { ...prev, [brand]: { ...prev[brand], [field]: value } };
-      saveBrandCOD(next);
-      return next;
-    });
+  const handleDeliveryRateChange = (val: number) => {
+    setDeliveryRate(val);
+    saveDeliveryRate(val);
   };
 
   if (loading) {
@@ -147,19 +137,12 @@ export default function FinancePage() {
 
   const d = summary ?? {
     totalSales: 0, totalGrossProfit: 0, totalAdSpend: 0, totalNetProfit: 0,
-    totalProcessorFees: 0, totalExpenses: 0, inventoryValue: 0,
+    totalExpenses: 0,
     dailyBaselineTotal: 0, monthlyBaselineTotal: 0,
     dailyEntries: [], dailyBaselines: [], monthlyBaselines: [],
   };
 
   const actualAdCost = Math.round(d.totalAdSpend * 1.14);
-
-  // COD inflow calculations
-  const brandInflowTotals = Object.entries(brandCOD).map(([brand, cfg]) => {
-    const inflow = Math.round(cfg.codRevenue * (cfg.deliveryRate / 100));
-    return { brand, ...cfg, inflow };
-  });
-  const totalProjectedInflow = brandInflowTotals.reduce((s, b) => s + b.inflow, 0);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -233,83 +216,84 @@ export default function FinancePage() {
         </div>
       </motion.div>
 
-      {/* ═══ COD Cash-In Projections ═══ */}
+      {/* ═══ COD Cash-In Projections (Weekly) ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-        <div className="flex items-center gap-3 mb-3">
-          <span className="text-primary"><BanknoteIcon className="h-4 w-4" /></span>
-          <div>
-            <p className="text-sm font-medium text-foreground">COD Cash-In Projections</p>
-            <p className="text-[11px] text-muted-foreground">Projected money hitting the bank from delivered COD orders</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          {/* Per-brand cards */}
-          {Object.entries(brandCOD).map(([brand, cfg]) => {
-            const inflow = Math.round(cfg.codRevenue * (cfg.deliveryRate / 100));
-            return (
-              <div key={brand} className="card-hover-glow rounded-lg border border-border bg-card p-4">
-                <div className="relative z-10">
-                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3">{brand}</p>
-                  <div className="space-y-3">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">Monthly COD Revenue</label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-muted-foreground">₹</span>
-                        <input
-                          type="number"
-                          value={cfg.codRevenue || ''}
-                          onChange={(e) => updateBrandCOD(brand, 'codRevenue', Number(e.target.value) || 0)}
-                          placeholder="0"
-                          className="form-input pl-7"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">COD Delivery Rate %</label>
-                      <input
-                        type="number"
-                        value={cfg.deliveryRate || ''}
-                        onChange={(e) => updateBrandCOD(brand, 'deliveryRate', Number(e.target.value) || 0)}
-                        placeholder="65"
-                        className="form-input"
-                      />
-                    </div>
-                    <div className="h-px bg-border" />
-                    <div>
-                      <p className="text-[10px] text-muted-foreground mb-0.5">Projected Bank Deposit</p>
-                      <p className="text-xl font-semibold text-emerald-400">{formatINR(inflow)}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Total projected inflow */}
-          <div className="card-hover-glow rounded-lg border border-primary/20 bg-primary/[0.03] p-4 flex flex-col justify-between">
-            <div className="relative z-10">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground mb-3">Total Projected</p>
-              <div className="space-y-2">
-                {brandInflowTotals.map((b) => (
-                  <div key={b.brand} className="flex items-center justify-between">
-                    <span className="text-[12px] text-muted-foreground">{b.brand}</span>
-                    <span className="text-[12px] font-medium text-foreground">{formatINR(b.inflow)}</span>
-                  </div>
-                ))}
-                <div className="h-px bg-border" />
-                <div className="flex items-center justify-between">
-                  <span className="text-[12px] font-medium text-foreground">Total Bank Inflow</span>
-                  <span className="text-lg font-semibold text-emerald-400">{formatINR(totalProjectedInflow)}</span>
-                </div>
-              </div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <span className="text-primary"><BanknoteIcon className="h-4 w-4" /></span>
+            <div>
+              <p className="text-sm font-medium text-foreground">COD Cash-In Projections</p>
+              <p className="text-[11px] text-muted-foreground">When delivered COD money hits the bank (7-day delay)</p>
             </div>
-            <p className="relative z-10 text-[10px] text-muted-foreground/60 mt-3 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" />
-              COD deposits arrive 7-8 days after delivery
-            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] font-medium text-muted-foreground">Delivery %</label>
+            <input
+              type="number"
+              value={deliveryRate}
+              onChange={(e) => handleDeliveryRateChange(Number(e.target.value) || 0)}
+              className="form-input w-16 text-center text-[12px]"
+            />
           </div>
         </div>
+
+        {codWeeks.length === 0 || codWeeks.every((w) => w.codRevenue === 0) ? (
+          <div className="rounded-lg border border-border bg-card px-4 py-8 text-center">
+            <Clock className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
+            <p className="text-[12px] text-muted-foreground">No COD data yet. COD orders are auto-fetched when you enter daily data.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {codWeeks.map((week, i) => (
+              <motion.div
+                key={week.weekLabel}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.08 }}
+                className="card-hover-glow rounded-lg border border-border bg-card p-4 hover:border-primary/30 transition-colors"
+              >
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{week.weekLabel}</p>
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mb-3">{week.startDate} <ArrowRight className="inline h-2.5 w-2.5" /> {week.endDate}</p>
+
+                  {/* Brand breakdown */}
+                  {Object.entries(week.brandBreakdown).length > 0 && (
+                    <div className="space-y-1 mb-2">
+                      {Object.entries(week.brandBreakdown).map(([brand, amount]) => (
+                        <div key={brand} className="flex items-center justify-between">
+                          <span className="text-[10px] text-muted-foreground">{brand}</span>
+                          <span className="text-[11px] font-medium text-foreground font-mono">{formatINR(amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="h-px bg-border mb-2" />
+
+                  <div>
+                    <p className="text-[10px] text-muted-foreground mb-0.5">COD Revenue</p>
+                    <p className="text-[13px] font-medium text-foreground">{formatINR(week.codRevenue)}</p>
+                  </div>
+                  <div className="mt-1.5">
+                    <p className="text-[10px] text-muted-foreground mb-0.5">Projected Bank Deposit ({deliveryRate}%)</p>
+                    <p className="text-xl font-semibold text-emerald-400">
+                      <AnimatedNumber value={week.projectedAmount} formatter={formatINR} />
+                    </p>
+                  </div>
+
+                  {week.codRevenue === 0 && (
+                    <p className="text-[10px] text-muted-foreground/60 mt-2 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" />No COD data for source dates
+                    </p>
+                  )}
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
       </motion.div>
 
       {/* ═══ Operational Baselines ═══ */}
@@ -325,23 +309,6 @@ export default function FinancePage() {
           <BaselineCard title="Daily Baseline" icon={<BarChart3 className="h-3.5 w-3.5 text-blue-400" />} total={d.dailyBaselineTotal} suffix="/day" color="text-blue-400" items={d.dailyBaselines} />
           <BaselineCard title="Monthly Baseline" icon={<Building2 className="h-3.5 w-3.5 text-violet-400" />} total={d.monthlyBaselineTotal} suffix="/mo" color="text-violet-400" items={d.monthlyBaselines} />
         </div>
-      </motion.div>
-
-      {/* Bottom bar - View Daily Entries */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
-        <Link
-          href="/finance/entries"
-          className="group flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3 transition hover:border-primary/30 hover:bg-accent/20"
-        >
-          <div className="flex items-center gap-3">
-            <ClipboardList className="h-4 w-4 text-muted-foreground group-hover:text-primary transition" />
-            <div>
-              <p className="text-[13px] font-medium text-foreground">Daily Entries</p>
-              <p className="text-[11px] text-muted-foreground">{d.dailyEntries.length} entries in the last 30 days</p>
-            </div>
-          </div>
-          <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition" />
-        </Link>
       </motion.div>
     </PageTransition>
   );
