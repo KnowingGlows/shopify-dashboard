@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Box, ClipboardList, DollarSign, Home, LogOut,
-  Menu, Megaphone, Package, Search, Settings, Store, Users, X, Zap,
+  Menu, Megaphone, Package, Search, Settings, Store, Users, X, Globe,
   PenLine, Calculator,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -105,12 +105,9 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
           className="flex items-center gap-2.5"
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <Zap className="h-4 w-4" />
+            <Globe className="h-4 w-4" />
           </div>
-          <div>
-            <p className="text-sm font-semibold text-foreground">Orbit</p>
-            <p className="text-[10px] text-muted-foreground">Management</p>
-          </div>
+          <p className="text-sm font-semibold text-foreground">Orbit</p>
         </motion.div>
         <div className="flex items-center gap-1">
           <PendingUsersNotification />

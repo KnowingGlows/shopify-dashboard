@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
-import { Zap } from 'lucide-react';
+import { Globe } from 'lucide-react';
 
 export function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [phase, setPhase] = useState<'boot' | 'load' | 'fade' | 'done'>('boot');
@@ -45,7 +45,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
           transition={{ duration: 0.8, delay: 0.2 }}
           className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-primary border border-primary/20"
         >
-          <Zap className="h-7 w-7" />
+          <Globe className="h-7 w-7" />
         </motion.div>
 
         {/* Text */}
