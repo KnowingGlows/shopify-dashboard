@@ -345,9 +345,17 @@ export default function InventoryPage() {
                   {savingDispatches ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   Save Dispatches
                 </button>
-                <button onClick={() => { setShowDispatch(false); setDispatchQuantities({}); }} className="rounded-lg px-4 py-2 text-[13px] font-medium text-muted-foreground transition hover:text-foreground">
+                <button onClick={() => { setShowDispatch(false); setDispatchQuantities({}); setDispatchStatus('idle'); }} className="rounded-lg px-4 py-2 text-[13px] font-medium text-muted-foreground transition hover:text-foreground">
                   Cancel
                 </button>
+                <AnimatePresence>
+                  {dispatchStatus === 'saved' && (
+                    <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-emerald-400">Dispatches saved</motion.span>
+                  )}
+                  {dispatchStatus === 'error' && (
+                    <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-red-400">Failed to save - check console</motion.span>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </motion.div>
