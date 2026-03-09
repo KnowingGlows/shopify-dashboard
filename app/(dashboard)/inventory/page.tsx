@@ -68,6 +68,7 @@ export default function InventoryPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dispatchQuantities, setDispatchQuantities] = useState<Record<string, string>>({});
   const [savingDispatches, setSavingDispatches] = useState(false);
+  const [dispatchStatus, setDispatchStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const saveTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Form state
@@ -159,6 +160,7 @@ export default function InventoryPage() {
     if (dispatches.length === 0) return;
 
     setSavingDispatches(true);
+    setDispatchStatus('idle');
     try {
       const res = await fetch('/api/inventory', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -166,10 +168,18 @@ export default function InventoryPage() {
       });
       if (res.ok) {
         setDispatchQuantities({});
-        setShowDispatch(false);
+        setDispatchStatus('saved');
         fetchEntries();
+        setTimeout(() => { setShowDispatch(false); setDispatchStatus('idle'); }, 1500);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        console.error('Dispatch error:', data);
+        setDispatchStatus('error');
       }
-    } catch { /* silently fail */ }
+    } catch (err) {
+      console.error('Dispatch error:', err);
+      setDispatchStatus('error');
+    }
     finally { setSavingDispatches(false); }
   };
 

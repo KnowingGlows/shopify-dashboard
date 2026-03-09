@@ -145,15 +145,16 @@ async function handleDispatch(body: Record<string, unknown>) {
     const data = doc.data()!;
     const newStock = Math.max(0, (data.currentStock ?? 0) - d.quantity);
 
-    // Calculate 7-day rolling avg
+    // Calculate 7-day rolling avg (single-field query to avoid composite index)
     const sevenDaysAgo = getISTDate(new Date(Date.now() - 7 * 86400000));
     const dispatchSnap = await firestore
       .collection(COLLECTIONS.INVENTORY_DISPATCHES)
       .where('inventoryId', '==', d.inventoryId)
-      .where('date', '>=', sevenDaysAgo)
       .get();
 
-    const totalDispatched = dispatchSnap.docs.reduce((sum, doc) => sum + (doc.data().quantity ?? 0), 0);
+    const totalDispatched = dispatchSnap.docs
+      .filter((doc) => (doc.data().date ?? '') >= sevenDaysAgo)
+      .reduce((sum, doc) => sum + (doc.data().quantity ?? 0), 0);
     const dailyAvg = Math.round((totalDispatched / 7) * 10) / 10;
 
     await docRef.update({
