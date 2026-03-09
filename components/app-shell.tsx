@@ -109,7 +109,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
             <OrbytLogo size={18} animate={false} />
           </div>
-          <p className="text-sm font-semibold text-foreground">Orbyt</p>
+          <p className="text-sm font-semibold text-foreground">Orbit</p>
         </motion.div>
         <div className="flex items-center gap-1">
           <PendingUsersNotification />

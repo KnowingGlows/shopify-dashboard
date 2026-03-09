@@ -50,7 +50,7 @@ export default function LoginPage() {
             </div>
             <div className="flex flex-col items-center gap-1">
               <h1 className="text-xl font-semibold tracking-[0.3em] text-white">
-                ORBYT
+                ORBIT
               </h1>
               <p className="text-[11px] tracking-wide text-zinc-400">
                 Sign in to your workspace

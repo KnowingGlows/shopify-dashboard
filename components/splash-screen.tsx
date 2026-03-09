@@ -50,7 +50,7 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
 
         {/* Text */}
         <div className="text-center">
-          <h1 className="text-xl font-semibold tracking-[0.15em] text-foreground">Orbyt</h1>
+          <h1 className="text-xl font-semibold tracking-[0.15em] text-foreground">Orbit</h1>
           <motion.p
             initial={{ opacity: 0 }}
             animate={phase !== 'boot' ? { opacity: 1 } : {}}
@@ -61,15 +61,6 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
           </motion.p>
         </div>
 
-        {/* Progress bar */}
-        <div className="h-[2px] w-36 overflow-hidden rounded-full bg-white/5">
-          <motion.div
-            initial={{ width: '0%' }}
-            animate={phase !== 'boot' ? { width: '100%' } : {}}
-            transition={{ duration: 0.9, ease: 'easeOut' }}
-            className="h-full rounded-full bg-gradient-to-r from-primary/40 via-primary to-primary/40"
-          />
-        </div>
       </motion.div>
     </div>
   );
