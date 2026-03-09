@@ -4,7 +4,8 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth-provider';
 import { Button } from '@/components/ui/button';
-import { Lock, Mail, Loader2, Globe } from 'lucide-react';
+import { Lock, Mail, Loader2 } from 'lucide-react';
+import { OrbytLogo } from '@/components/orbyt-logo';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -45,11 +46,11 @@ export default function LoginPage() {
           {/* Logo */}
           <div className="flex flex-col items-center gap-3">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 shadow-[0_0_30px_rgba(167,139,250,0.2)]">
-              <Globe className="h-8 w-8 text-primary" />
+              <OrbytLogo size={36} animate={true} className="text-primary" />
             </div>
             <div className="flex flex-col items-center gap-1">
               <h1 className="text-xl font-semibold tracking-[0.3em] text-white">
-                ORBIT
+                ORBYT
               </h1>
               <p className="text-[11px] tracking-wide text-zinc-400">
                 Sign in to your workspace

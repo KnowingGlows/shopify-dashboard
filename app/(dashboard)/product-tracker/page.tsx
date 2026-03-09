@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trash2, ExternalLink, Loader2, Check, AlertCircle,
-  Plus, X, Package, ChevronDown,
+  Plus, X, Package, ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { ProductTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
@@ -155,6 +155,13 @@ export default function ProductTrackerPage() {
   const droppedCount = entries.filter((e) => e.productStage === 'Dropped').length;
   const hitRate = droppedCount === 0 && winnersCount === 0 ? 0 : droppedCount === 0 ? 100 : Math.round((winnersCount / (winnersCount + droppedCount)) * 100);
 
+  // Pagination
+  const ITEMS_PER_PAGE = 10;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(entries.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const paginatedEntries = entries.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
+
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
       {/* Header */}
@@ -298,7 +305,7 @@ export default function ProductTrackerPage() {
         </motion.div>
       ) : (
         <StaggerContainer className="space-y-2">
-          {entries.map((entry) => {
+          {paginatedEntries.map((entry) => {
             const cfg = STAGE_CONFIG[entry.productStage] ?? { color: 'text-muted-foreground', bg: 'bg-border/30 border-border', dot: 'bg-muted-foreground' };
             const isEditing = editingId === entry.id;
 
@@ -432,6 +439,28 @@ export default function ProductTrackerPage() {
             );
           })}
         </StaggerContainer>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] text-muted-foreground">
+            Showing {(safePage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(safePage * ITEMS_PER_PAGE, entries.length)} of {entries.length}
+          </p>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition disabled:opacity-30">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <button key={p} onClick={() => setPage(p)} className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition ${p === safePage ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/30'}`}>
+                {p}
+              </button>
+            ))}
+            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition disabled:opacity-30">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       )}
 
       <p className="text-[11px] text-muted-foreground">

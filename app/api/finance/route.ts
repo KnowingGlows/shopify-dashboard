@@ -158,6 +158,26 @@ export async function POST(request: Request) {
   }
 }
 
+// ── DELETE /api/finance ──────────────────────────────────────────────────────
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json();
+    const { date } = body;
+    if (!date) return NextResponse.json({ error: 'Date is required.' }, { status: 400 });
+
+    const firestore = db();
+    if (!firestore) return NextResponse.json({ success: true });
+
+    const docId = `daily_${date}`;
+    await firestore.collection(COLLECTIONS.FINANCE_DAILY).doc(docId).delete();
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Finance DELETE error:', error);
+    return NextResponse.json({ error: 'Failed to delete entry.' }, { status: 500 });
+  }
+}
+
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
 async function fetchSalesData(params: URLSearchParams) {
@@ -312,22 +332,34 @@ async function addExpense(body: Record<string, unknown>) {
   return NextResponse.json({ success: true, expense });
 }
 
+function getWeekLabel(date: Date): string {
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const dayOfMonth = date.getDate();
+  const weekOfMonth = Math.ceil(dayOfMonth / 7);
+  return `Week ${weekOfMonth}, ${monthNames[date.getMonth()]}`;
+}
+
 async function getCODProjections(params: URLSearchParams) {
   const firestore = db();
-  // COD takes 7-8 days to arrive in bank
   const COD_DELAY_DAYS = 7;
-  const deliveryRate = Number(params.get('deliveryRate')) || 65; // default 65%
+
+  // Per-brand delivery rates as JSON: { "Kairova": 65, "Mavric": 70 }
+  let brandRates: Record<string, number> = {};
+  try {
+    const ratesParam = params.get('deliveryRates');
+    if (ratesParam) brandRates = JSON.parse(ratesParam);
+  } catch { /* ignore */ }
+  const defaultRate = Number(params.get('deliveryRate')) || 65;
 
   const today = getISTDate();
   const startDate = params.get('start') ?? today;
 
-  // Get the next 4 rolling weeks from today
   const weeks: Array<{
     weekLabel: string;
     startDate: string;
     endDate: string;
-    projectedAmount: number; // after delivery rate
-    codRevenue: number; // raw COD revenue
+    projectedAmount: number;
+    codRevenue: number;
     brandBreakdown: Record<string, number>;
   }> = [];
 
@@ -337,7 +369,6 @@ async function getCODProjections(params: URLSearchParams) {
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 6);
 
-    // Look at sales from 7 days before (that's when these COD orders were placed)
     const salesStart = new Date(weekStart);
     salesStart.setDate(salesStart.getDate() - COD_DELAY_DAYS);
     const salesEnd = new Date(weekEnd);
@@ -368,10 +399,15 @@ async function getCODProjections(params: URLSearchParams) {
       });
     }
 
-    const projectedAmount = Math.round(codRevenue * (deliveryRate / 100));
+    // Apply per-brand delivery rates
+    let projectedAmount = 0;
+    for (const [brand, amount] of Object.entries(brandBreakdown)) {
+      const rate = brandRates[brand] ?? defaultRate;
+      projectedAmount += Math.round(amount * (rate / 100));
+    }
 
     weeks.push({
-      weekLabel: `Week ${w + 1}`,
+      weekLabel: getWeekLabel(weekStart),
       startDate: getISTDate(weekStart),
       endDate: getISTDate(weekEnd),
       projectedAmount,
@@ -380,7 +416,7 @@ async function getCODProjections(params: URLSearchParams) {
     });
   }
 
-  return NextResponse.json({ weeks, codDelayDays: COD_DELAY_DAYS, deliveryRate });
+  return NextResponse.json({ weeks, codDelayDays: COD_DELAY_DAYS });
 }
 
 async function getReminders() {

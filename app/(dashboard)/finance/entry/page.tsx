@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   Loader2, Plus, Save, ArrowLeft, Calculator, Megaphone,
-  Receipt, PiggyBank, BanknoteIcon,
+  Receipt, PiggyBank, BanknoteIcon, Truck,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -23,9 +23,23 @@ function getToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
+function loadDeliveryRates(): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const stored = localStorage.getItem('orbyt-cod-delivery-rates');
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveDeliveryRates(rates: Record<string, number>) {
+  try { localStorage.setItem('orbyt-cod-delivery-rates', JSON.stringify(rates)); } catch { /* ignore */ }
+}
+
 const DAILY_BASELINE_CATEGORIES = ['Ad Spend', 'Payment Processing (3%)', 'Returns/RTO', 'Other Daily'];
 const MONTHLY_BASELINE_CATEGORIES = ['Inventory', 'Salaries', 'Subscriptions & Tools', 'Rent/Office', 'Other Monthly'];
 const EXPENSE_CATEGORIES = ['Operations', 'Marketing', 'Shipping', 'Returns', 'Tools/Software', 'Other'];
+const KNOWN_BRANDS = ['Kairova', 'Mavric'];
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
@@ -43,6 +57,9 @@ export default function FinanceEntryPage() {
   const [savingDaily, setSavingDaily] = useState(false);
   const [dailySaveStatus, setDailySaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
+  // Per-brand delivery rates
+  const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
+
   // Baselines
   const [baselineType, setBaselineType] = useState<'daily' | 'monthly'>('daily');
   const [baselineCategory, setBaselineCategory] = useState(DAILY_BASELINE_CATEGORIES[0]);
@@ -59,6 +76,16 @@ export default function FinanceEntryPage() {
   const [addingExpense, setAddingExpense] = useState(false);
   const [expenseSaveStatus, setExpenseSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
+  // Load saved delivery rates
+  useEffect(() => {
+    const saved = loadDeliveryRates();
+    const rates: Record<string, number> = {};
+    for (const brand of KNOWN_BRANDS) {
+      rates[brand] = saved[brand] ?? 65;
+    }
+    setDeliveryRates(rates);
+  }, []);
+
   // Auto-fetch yesterday's sales + COD data
   const fetchSales = useCallback(async () => {
     setDailySalesLoading(true);
@@ -72,6 +99,12 @@ export default function FinanceEntryPage() {
   }, [dailyDate]);
 
   useEffect(() => { if (dailyDate) fetchSales(); }, [dailyDate, fetchSales]);
+
+  const handleDeliveryRateChange = (brand: string, value: number) => {
+    const updated = { ...deliveryRates, [brand]: value };
+    setDeliveryRates(updated);
+    saveDeliveryRates(updated);
+  };
 
   // Handlers
   const handleSaveDaily = async () => {
@@ -167,6 +200,9 @@ export default function FinanceEntryPage() {
   const calcActualAdCost = Math.round(calcAdSpend * 1.14);
   const calcNetProfit = calcGrossProfit - calcActualAdCost;
 
+  const totalCOD = Object.values(codSalesByBrand).reduce((s, v) => s + v, 0);
+  const allBrands = [...new Set([...KNOWN_BRANDS, ...Object.keys(codSalesByBrand)])];
+
   return (
     <PageTransition className="mx-auto max-w-6xl p-5 space-y-5">
       {/* Header */}
@@ -230,7 +266,7 @@ export default function FinanceEntryPage() {
               <div className="flex items-center gap-1.5 ml-auto">
                 <span className="text-[11px] text-muted-foreground">Total COD:</span>
                 <span className="text-[12px] font-semibold text-foreground font-mono">
-                  {formatINR(Object.values(codSalesByBrand).reduce((s, v) => s + v, 0))}
+                  {formatINR(totalCOD)}
                 </span>
               </div>
             </div>
@@ -251,6 +287,57 @@ export default function FinanceEntryPage() {
               Save Entry
             </button>
             <StatusBadge status={dailySaveStatus} />
+          </div>
+        </div>
+      </motion.div>
+
+      {/* ═══ COD Delivery % (Per Brand) ═══ */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-transparent overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-500/15">
+          <Truck className="h-4 w-4 text-emerald-400" />
+          <h2 className="text-sm font-semibold text-foreground">COD Delivery %</h2>
+          <span className="text-[10px] text-emerald-400/70 ml-auto">Used for bank deposit projections</span>
+        </div>
+        <div className="p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {allBrands.map((brand) => {
+              const rate = deliveryRates[brand] ?? 65;
+              const codAmount = codSalesByBrand[brand] ?? 0;
+              const projected = Math.round(codAmount * (rate / 100));
+              return (
+                <div key={brand} className="rounded-lg border border-border/60 bg-card p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[13px] font-semibold text-foreground">{brand}</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={rate}
+                        onChange={(e) => handleDeliveryRateChange(brand, Number(e.target.value) || 0)}
+                        className="form-input w-16 text-center text-[13px] font-semibold"
+                        min={0}
+                        max={100}
+                      />
+                      <span className="text-[12px] text-muted-foreground font-medium">%</span>
+                    </div>
+                  </div>
+                  {codAmount > 0 && (
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-muted-foreground">Today&apos;s COD: {formatINR(codAmount)}</span>
+                      <span className="text-emerald-400 font-medium">Projected: {formatINR(projected)}</span>
+                    </div>
+                  )}
+                  {/* Rate slider visual */}
+                  <div className="mt-2.5 h-1.5 rounded-full bg-border/50 overflow-hidden">
+                    <motion.div
+                      className="h-full rounded-full bg-emerald-400"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(rate, 100)}%` }}
+                      transition={{ duration: 0.5, ease: 'easeOut' }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </motion.div>

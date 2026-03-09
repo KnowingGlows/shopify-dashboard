@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
-import { Globe } from 'lucide-react';
+import { OrbytLogo } from '@/components/orbyt-logo';
 
 export function SplashScreen({ onComplete }: { onComplete: () => void }) {
   const [phase, setPhase] = useState<'boot' | 'load' | 'fade' | 'done'>('boot');
@@ -45,12 +45,12 @@ export function SplashScreen({ onComplete }: { onComplete: () => void }) {
           transition={{ duration: 0.8, delay: 0.2 }}
           className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/15 text-primary border border-primary/20"
         >
-          <Globe className="h-7 w-7" />
+          <OrbytLogo size={32} animate={true} />
         </motion.div>
 
         {/* Text */}
         <div className="text-center">
-          <h1 className="text-xl font-semibold tracking-[0.15em] text-foreground">Orbit</h1>
+          <h1 className="text-xl font-semibold tracking-[0.15em] text-foreground">Orbyt</h1>
           <motion.p
             initial={{ opacity: 0 }}
             animate={phase !== 'boot' ? { opacity: 1 } : {}}
