@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-Commerce Profit Calculator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0f;
+      --bg-secondary: #12121a;
+      --bg-tertiary: #1a1a25;
+      --bg-card: linear-gradient(145deg, #14141e 0%, #0d0d14 100%);
+      --border-color: rgba(255, 255, 255, 0.06);
+      --border-glow: rgba(99, 102, 241, 0.3);
+      --text-primary: #f0f0f5;
+      --text-secondary: #8888a0;
+      --text-muted: #55556a;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.4);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.3);
+      --warning: #f59e0b;
+      --gradient-accent: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+      --gradient-success: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 40% at 100% 50%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 40% at 0% 80%, rgba(16, 185, 129, 0.06) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .noise-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+      opacity: 0.03;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Floating orbs */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .orb-1 {
+      width: 400px;
+      height: 400px;
+      background: rgba(99, 102, 241, 0.15);
+      top: -100px;
+      left: -100px;
+      animation: float1 20s ease-in-out infinite;
+    }
+
+    .orb-2 {
+      width: 300px;
+      height: 300px;
+      background: rgba(16, 185, 129, 0.12);
+      bottom: -50px;
+      right: -50px;
+      animation: float2 25s ease-in-out infinite;
+    }
+
+    .orb-3 {
+      width: 250px;
+      height: 250px;
+      background: rgba(139, 92, 246, 0.1);
+      top: 50%;
+      left: 50%;
+      animation: float3 18s ease-in-out infinite;
+    }
+
+    @keyframes float1 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      25% { transform: translate(100px, 50px) scale(1.1); }
+      50% { transform: translate(50px, 100px) scale(0.9); }
+      75% { transform: translate(-30px, 50px) scale(1.05); }
+    }
+
+    @keyframes float2 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      25% { transform: translate(-80px, -40px) scale(1.15); }
+      50% { transform: translate(-40px, -80px) scale(0.95); }
+      75% { transform: translate(20px, -40px) scale(1.1); }
+    }
+
+    @keyframes float3 {
+      0%, 100% { transform: translate(-50%, -50%) scale(1); }
+      33% { transform: translate(-60%, -40%) scale(1.2); }
+      66% { transform: translate(-40%, -60%) scale(0.85); }
+    }
+
+    /* Particle effect */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: rgba(99, 102, 241, 0.6);
+      border-radius: 50%;
+      animation: rise 10s infinite;
+      opacity: 0;
+    }
+
+    .particle:nth-child(1) { left: 10%; animation-delay: 0s; animation-duration: 12s; }
+    .particle:nth-child(2) { left: 20%; animation-delay: 2s; animation-duration: 10s; }
+    .particle:nth-child(3) { left: 30%; animation-delay: 4s; animation-duration: 14s; }
+    .particle:nth-child(4) { left: 40%; animation-delay: 1s; animation-duration: 11s; }
+    .particle:nth-child(5) { left: 50%; animation-delay: 3s; animation-duration: 13s; }
+    .particle:nth-child(6) { left: 60%; animation-delay: 5s; animation-duration: 9s; }
+    .particle:nth-child(7) { left: 70%; animation-delay: 0.5s; animation-duration: 15s; }
+    .particle:nth-child(8) { left: 80%; animation-delay: 2.5s; animation-duration: 10s; }
+    .particle:nth-child(9) { left: 90%; animation-delay: 4.5s; animation-duration: 12s; }
+    .particle:nth-child(10) { left: 15%; animation-delay: 1.5s; animation-duration: 11s; }
+    .particle:nth-child(11) { left: 25%; animation-delay: 3.5s; animation-duration: 13s; }
+    .particle:nth-child(12) { left: 75%; animation-delay: 0.8s; animation-duration: 14s; }
+
+    @keyframes rise {
+      0% {
+        bottom: -10px;
+        opacity: 0;
+        transform: scale(0.5);
+      }
+      10% {
+        opacity: 1;
+      }
+      90% {
+        opacity: 1;
+      }
+      100% {
+        bottom: 100%;
+        opacity: 0;
+        transform: scale(1.2);
+      }
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 60px 24px;
+      position: relative;
+      z-index: 2;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 60px;
+      animation: fadeInDown 0.8s ease-out;
+    }
+
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      animation: fadeInDown 0.8s ease-out, badgeGlow 4s ease-in-out infinite;
+    }
+
+    @keyframes badgeGlow {
+      0%, 100% { box-shadow: 0 0 10px rgba(99, 102, 241, 0.1); }
+      50% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.2); }
+    }
+
+    .badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--accent-glow);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    h1 {
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #fff 0%, #a0a0b0 25%, #fff 50%, #a0a0b0 75%, #fff 100%);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: titleShimmer 5s ease-in-out infinite;
+    }
+
+    @keyframes titleShimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      font-weight: 400;
+      max-width: 500px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    .calculators-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .calculators-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 32px;
+      position: relative;
+      overflow: hidden;
+      animation: fadeInUp 0.8s ease-out;
+      animation-fill-mode: both;
+      backdrop-filter: blur(10px);
+      transition: transform 0.4s ease, box-shadow 0.4s ease, border-color 0.4s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 20px 60px rgba(99, 102, 241, 0.15), 0 0 40px rgba(99, 102, 241, 0.05);
+      border-color: rgba(99, 102, 241, 0.2);
+    }
+
+    .card:nth-child(1) { animation-delay: 0.1s; }
+    .card:nth-child(2) { animation-delay: 0.2s; }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    }
+
+    .card-header {
+      margin-bottom: 32px;
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-title .icon {
+      width: 32px;
+      height: 32px;
+      background: var(--gradient-accent);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      transition: transform 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    .card:hover .card-title .icon {
+      transform: rotate(10deg) scale(1.1);
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+    }
+
+    .card-description {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    .input-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .input-label span {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .input-label .value-display {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .text-input-group {
+      margin-bottom: 20px;
+    }
+
+    .text-input-group label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+
+    .text-input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-family: 'Space Mono', monospace;
+      font-size: 1rem;
+      outline: none;
+      transition: all 0.3s ease;
+    }
+
+    .text-input:hover {
+      border-color: rgba(99, 102, 241, 0.3);
+      background: rgba(26, 26, 37, 0.8);
+    }
+
+    .text-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow), 0 0 20px rgba(99, 102, 241, 0.2);
+      background: rgba(26, 26, 37, 0.9);
+    }
+
+    .text-input::placeholder {
+      color: var(--text-muted);
+    }
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-color), transparent);
+      margin: 28px 0;
+    }
+
+    .results-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 12px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .result-row::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, rgba(99, 102, 241, 0.1), transparent);
+      transition: width 0.4s ease;
+    }
+
+    .result-row:hover {
+      background: rgba(255, 255, 255, 0.04);
+      transform: translateX(5px);
+    }
+
+    .result-row:hover::before {
+      width: 100%;
+    }
+
+    .result-label {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    .result-value {
+      font-family: 'Space Mono', monospace;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .result-highlight {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    .result-highlight .result-value {
+      color: var(--accent);
+    }
+
+    .result-success {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(52, 211, 153, 0.1) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .result-success .result-value {
+      color: var(--success);
+    }
+
+    .big-stat {
+      text-align: center;
+      padding: 32px;
+      background: linear-gradient(145deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.02) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.15);
+      border-radius: 20px;
+      margin-top: 8px;
+      position: relative;
+      overflow: hidden;
+      animation: statGlow 3s ease-in-out infinite;
+    }
+
+    @keyframes statGlow {
+      0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.1); }
+      50% { box-shadow: 0 0 40px rgba(16, 185, 129, 0.2); }
+    }
+
+    .big-stat::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, transparent, rgba(16, 185, 129, 0.05), transparent);
+      animation: shimmer 4s linear infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%) rotate(45deg); }
+      100% { transform: translateX(100%) rotate(45deg); }
+    }
+
+    .big-stat-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .big-stat-value {
+      font-family: 'Space Mono', monospace;
+      font-size: 3rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #10b981 0%, #34d399 50%, #10b981 100%);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+      animation: gradientShift 3s ease-in-out infinite;
+      position: relative;
+    }
+
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    /* Margin Calculator Specific */
+    .margin-inputs {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .margin-result {
+      text-align: center;
+      padding: 40px;
+      background: linear-gradient(145deg, rgba(99, 102, 241, 0.1) 0%, rgba(99, 102, 241, 0.02) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.15);
+      border-radius: 20px;
+      position: relative;
+      overflow: hidden;
+      animation: marginGlow 3s ease-in-out infinite;
+    }
+
+    @keyframes marginGlow {
+      0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.1); }
+      50% { box-shadow: 0 0 40px rgba(99, 102, 241, 0.2); }
+    }
+
+    .margin-result::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(45deg, transparent, rgba(99, 102, 241, 0.05), transparent);
+      animation: shimmer 4s linear infinite;
+    }
+
+    .margin-result-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .margin-result-value {
+      font-family: 'Space Mono', monospace;
+      font-size: 4rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #6366f1 100%);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+      animation: gradientShift 3s ease-in-out infinite;
+      position: relative;
+    }
+
+    .margin-result-percent {
+      font-size: 1.5rem;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 60px;
+      padding-top: 40px;
+      border-top: 1px solid var(--border-color);
+      animation: fadeInUp 0.8s ease-out 0.4s both;
+    }
+
+    footer p {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Tooltip styles */
+    .tooltip {
+      position: relative;
+      cursor: help;
+    }
+
+    .tooltip::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 12px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      z-index: 100;
+    }
+
+    .tooltip:hover::after {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-5px);
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 600px) {
+      .container {
+        padding: 40px 16px;
+      }
+
+      .card {
+        padding: 24px;
+      }
+
+      .input-row {
+        grid-template-columns: 1fr;
+      }
+
+      .big-stat-value {
+        font-size: 2.5rem;
+      }
+
+      .margin-result-value {
+        font-size: 3rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <div class="noise-overlay"></div>
+  
+  <div class="container">
+    <header>
+      <div class="badge">Profit Calculator</div>
+      <h1>E-Commerce Results Calculator</h1>
+      <p class="subtitle">Enter your marketing metrics below to calculate the real ROI from paid advertising</p>
+    </header>
+
+    <div class="calculators-grid">
+      <!-- Main ROI Calculator -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <span class="icon">📊</span>
+            ROI Calculator
+          </h2>
+          <p class="card-description">Calculate your true profit and return on investment</p>
+        </div>
+
+        <div class="input-row">
+          <div class="text-input-group">
+            <label class="tooltip" data-tooltip="Your gross profit margin as a decimal (e.g. 0.6 = 60%)">Avg Profit Margin</label>
+            <input type="text" class="text-input" id="margin" value="0.6" placeholder="0.6">
+          </div>
+          <div class="text-input-group">
+            <label class="tooltip" data-tooltip="Advertising budget">Ad Spend</label>
+            <input type="text" class="text-input" id="adSpend" value="20000" placeholder="$20,000">
+          </div>
+        </div>
+
+        <div class="input-row">
+          <div class="text-input-group">
+            <label class="tooltip" data-tooltip="Return on ad spend multiplier">ROAS Multiplier</label>
+            <input type="text" class="text-input" id="roas" value="6" placeholder="6x">
+          </div>
+          <div class="text-input-group">
+            <label class="tooltip" data-tooltip="Number of days for calculation period">Number of Days</label>
+            <input type="text" class="text-input" id="numDays" value="30" placeholder="30">
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="results-section">
+          <div class="result-row">
+            <span class="result-label">Breakeven ROAS</span>
+            <span class="result-value" id="breakevenRoas">1.67x</span>
+          </div>
+          <div class="result-row">
+            <span class="result-label">Revenue from Ad Spend</span>
+            <span class="result-value" id="revenue">$120,000</span>
+          </div>
+          <div class="result-row">
+            <span class="result-label">Profit After Margin</span>
+            <span class="result-value" id="profitMargin">$72,000</span>
+          </div>
+          <div class="result-row result-highlight">
+            <span class="result-label">Profit After Ad Spend</span>
+            <span class="result-value" id="profitAdSpend">$52,000</span>
+          </div>
+          <div class="result-row result-success">
+            <span class="result-label">True Profit <span id="periodLabel">(30 days)</span></span>
+            <span class="result-value" id="trueProfit">$52,000</span>
+          </div>
+        </div>
+
+        <div class="big-stat">
+          <div class="big-stat-label">Return on Investment</div>
+          <div class="big-stat-value" id="roi">2240%</div>
+        </div>
+      </div>
+
+      <!-- Margin Calculator -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">
+            <span class="icon">💰</span>
+            Margin Calculator
+          </h2>
+          <p class="card-description">Calculate your product's profit margin</p>
+        </div>
+
+        <div class="margin-inputs">
+          <div class="text-input-group">
+            <label>Selling Price (incl. shipping)</label>
+            <input type="text" class="text-input" id="sellingPrice" value="100" placeholder="$100">
+          </div>
+          <div class="text-input-group">
+            <label>Cost of Product (incl. shipping)</label>
+            <input type="text" class="text-input" id="costPrice" value="35" placeholder="$35">
+          </div>
+          <div class="text-input-group">
+            <label class="tooltip" data-tooltip="Successful delivery rate - multiplied to margin">Delivery Rate %</label>
+            <input type="text" class="text-input" id="deliveryRate" value="95" placeholder="95%">
+          </div>
+        </div>
+
+        <div class="margin-result">
+          <div class="margin-result-label">Your Profit Margin</div>
+          <div class="margin-result-value" id="marginResult">0.65</div>
+          <div class="margin-result-percent" id="marginPercent">65%</div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <p>Calculate your real ROI from paid advertising campaigns</p>
+    </footer>
+  </div>
+
+  <script>
+    // Format number as currency
+    const formatCurrency = (num) => {
+      return '$' + Math.round(num).toLocaleString('en-US');
+    };
+
+    // Parse input value (remove non-numeric characters)
+    const parseInput = (value) => {
+      return parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
+    };
+
+    // Main ROI Calculator
+    const calculateROI = () => {
+      const margin = parseInput(document.getElementById('margin').value);
+      const adSpend = parseInput(document.getElementById('adSpend').value);
+      const roas = parseInput(document.getElementById('roas').value);
+      const numDays = parseInput(document.getElementById('numDays').value) || 30;
+
+      // Calculations
+      const breakevenRoas = margin > 0 ? (1 / margin).toFixed(2) : '0.00';
+      const revenue = adSpend * roas;
+      const profitMargin = revenue * margin;
+      const profitAdSpend = profitMargin - adSpend;
+      const trueProfit = profitAdSpend;
+      const roi = adSpend > 0 ? ((trueProfit / adSpend) * 100).toFixed(0) : '0';
+
+      // Update display
+      document.getElementById('breakevenRoas').textContent = breakevenRoas + 'x';
+      document.getElementById('revenue').textContent = formatCurrency(revenue);
+      document.getElementById('profitMargin').textContent = formatCurrency(profitMargin);
+      document.getElementById('profitAdSpend').textContent = formatCurrency(profitAdSpend);
+      document.getElementById('trueProfit').textContent = formatCurrency(trueProfit);
+      document.getElementById('roi').textContent = roi + '%';
+      document.getElementById('periodLabel').textContent = '(' + numDays + ' days)';
+    };
+
+    // Margin Calculator
+    const calculateMargin = () => {
+      const sellingPrice = parseInput(document.getElementById('sellingPrice').value);
+      const costPrice = parseInput(document.getElementById('costPrice').value);
+      const deliveryRate = parseInput(document.getElementById('deliveryRate').value) / 100;
+
+      if (sellingPrice > 0) {
+        // Calculate base margin
+        const baseMargin = (sellingPrice - costPrice) / sellingPrice;
+        
+        // Final margin is multiplied by delivery rate
+        const finalMargin = baseMargin * deliveryRate;
+        
+        document.getElementById('marginResult').textContent = finalMargin.toFixed(3);
+        document.getElementById('marginPercent').textContent = (finalMargin * 100).toFixed(1) + '%';
+      }
+    };
+
+    // Event listeners for ROI calculator
+    document.getElementById('margin').addEventListener('input', calculateROI);
+    document.getElementById('adSpend').addEventListener('input', calculateROI);
+    document.getElementById('roas').addEventListener('input', calculateROI);
+    document.getElementById('numDays').addEventListener('input', calculateROI);
+
+    // Event listeners for Margin calculator
+    document.getElementById('sellingPrice').addEventListener('input', calculateMargin);
+    document.getElementById('costPrice').addEventListener('input', calculateMargin);
+    document.getElementById('deliveryRate').addEventListener('input', calculateMargin);
+
+    // Initial calculations
+    calculateROI();
+    calculateMargin();
+  </script>
+</body>
+</html>

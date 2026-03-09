@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Box, ClipboardList, DollarSign, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Store, Users, X, Zap,
+  PenLine, Calculator,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -20,12 +21,15 @@ type NavItem = {
   icon: typeof Home;
   adminOnly?: boolean;
   section?: string;
+  parent?: string; // href of parent item (renders indented)
 };
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: Home, section: 'core' },
   { href: '/brands', label: 'Brands', icon: Store, section: 'core' },
   { href: '/finance', label: 'Finance', icon: DollarSign, section: 'core' },
+  { href: '/finance/entry', label: 'Enter Data', icon: PenLine, section: 'core', parent: '/finance' },
+  { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'core', parent: '/finance' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'ops' },
   { href: '/ads-tracker', label: 'Ads', icon: Megaphone, section: 'ops' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'ops' },
@@ -39,6 +43,7 @@ const ADMIN_ROLES = ['admin', 'ceo'];
 
 function NavLink({ item, isActive, onNavigate, index }: { item: NavItem; isActive: boolean; onNavigate?: () => void; index: number }) {
   const Icon = item.icon;
+  const isChild = !!item.parent;
   return (
     <motion.div
       initial={{ opacity: 0, x: -12 }}
@@ -49,7 +54,8 @@ function NavLink({ item, isActive, onNavigate, index }: { item: NavItem; isActiv
         href={item.href}
         onClick={onNavigate}
         className={cn(
-          'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200',
+          'group relative flex items-center gap-3 rounded-lg py-2 text-[13px] font-medium transition-all duration-200',
+          isChild ? 'pl-9 pr-3 text-[12px]' : 'px-3',
           isActive
             ? 'bg-primary/10 text-primary'
             : 'text-muted-foreground hover:bg-white/[0.04] hover:text-foreground'
@@ -62,7 +68,7 @@ function NavLink({ item, isActive, onNavigate, index }: { item: NavItem; isActiv
             transition={{ type: 'spring', stiffness: 350, damping: 30 }}
           />
         )}
-        <Icon className={cn('relative z-10 h-4 w-4 shrink-0 transition-colors', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+        <Icon className={cn('relative z-10 shrink-0 transition-colors', isChild ? 'h-3.5 w-3.5' : 'h-4 w-4', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
         <span className="relative z-10 truncate">{item.label}</span>
         {isActive && (
           <motion.span
@@ -119,7 +125,13 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
       {/* Nav */}
       <nav className="mt-4 flex-1 space-y-4 overflow-y-auto px-2">
         {sections.map((section) => {
-          const items = navItems.filter((i) => i.section === section.key && (!i.adminOnly || isAdmin));
+          const items = navItems.filter((i) => {
+            if (i.section !== section.key) return false;
+            if (i.adminOnly && !isAdmin) return false;
+            // Hide child items unless parent route is active
+            if (i.parent && !activePath.startsWith(i.parent)) return false;
+            return true;
+          });
           if (items.length === 0) return null;
           return (
             <div key={section.key}>
@@ -170,7 +182,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
   const activeItem = useMemo(
-    () => navItems.find((item) => item.href === pathname) ?? navItems[0],
+    () => navItems.find((item) => item.href === pathname) ?? navItems.find((item) => !item.parent && pathname.startsWith(item.href + '/')) ?? navItems[0],
     [pathname]
   );
 

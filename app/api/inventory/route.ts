@@ -152,10 +152,12 @@ async function handleDispatch(body: Record<string, unknown>) {
       .where('inventoryId', '==', d.inventoryId)
       .get();
 
-    const totalDispatched = dispatchSnap.docs
-      .filter((doc) => (doc.data().date ?? '') >= sevenDaysAgo)
-      .reduce((sum, doc) => sum + (doc.data().quantity ?? 0), 0);
-    const dailyAvg = Math.round((totalDispatched / 7) * 10) / 10;
+    const recentDispatches = dispatchSnap.docs.filter((doc) => (doc.data().date ?? '') >= sevenDaysAgo);
+    const totalDispatched = recentDispatches.reduce((sum, doc) => sum + (doc.data().quantity ?? 0), 0);
+    // Count distinct days with dispatches (don't divide by 7 if only 1-2 days of data)
+    const distinctDays = new Set(recentDispatches.map((doc) => doc.data().date)).size;
+    const avgDivisor = Math.max(1, distinctDays);
+    const dailyAvg = Math.round((totalDispatched / avgDivisor) * 10) / 10;
 
     await docRef.update({
       currentStock: newStock,
@@ -175,7 +177,8 @@ function calcAvgInMemory(inventoryId: string): number {
     (d) => d.inventoryId === inventoryId && d.date >= sevenDaysAgo
   );
   const total = recent.reduce((s, d) => s + d.quantity, 0);
-  return Math.round((total / 7) * 10) / 10;
+  const distinctDays = new Set(recent.map((d) => d.date)).size;
+  return Math.round((total / Math.max(1, distinctDays)) * 10) / 10;
 }
 
 // ── PATCH /api/inventory ─────────────────────────────────────────────────────
