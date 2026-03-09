@@ -63,4 +63,5 @@ export const COLLECTIONS = {
   FINANCE_BASELINES: 'finance_baselines',
   FINANCE_EXPENSES: 'finance_expenses',
   REMINDERS: 'reminders',
+  INVENTORY_DISPATCHES: 'inventory_dispatches',
 } as const;

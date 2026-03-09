@@ -107,6 +107,18 @@ export interface InventoryEntry {
   supplier: string;
   costPerUnit: number;
   status: string;
+  store: string; // 'Kairova' | 'Mavric' | ''
+  sourcingOrigin: string; // 'india' | 'china' | ''
+  dailyAvgOrders: number; // rolling 7-day avg from dispatch logs
   createdAt: string;
   updatedAt: string;
+}
+
+// Inventory Dispatch Log
+export interface InventoryDispatch {
+  id: string;
+  inventoryId: string;
+  quantity: number;
+  date: string; // YYYY-MM-DD
+  createdAt: string;
 }
