@@ -162,11 +162,10 @@ export default function FinanceEntryPage() {
   const calcGrossProfit = calcTotalSales * calcGrossMargin;
   const calcAdSpend = Number(adSpend) || 0;
   const calcActualAdCost = Math.round(calcAdSpend * 1.14);
-  const calcProcessorFee = Math.round(calcTotalSales * 0.03);
-  const calcNetProfit = calcGrossProfit - calcActualAdCost - calcProcessorFee;
+  const calcNetProfit = calcGrossProfit - calcActualAdCost;
 
   return (
-    <PageTransition className="mx-auto max-w-3xl p-5 space-y-5">
+    <PageTransition className="mx-auto max-w-6xl p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/finance" className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
@@ -216,9 +215,7 @@ export default function FinanceEntryPage() {
           <div className="flex items-center gap-3 rounded-lg bg-background/50 border border-border/40 px-3 py-2 overflow-x-auto">
             <PreviewPill label="Gross" value={formatINR(calcGrossProfit)} />
             <span className="text-muted-foreground/30">-</span>
-            <PreviewPill label="Ads" value={formatINR(calcActualAdCost)} negative />
-            <span className="text-muted-foreground/30">-</span>
-            <PreviewPill label="Fees" value={formatINR(calcProcessorFee)} negative />
+            <PreviewPill label="Ads (14%)" value={formatINR(calcActualAdCost)} negative />
             <span className="text-muted-foreground/30">=</span>
             <PreviewPill label="Net" value={formatINR(calcNetProfit)} highlight positive={calcNetProfit >= 0} />
           </div>

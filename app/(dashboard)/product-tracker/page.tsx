@@ -151,6 +151,10 @@ export default function ProductTrackerPage() {
     config: STAGE_CONFIG[stage],
   }));
 
+  const winnersCount = entries.filter((e) => e.productStage === 'Winner - Moved To OPS').length;
+  const droppedCount = entries.filter((e) => e.productStage === 'Dropped').length;
+  const hitRate = droppedCount === 0 && winnersCount === 0 ? 0 : droppedCount === 0 ? 100 : Math.round((winnersCount / (winnersCount + droppedCount)) * 100);
+
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
       {/* Header */}
@@ -168,8 +172,8 @@ export default function ProductTrackerPage() {
         </button>
       </div>
 
-      {/* Stage pills */}
-      <div className="flex flex-wrap gap-2">
+      {/* Stage pills + Hit Rate */}
+      <div className="flex flex-wrap items-center gap-2">
         {stageStats.map(({ stage, count, config }) => (
           <div key={stage} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${config.bg}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
@@ -177,6 +181,13 @@ export default function ProductTrackerPage() {
             <span className="text-muted-foreground">{count}</span>
           </div>
         ))}
+        {(winnersCount > 0 || droppedCount > 0) && (
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-medium">
+            <span className="text-primary">Hit Rate</span>
+            <span className="font-semibold text-primary">{hitRate}%</span>
+            <span className="text-muted-foreground/60 text-[10px]">({winnersCount}W / {droppedCount}D)</span>
+          </div>
+        )}
       </div>
 
       {/* Add Form Panel */}

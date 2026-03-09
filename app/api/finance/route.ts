@@ -176,8 +176,8 @@ async function saveDailyEntry(body: Record<string, unknown>) {
   const actualAdCost = Math.round(adSpend * 1.14); // 14% platform fees
   const roas = Number(body.roas) || 0;
   const shippingCost = Number(body.shippingCost) || 0;
-  const paymentProcessorFee = Math.round(totalSales * 0.03);
-  const netProfit = grossProfit - actualAdCost - shippingCost - paymentProcessorFee;
+  const paymentProcessorFee = 0; // processor fees already included in gross margin
+  const netProfit = grossProfit - actualAdCost - shippingCost;
 
   const entry: FinanceDailyEntry = {
     date,

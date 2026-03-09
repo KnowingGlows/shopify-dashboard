@@ -41,7 +41,7 @@ export default function ProfitCalculatorPage() {
   const finalMargin = baseMargin * deliveryVal;
 
   return (
-    <PageTransition className="mx-auto max-w-5xl p-5 space-y-5">
+    <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/finance" className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
