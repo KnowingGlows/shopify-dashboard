@@ -59,4 +59,8 @@ export const COLLECTIONS = {
   ADS_TRACKER: 'ads_tracker',
   PRS: 'prs_entries',
   INVENTORY: 'inventory',
+  FINANCE_DAILY: 'finance_daily',
+  FINANCE_BASELINES: 'finance_baselines',
+  FINANCE_EXPENSES: 'finance_expenses',
+  REMINDERS: 'reminders',
 } as const;

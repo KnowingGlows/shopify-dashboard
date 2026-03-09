@@ -8,19 +8,48 @@ export const COOKIE_NAME = 'vaultik-session';
 const SESSION_TTL = '7d';
 export const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'ceo' | 'cmo' | 'operations' | 'customer_success' | 'warehouse' | 'admin' | 'user';
 export type UserStatus = 'active' | 'pending' | 'rejected';
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  ceo: 'CEO',
+  cmo: 'CMO',
+  operations: 'Operations In Chief',
+  customer_success: 'Customer Success Manager',
+  warehouse: 'Warehouse In Charge',
+  admin: 'Admin',
+  user: 'User',
+};
+
+// Default page access per role
+export const ROLE_DEFAULT_PAGES: Record<UserRole, string[]> = {
+  ceo: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/logs', '/settings', '/users'],
+  cmo: ['/', '/brands', '/finance', '/ads-tracker', '/prs', '/logs', '/settings'],
+  operations: ['/', '/brands', '/finance', '/product-tracker', '/inventory', '/logs', '/settings'],
+  customer_success: ['/', '/brands', '/logs', '/settings'],
+  warehouse: ['/', '/inventory', '/logs', '/settings'],
+  admin: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/logs', '/settings', '/users'],
+  user: ['/', '/brands', '/settings', '/logs'],
+};
 
 // Pages that can be toggled per user
 export const CONFIGURABLE_PAGES = [
   { path: '/', label: 'Home' },
   { path: '/brands', label: 'Brands' },
-  { path: '/p-and-l', label: 'P&L' },
+  { path: '/finance', label: 'Finance' },
+  { path: '/product-tracker', label: 'Products' },
+  { path: '/ads-tracker', label: 'Ads' },
+  { path: '/prs', label: 'PRS' },
+  { path: '/inventory', label: 'Inventory' },
   { path: '/settings', label: 'Settings' },
   { path: '/logs', label: 'Daily Logs' },
 ] as const;
 
 export const DEFAULT_PERMISSIONS = CONFIGURABLE_PAGES.map((p) => p.path);
+
+export function getDefaultPermissionsForRole(role: UserRole): string[] {
+  return ROLE_DEFAULT_PAGES[role] ?? ROLE_DEFAULT_PAGES.user;
+}
 
 // ── Password hashing (Web Crypto, Edge-compatible) ──────────────────────────
 

@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  BarChart3, Box, ClipboardList, DollarSign, Home, LogOut, Megaphone,
-  Menu, Package, Search, Settings, Store, Users, X, Zap,
+  Box, ClipboardList, DollarSign, Home, LogOut,
+  Menu, Megaphone, Package, Search, Settings, Store, Users, X, Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -24,7 +25,6 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: Home, section: 'core' },
   { href: '/brands', label: 'Brands', icon: Store, section: 'core' },
-  { href: '/p-and-l', label: 'P&L', icon: BarChart3, section: 'core' },
   { href: '/finance', label: 'Finance', icon: DollarSign, section: 'core' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'ops' },
   { href: '/ads-tracker', label: 'Ads', icon: Megaphone, section: 'ops' },
@@ -35,28 +35,50 @@ const navItems: NavItem[] = [
   { href: '/users', label: 'Users', icon: Users, adminOnly: true, section: 'system' },
 ];
 
-function NavLink({ item, isActive, onNavigate }: { item: NavItem; isActive: boolean; onNavigate?: () => void }) {
+const ADMIN_ROLES = ['admin', 'ceo'];
+
+function NavLink({ item, isActive, onNavigate, index }: { item: NavItem; isActive: boolean; onNavigate?: () => void; index: number }) {
   const Icon = item.icon;
   return (
-    <Link
-      href={item.href}
-      onClick={onNavigate}
-      className={cn(
-        'group flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150',
-        isActive
-          ? 'bg-primary/10 text-primary'
-          : 'text-muted-foreground hover:bg-white/[0.03] hover:text-foreground'
-      )}
+    <motion.div
+      initial={{ opacity: 0, x: -12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.03, duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
     >
-      <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
-      <span className="truncate">{item.label}</span>
-      {isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />}
-    </Link>
+      <Link
+        href={item.href}
+        onClick={onNavigate}
+        className={cn(
+          'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200',
+          isActive
+            ? 'bg-primary/10 text-primary'
+            : 'text-muted-foreground hover:bg-white/[0.04] hover:text-foreground'
+        )}
+      >
+        {isActive && (
+          <motion.div
+            layoutId="nav-active"
+            className="absolute inset-0 rounded-lg bg-primary/10"
+            transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+          />
+        )}
+        <Icon className={cn('relative z-10 h-4 w-4 shrink-0 transition-colors', isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground')} />
+        <span className="relative z-10 truncate">{item.label}</span>
+        {isActive && (
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="relative z-10 ml-auto h-1.5 w-1.5 rounded-full bg-primary"
+          />
+        )}
+      </Link>
+    </motion.div>
   );
 }
 
 function SideNavContent({ activePath, onNavigate, showClose }: { activePath: string; onNavigate?: () => void; showClose?: boolean }) {
   const { logout, user } = useAuth();
+  const isAdmin = user && ADMIN_ROLES.includes(user.role);
 
   const sections = [
     { key: 'core', label: null },
@@ -64,11 +86,18 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
     { key: 'system', label: 'System' },
   ];
 
+  let globalIndex = 0;
+
   return (
     <div className="flex h-full flex-col">
       {/* Logo */}
       <div className="flex items-center justify-between px-3 py-1">
-        <div className="flex items-center gap-2.5">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4 }}
+          className="flex items-center gap-2.5"
+        >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
             <Zap className="h-4 w-4" />
           </div>
@@ -76,7 +105,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
             <p className="text-sm font-semibold text-foreground">Vaultik</p>
             <p className="text-[10px] text-muted-foreground">Management</p>
           </div>
-        </div>
+        </motion.div>
         <div className="flex items-center gap-1">
           <PendingUsersNotification />
           {showClose && (
@@ -90,19 +119,25 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
       {/* Nav */}
       <nav className="mt-4 flex-1 space-y-4 overflow-y-auto px-2">
         {sections.map((section) => {
-          const items = navItems.filter((i) => i.section === section.key && (!i.adminOnly || user?.role === 'admin'));
+          const items = navItems.filter((i) => i.section === section.key && (!i.adminOnly || isAdmin));
           if (items.length === 0) return null;
           return (
             <div key={section.key}>
               {section.label && (
-                <p className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="mb-1 px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60"
+                >
                   {section.label}
-                </p>
+                </motion.p>
               )}
               <div className="space-y-0.5">
-                {items.map((item) => (
-                  <NavLink key={item.href} item={item} isActive={activePath === item.href} onNavigate={onNavigate} />
-                ))}
+                {items.map((item) => {
+                  const idx = globalIndex++;
+                  return <NavLink key={item.href} item={item} isActive={activePath === item.href} onNavigate={onNavigate} index={idx} />;
+                })}
               </div>
             </div>
           );
@@ -139,10 +174,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     [pathname]
   );
 
+  const isAdmin = user && ADMIN_ROLES.includes(user.role);
   const perms = user?.permissions ?? [];
   const hasPermission =
     !user ||
-    user.role === 'admin' ||
+    isAdmin ||
     pathname === '/users' ||
     perms.includes(pathname) ||
     perms.some((p) => p !== '/' && pathname.startsWith(p + '/'));
@@ -170,19 +206,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-xs font-medium text-muted-foreground">{activeItem.label}</span>
             <div className="w-8" />
           </div>
-          {hasPermission ? children : <RestrictedPage />}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {hasPermission ? children : <RestrictedPage />}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
       {/* Mobile overlay */}
-      <div
-        className={cn(
-          'fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity md:hidden',
-          navOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+      <AnimatePresence>
+        {navOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+            onClick={() => setNavOpen(false)}
+            aria-hidden="true"
+          />
         )}
-        onClick={() => setNavOpen(false)}
-        aria-hidden="true"
-      />
+      </AnimatePresence>
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-50 w-56 border-r border-border bg-[#0c0c0e] py-4 transition-transform duration-200 md:hidden',

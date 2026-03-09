@@ -22,14 +22,15 @@ export async function GET() {
       );
     }
 
-    // Fetch live permissions from Firestore
+    // Fetch live permissions and role from Firestore
     const dbUser = await getUserById(payload.sub);
     const permissions = dbUser?.permissions ?? DEFAULT_PERMISSIONS;
+    const role = dbUser?.role ?? payload.role;
 
     return NextResponse.json({
       user: {
         email: payload.email,
-        role: payload.role,
+        role,
         permissions,
       },
     });

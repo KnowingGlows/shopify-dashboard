@@ -29,7 +29,7 @@ export function PendingUsersNotification() {
   }, []);
 
   useEffect(() => {
-    if (user?.role !== 'admin') return;
+    if (!user || !['admin', 'ceo'].includes(user.role)) return;
 
     fetchPending();
     const interval = setInterval(fetchPending, 30_000);
@@ -51,7 +51,7 @@ export function PendingUsersNotification() {
     setActionLoading(null);
   };
 
-  if (user?.role !== 'admin' || pendingUsers.length === 0) return null;
+  if (!user || !['admin', 'ceo'].includes(user.role) || pendingUsers.length === 0) return null;
 
   return (
     <>

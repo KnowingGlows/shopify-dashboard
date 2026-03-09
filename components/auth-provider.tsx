@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 
 type User = {
   email: string;
-  role: 'admin' | 'user';
+  role: string;
   permissions: string[];
 };
 

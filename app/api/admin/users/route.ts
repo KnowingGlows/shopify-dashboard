@@ -9,13 +9,16 @@ import {
   COOKIE_NAME,
   type UserStatus,
 } from '@/lib/auth';
+import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
+
+const ADMIN_ROLES = ['admin', 'ceo'];
 
 async function requireAdmin() {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
   const payload = await verifySessionToken(token);
-  if (!payload || payload.role !== 'admin') return null;
+  if (!payload || !ADMIN_ROLES.includes(payload.role)) return null;
   return payload;
 }
 
@@ -69,6 +72,16 @@ export async function PATCH(request: Request) {
           { error: 'Failed to update user status.' },
           { status: 500 }
         );
+      }
+    }
+
+    // Update role if provided
+    if (body.role && ['ceo', 'cmo', 'operations', 'customer_success', 'warehouse', 'user'].includes(body.role)) {
+      if (isFirebaseAvailable()) {
+        const db = getFirestore();
+        if (db) {
+          await db.collection(COLLECTIONS.USERS).doc(userId).update({ role: body.role });
+        }
       }
     }
 
