@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
@@ -299,25 +299,20 @@ export default function DailyEntriesPage() {
                   {paginatedEntries.map((entry) => {
                     const isEditing = editingDate === entry.date;
                     return (
-                      <motion.tr
-                        key={entry.date}
-                        layout
-                        className="group border-b border-border/50 last:border-0"
-                      >
-                        <td colSpan={6} className="p-0">
-                          {/* Row summary */}
-                          <div
-                            className={`grid grid-cols-[1fr_repeat(4,minmax(0,auto))_80px] items-center cursor-pointer transition-colors ${isEditing ? 'bg-primary/5' : 'hover:bg-accent/5'}`}
-                            onClick={() => startEditing(entry)}
-                          >
-                            <div className="px-4 py-3 text-[13px] text-muted-foreground font-medium">{entry.date}</div>
-                            <div className="px-4 py-3 text-[13px] text-right font-medium text-foreground tabular-nums">{formatINR(entry.totalSales)}</div>
-                            <div className="px-4 py-3 text-[13px] text-right font-medium text-emerald-400 tabular-nums">{formatINR(entry.grossProfit)}</div>
-                            <div className="px-4 py-3 text-[13px] text-right font-medium text-orange-400 tabular-nums">{formatINR(Math.round(entry.adSpend * 1.14))}</div>
-                            <div className={`px-4 py-3 text-[13px] font-semibold text-right tabular-nums ${entry.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {formatINR(entry.netProfit)}
-                            </div>
-                            <div className="px-2 py-3 flex items-center justify-end gap-1">
+                      <React.Fragment key={entry.date}>
+                        <tr
+                          className={`group border-b border-border/50 last:border-0 cursor-pointer transition-colors ${isEditing ? 'bg-primary/5' : 'hover:bg-accent/5'}`}
+                          onClick={() => startEditing(entry)}
+                        >
+                          <td className="px-4 py-3 text-[13px] text-muted-foreground font-medium">{entry.date}</td>
+                          <td className="px-4 py-3 text-[13px] text-right font-medium text-foreground tabular-nums">{formatINR(entry.totalSales)}</td>
+                          <td className="px-4 py-3 text-[13px] text-right font-medium text-emerald-400 tabular-nums">{formatINR(entry.grossProfit)}</td>
+                          <td className="px-4 py-3 text-[13px] text-right font-medium text-orange-400 tabular-nums">{formatINR(Math.round(entry.adSpend * 1.14))}</td>
+                          <td className={`px-4 py-3 text-[13px] font-semibold text-right tabular-nums ${entry.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {formatINR(entry.netProfit)}
+                          </td>
+                          <td className="w-20 px-2 py-3">
+                            <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDelete(entry.date); }}
                                 disabled={deleting === entry.date}
@@ -328,98 +323,81 @@ export default function DailyEntriesPage() {
                               </button>
                               <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground/40 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
                             </div>
-                          </div>
+                          </td>
+                        </tr>
+                        {/* Expanded edit panel */}
+                        <AnimatePresence>
+                          {isEditing && (
+                            <tr>
+                              <td colSpan={6} className="p-0">
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="border-t border-border bg-background/30 px-4 py-4 space-y-4">
+                                    {Object.entries(editData).map(([brand, data]) => (
+                                      <div key={brand} className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                          <span className="text-[12px] font-semibold text-foreground">{brand}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                                          <FieldInput label="Sales" value={data.sales} onChange={(v) => updateEditField(brand, 'sales', v)} />
+                                          <FieldInput label="Gross Margin %" value={data.grossMargin} onChange={(v) => updateEditField(brand, 'grossMargin', v)} />
+                                          <FieldInput label="Ad Spend" value={data.adSpend} onChange={(v) => updateEditField(brand, 'adSpend', v)} />
+                                          <FieldInput label="COD Sales" value={data.codSales} onChange={(v) => updateEditField(brand, 'codSales', v)} />
+                                          <FieldInput label="Delivery %" value={data.deliveryRate} onChange={(v) => updateEditField(brand, 'deliveryRate', v)} />
+                                        </div>
+                                      </div>
+                                    ))}
 
-                          {/* Expanded edit panel */}
-                          <AnimatePresence>
-                            {isEditing && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="overflow-hidden"
-                              >
-                                <div className="border-t border-border bg-background/30 px-4 py-4 space-y-4">
-                                  {Object.entries(editData).map(([brand, data]) => (
-                                    <div key={brand} className="space-y-2">
-                                      <div className="flex items-center gap-2">
-                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                                        <span className="text-[12px] font-semibold text-foreground">{brand}</span>
-                                      </div>
-                                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                                        <FieldInput
-                                          label="Sales"
-                                          value={data.sales}
-                                          onChange={(v) => updateEditField(brand, 'sales', v)}
-                                        />
-                                        <FieldInput
-                                          label="Gross Margin %"
-                                          value={data.grossMargin}
-                                          onChange={(v) => updateEditField(brand, 'grossMargin', v)}
-                                        />
-                                        <FieldInput
-                                          label="Ad Spend"
-                                          value={data.adSpend}
-                                          onChange={(v) => updateEditField(brand, 'adSpend', v)}
-                                        />
-                                        <FieldInput
-                                          label="COD Sales"
-                                          value={data.codSales}
-                                          onChange={(v) => updateEditField(brand, 'codSales', v)}
-                                        />
-                                        <FieldInput
-                                          label="Delivery %"
-                                          value={data.deliveryRate}
-                                          onChange={(v) => updateEditField(brand, 'deliveryRate', v)}
-                                        />
-                                      </div>
+                                    {/* Edit totals preview */}
+                                    <div className="flex items-center gap-3 rounded-lg bg-background/50 border border-border/40 px-3 py-2 overflow-x-auto text-[11px]">
+                                      <span className="text-muted-foreground">Updated:</span>
+                                      <span className="text-foreground font-medium tabular-nums">Sales {formatINR(editTotals.sales)}</span>
+                                      <span className="text-muted-foreground/30">|</span>
+                                      <span className="text-emerald-400 font-medium tabular-nums">Gross {formatINR(editTotals.grossProfit)}</span>
+                                      <span className="text-muted-foreground/30">-</span>
+                                      <span className="text-orange-400 font-medium tabular-nums">Ads {formatINR(Math.round(editTotals.adSpend * 1.14))}</span>
+                                      <span className="text-muted-foreground/30">=</span>
+                                      <span className={`font-semibold tabular-nums ${editNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        Net {formatINR(editNetProfit)}
+                                      </span>
                                     </div>
-                                  ))}
 
-                                  {/* Edit totals preview */}
-                                  <div className="flex items-center gap-3 rounded-lg bg-background/50 border border-border/40 px-3 py-2 overflow-x-auto text-[11px]">
-                                    <span className="text-muted-foreground">Updated:</span>
-                                    <span className="text-foreground font-medium tabular-nums">Sales {formatINR(editTotals.sales)}</span>
-                                    <span className="text-muted-foreground/30">|</span>
-                                    <span className="text-emerald-400 font-medium tabular-nums">Gross {formatINR(editTotals.grossProfit)}</span>
-                                    <span className="text-muted-foreground/30">-</span>
-                                    <span className="text-orange-400 font-medium tabular-nums">Ads {formatINR(Math.round(editTotals.adSpend * 1.14))}</span>
-                                    <span className="text-muted-foreground/30">=</span>
-                                    <span className={`font-semibold tabular-nums ${editNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                      Net {formatINR(editNetProfit)}
-                                    </span>
+                                    {/* Save button */}
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={handleSaveEdit}
+                                        disabled={saving}
+                                        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
+                                      >
+                                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                                        Save Changes
+                                      </button>
+                                      <AnimatePresence>
+                                        {saveStatus === 'saved' && (
+                                          <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="inline-flex items-center gap-1 text-[12px] text-emerald-400">
+                                            <Check className="h-3.5 w-3.5" />Saved
+                                          </motion.span>
+                                        )}
+                                        {saveStatus === 'error' && (
+                                          <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-red-400">
+                                            Failed to save
+                                          </motion.span>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
                                   </div>
-
-                                  {/* Save button */}
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={handleSaveEdit}
-                                      disabled={saving}
-                                      className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
-                                    >
-                                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                                      Save Changes
-                                    </button>
-                                    <AnimatePresence>
-                                      {saveStatus === 'saved' && (
-                                        <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="inline-flex items-center gap-1 text-[12px] text-emerald-400">
-                                          <Check className="h-3.5 w-3.5" />Saved
-                                        </motion.span>
-                                      )}
-                                      {saveStatus === 'error' && (
-                                        <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-red-400">
-                                          Failed to save
-                                        </motion.span>
-                                      )}
-                                    </AnimatePresence>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </td>
-                      </motion.tr>
+                                </motion.div>
+                              </td>
+                            </tr>
+                          )}
+                        </AnimatePresence>
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

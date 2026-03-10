@@ -469,11 +469,11 @@ function BaselineRow({
       </span>
 
       {/* Actions */}
-      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-        <button onClick={onEdit} className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground hover:bg-accent/30 transition">
+      <div className="flex gap-1">
+        <button onClick={onEdit} className="rounded-md p-1.5 text-muted-foreground/50 hover:text-foreground hover:bg-accent/30 transition">
           <Pencil className="h-3 w-3" />
         </button>
-        <button onClick={onDelete} className="rounded-md p-1 text-muted-foreground/40 hover:text-red-400 hover:bg-red-400/10 transition">
+        <button onClick={onDelete} className="rounded-md p-1.5 text-muted-foreground/50 hover:text-red-400 hover:bg-red-400/10 transition">
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
