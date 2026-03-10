@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
@@ -94,41 +94,51 @@ export default function FinanceEntryPage() {
   const [addingExpense, setAddingExpense] = useState(false);
   const [expenseSaveStatus, setExpenseSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
-  // Auto-fetch sales
-  const fetchSales = useCallback(async () => {
-    setSalesLoading(true);
-    try {
-      const res = await fetch(`/api/finance?action=fetch-sales&date=${dailyDate}`);
-      const data = await res.json();
-      const salesByBrand: Record<string, number> = data.salesByBrand ?? {};
-      const codByBrand: Record<string, number> = data.codSalesByBrand ?? {};
-      const brandNames = Object.keys(salesByBrand);
+  // Auto-fetch sales — only when the date actually changes
+  const lastFetchedDate = useRef<string>('');
+  const userEdits = useRef<Record<string, Partial<BrandEntry>>>({});
 
-      if (brandNames.length > 0) {
-        const savedMargins = loadGrossMargins();
-        const savedRates = loadDeliveryRates();
+  useEffect(() => {
+    if (!dailyDate || dailyDate === lastFetchedDate.current) return;
+    lastFetchedDate.current = dailyDate;
 
-        setBrandEntries((prev) => {
+    // Reset user edits on date change (new day = fresh entry)
+    userEdits.current = {};
+
+    let cancelled = false;
+    (async () => {
+      setSalesLoading(true);
+      try {
+        const res = await fetch(`/api/finance?action=fetch-sales&date=${dailyDate}`);
+        const data = await res.json();
+        if (cancelled) return;
+        const salesByBrand: Record<string, number> = data.salesByBrand ?? {};
+        const codByBrand: Record<string, number> = data.codSalesByBrand ?? {};
+        const brandNames = Object.keys(salesByBrand);
+
+        if (brandNames.length > 0) {
+          const savedMargins = loadGrossMargins();
+          const savedRates = loadDeliveryRates();
+
           const entries: Record<string, BrandEntry> = {};
           for (const brand of brandNames) {
             entries[brand] = {
               sales: salesByBrand[brand] ?? 0,
-              grossMargin: prev[brand]?.grossMargin ?? savedMargins[brand] ?? 55,
-              adSpend: prev[brand]?.adSpend ?? 0,
+              grossMargin: savedMargins[brand] ?? 55,
+              adSpend: 0,
               codSales: codByBrand[brand] ?? 0,
-              deliveryRate: prev[brand]?.deliveryRate ?? savedRates[brand] ?? 65,
+              deliveryRate: savedRates[brand] ?? 65,
             };
           }
-          return entries;
-        });
-        setBrands(brandNames);
-        setActiveBrand((prev) => (!prev || !brandNames.includes(prev)) ? brandNames[0] : prev);
-      }
-    } catch { /* silently fail */ }
-    finally { setSalesLoading(false); }
+          setBrands(brandNames);
+          setBrandEntries(entries);
+          setActiveBrand((prev) => (!prev || !brandNames.includes(prev)) ? brandNames[0] : prev);
+        }
+      } catch { /* silently fail */ }
+      finally { if (!cancelled) setSalesLoading(false); }
+    })();
+    return () => { cancelled = true; };
   }, [dailyDate]);
-
-  useEffect(() => { if (dailyDate) fetchSales(); }, [dailyDate, fetchSales]);
 
   // Brand field update
   const updateBrandField = (brand: string, field: keyof BrandEntry, value: number) => {
@@ -136,6 +146,8 @@ export default function FinanceEntryPage() {
       ...prev,
       [brand]: { ...prev[brand], [field]: value },
     }));
+    // Track user edits so they survive any unexpected re-renders
+    userEdits.current[brand] = { ...userEdits.current[brand], [field]: value };
     // Persist margin & delivery rate to localStorage
     if (field === 'grossMargin') {
       const all = { ...Object.fromEntries(Object.entries(brandEntries).map(([b, e]) => [b, e.grossMargin])), [brand]: value };

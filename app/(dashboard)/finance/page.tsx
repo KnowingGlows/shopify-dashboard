@@ -131,7 +131,7 @@ export default function FinancePage() {
     dailyEntries: [], dailyBaselines: [], monthlyBaselines: [],
   };
 
-  const actualAdCost = Math.round(d.totalAdSpend * 1.14);
+
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -190,20 +190,6 @@ export default function FinancePage() {
         </StaggerItem>
       </StaggerContainer>
 
-      {/* Cost Breakdown */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">30-Day Cost Breakdown</p>
-          <p className="text-[11px] text-muted-foreground">
-            Daily baseline: {formatINR(d.dailyBaselineTotal)}/day · Monthly: {formatINR(d.monthlyBaselineTotal)}/mo
-          </p>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <CostItem label="Ad Spend (raw)" amount={d.totalAdSpend} color="bg-amber-400" />
-          <CostItem label="Ad Cost (14% inc.)" amount={actualAdCost} color="bg-orange-400" />
-          <CostItem label="Other Expenses" amount={d.totalExpenses} color="bg-rose-400" />
-        </div>
-      </motion.div>
 
       {/* ═══ COD Cash-In Projections (Weekly) ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
@@ -293,18 +279,6 @@ function MetricCard({ label, value, icon, color, formatter }: { label: string; v
       </div>
       <p className={`relative z-10 mt-1.5 text-2xl font-semibold ${color}`}><AnimatedNumber value={value} formatter={format} /></p>
     </motion.div>
-  );
-}
-
-function CostItem({ label, amount, color }: { label: string; amount: number; color: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className={`h-2 w-2 rounded-full ${color}`} />
-      <div className="flex-1 min-w-0">
-        <p className="text-[11px] text-muted-foreground truncate">{label}</p>
-        <p className="text-[13px] font-medium text-foreground">{formatINR(amount)}</p>
-      </div>
-    </div>
   );
 }
 
