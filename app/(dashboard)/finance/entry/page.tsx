@@ -29,17 +29,20 @@ function getToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
-function loadDeliveryRates(): Record<string, number> {
-  if (typeof window === 'undefined') return {};
+async function loadDeliveryRates(): Promise<Record<string, number>> {
   try {
-    const stored = localStorage.getItem('orbyt-cod-delivery-rates');
-    if (stored) return JSON.parse(stored);
-  } catch { /* ignore */ }
-  return {};
+    const res = await fetch('/api/finance?action=delivery-rates');
+    const data = await res.json();
+    return data.rates ?? {};
+  } catch { return {}; }
 }
 
 function saveDeliveryRates(rates: Record<string, number>) {
-  try { localStorage.setItem('orbyt-cod-delivery-rates', JSON.stringify(rates)); } catch { /* ignore */ }
+  fetch('/api/finance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'save-delivery-rates', rates }),
+  }).catch(() => { /* ignore */ });
 }
 
 function loadGrossMargins(): Record<string, number> {
@@ -117,7 +120,7 @@ export default function FinanceEntryPage() {
 
         if (brandNames.length > 0) {
           const savedMargins = loadGrossMargins();
-          const savedRates = loadDeliveryRates();
+          const savedRates = await loadDeliveryRates();
 
           const entries: Record<string, BrandEntry> = {};
           for (const brand of brandNames) {

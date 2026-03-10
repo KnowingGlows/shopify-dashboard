@@ -141,6 +141,8 @@ export async function GET(request: Request) {
         return fetchSalesData(searchParams);
       case 'reminders':
         return getReminders();
+      case 'delivery-rates':
+        return getDeliveryRates();
       default:
         return getFinanceSummary(searchParams);
     }
@@ -172,6 +174,8 @@ export async function POST(request: Request) {
         return deleteExpense(body);
       case 'update-expense':
         return updateExpense(body);
+      case 'save-delivery-rates':
+        return saveDeliveryRates(body);
       case 'dismiss-reminder':
         return dismissReminder(body);
       default:
@@ -384,16 +388,42 @@ function getWeekLabel(date: Date): string {
   return `Week ${weekOfMonth}, ${monthNames[date.getMonth()]}`;
 }
 
+async function getDeliveryRates() {
+  const firestore = db();
+  if (!firestore) return NextResponse.json({ rates: {} });
+  try {
+    const doc = await firestore.collection(COLLECTIONS.SETTINGS).doc('delivery_rates').get();
+    return NextResponse.json({ rates: doc.exists ? (doc.data()?.rates ?? {}) : {} });
+  } catch { return NextResponse.json({ rates: {} }); }
+}
+
+async function saveDeliveryRates(body: Record<string, unknown>) {
+  const firestore = db();
+  const rates = (body.rates as Record<string, number>) ?? {};
+  if (!firestore) return NextResponse.json({ success: true });
+  await firestore.collection(COLLECTIONS.SETTINGS).doc('delivery_rates').set({ rates, updatedAt: new Date().toISOString() });
+  return NextResponse.json({ success: true });
+}
+
 async function getCODProjections(params: URLSearchParams) {
   const firestore = db();
   const COD_DELAY_DAYS = 7;
 
-  // Per-brand delivery rates as JSON: { "Kairova": 65, "Mavric": 70 }
+  // Load delivery rates from Firestore (shared across all users)
   let brandRates: Record<string, number> = {};
-  try {
-    const ratesParam = params.get('deliveryRates');
-    if (ratesParam) brandRates = JSON.parse(ratesParam);
-  } catch { /* ignore */ }
+  if (firestore) {
+    try {
+      const doc = await firestore.collection(COLLECTIONS.SETTINGS).doc('delivery_rates').get();
+      if (doc.exists) brandRates = doc.data()?.rates ?? {};
+    } catch { /* ignore */ }
+  }
+  // Fall back to client-provided rates (legacy support)
+  if (Object.keys(brandRates).length === 0) {
+    try {
+      const ratesParam = params.get('deliveryRates');
+      if (ratesParam) brandRates = JSON.parse(ratesParam);
+    } catch { /* ignore */ }
+  }
   const defaultRate = Number(params.get('deliveryRate')) || 65;
 
   const today = getISTDate();

@@ -75,15 +75,6 @@ interface FinanceSummary {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function loadDeliveryRates(): Record<string, number> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const stored = localStorage.getItem('orbyt-cod-delivery-rates');
-    if (stored) return JSON.parse(stored);
-  } catch { /* ignore */ }
-  return {};
-}
-
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function FinancePage() {
@@ -96,12 +87,10 @@ export default function FinancePage() {
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchAll = useCallback(async () => {
-    const brandRates = loadDeliveryRates();
-    const ratesParam = encodeURIComponent(JSON.stringify(brandRates));
     try {
       const [summaryRes, codRes, remindersRes, baselinesRes] = await Promise.all([
         fetch('/api/finance'),
-        fetch(`/api/finance?action=cod-projections&deliveryRates=${ratesParam}`),
+        fetch('/api/finance?action=cod-projections'),
         fetch('/api/finance?action=reminders'),
         fetch('/api/finance?action=baselines'),
       ]);
