@@ -61,6 +61,7 @@ export default function BaselinesPage() {
   const [baselines, setBaselines] = useState<Baseline[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
 
   // Edit/Add state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -114,6 +115,20 @@ export default function BaselinesPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete-baseline', id }),
     }).catch(() => {});
+  };
+
+  const clearAllBaselines = async () => {
+    if (!confirm('Delete all baselines? This cannot be undone.')) return;
+    setClearingAll(true);
+    try {
+      await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-all-baselines' }),
+      });
+      setBaselines([]);
+    } catch { /* silently fail */ }
+    finally { setClearingAll(false); }
   };
 
   const togglePaid = async (baseline: Baseline) => {
@@ -203,6 +218,16 @@ export default function BaselinesPage() {
             <p className="text-[11px] text-muted-foreground">Fixed costs & recurring expenses</p>
           </div>
         </div>
+        {baselines.length > 0 && (
+          <button
+            onClick={clearAllBaselines}
+            disabled={clearingAll}
+            className="inline-flex items-center gap-1.5 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] font-medium text-red-400 transition hover:bg-red-500/10 disabled:opacity-50"
+          >
+            {clearingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            Clear All
+          </button>
+        )}
       </div>
 
       {/* Summary Row */}

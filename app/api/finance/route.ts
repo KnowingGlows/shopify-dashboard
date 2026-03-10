@@ -166,6 +166,8 @@ export async function POST(request: Request) {
         return addExpense(body);
       case 'delete-baseline':
         return deleteBaseline(body);
+      case 'delete-all-baselines':
+        return deleteAllBaselines();
       case 'dismiss-reminder':
         return dismissReminder(body);
       default:
@@ -501,6 +503,16 @@ async function deleteBaseline(body: Record<string, unknown>) {
   if (!firestore) return NextResponse.json({ success: true });
   await firestore.collection(COLLECTIONS.FINANCE_BASELINES).doc(id).delete();
   return NextResponse.json({ success: true });
+}
+
+async function deleteAllBaselines() {
+  const firestore = db();
+  if (!firestore) return NextResponse.json({ success: true });
+  const snapshot = await firestore.collection(COLLECTIONS.FINANCE_BASELINES).get();
+  const batch = firestore.batch();
+  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
+  return NextResponse.json({ success: true, deleted: snapshot.size });
 }
 
 async function dismissReminder(body: Record<string, unknown>) {

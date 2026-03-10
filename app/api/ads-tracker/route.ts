@@ -151,17 +151,38 @@ export async function PATCH(request: Request) {
 }
 
 // DELETE /api/ads-tracker
-// Body: { id }
-// Deletes an ads tracker entry
+// Body: { id } to delete a single entry, or { productName } to delete all entries for a product
 export async function DELETE(request: Request) {
   try {
     const body = await request.json();
-    const { id } = body;
+    const { id, productName } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: 'Entry id is required.' }, { status: 400 });
+    if (!id && !productName) {
+      return NextResponse.json({ error: 'Entry id or productName is required.' }, { status: 400 });
     }
 
+    // Delete all entries for a product
+    if (productName) {
+      if (!isFirebaseAvailable()) {
+        const before = inMemoryStore.length;
+        for (let i = inMemoryStore.length - 1; i >= 0; i--) {
+          if (inMemoryStore[i].productName === productName) inMemoryStore.splice(i, 1);
+        }
+        return NextResponse.json({ success: true, deleted: before - inMemoryStore.length });
+      }
+
+      const db = getFirestore();
+      if (!db) return NextResponse.json({ error: 'Firebase is not available.' }, { status: 500 });
+
+      const snapshot = await db.collection(COLLECTIONS.ADS_TRACKER).where('productName', '==', productName).get();
+      const batch = db.batch();
+      snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+
+      return NextResponse.json({ success: true, deleted: snapshot.size });
+    }
+
+    // Delete a single entry by id
     if (!isFirebaseAvailable()) {
       const index = inMemoryStore.findIndex((e) => e.id === id);
       if (index === -1) {

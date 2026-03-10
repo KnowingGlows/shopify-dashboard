@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
@@ -37,6 +37,7 @@ const formatINR = (v: number) =>
 
 export default function ProductAdsPage() {
   const params = useParams();
+  const router = useRouter();
   const productName = decodeURIComponent(params.product as string);
 
   const [entries, setEntries] = useState<AdsTrackerEntry[]>([]);
@@ -45,6 +46,7 @@ export default function ProductAdsPage() {
   const [adding, setAdding] = useState(false);
   const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>({});
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [deletingProduct, setDeletingProduct] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const saveTimeoutRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -123,9 +125,21 @@ export default function ProductAdsPage() {
     try {
       const res = await fetch('/api/ads-tracker', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       if (!res.ok) throw new Error();
-      setEntries((prev) => prev.filter((e) => e.id !== id));
+      const remaining = entries.filter((e) => e.id !== id);
+      setEntries(remaining);
+      if (remaining.length === 0) router.push('/ads-tracker');
     } catch { /* silently fail */ }
     finally { setDeletingIds((prev) => { const n = new Set(prev); n.delete(id); return n; }); }
+  };
+
+  const deleteProduct = async () => {
+    if (!confirm(`Delete "${productName}" and all its ${entries.length} batch${entries.length !== 1 ? 'es' : ''}? This cannot be undone.`)) return;
+    setDeletingProduct(true);
+    try {
+      const res = await fetch('/api/ads-tracker', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productName }) });
+      if (res.ok) router.push('/ads-tracker');
+    } catch { /* silently fail */ }
+    finally { setDeletingProduct(false); }
   };
 
   const getStatusIcon = (id: string) => {
@@ -160,13 +174,23 @@ export default function ProductAdsPage() {
             <p className="text-[11px] text-muted-foreground">{entries.length} batch{entries.length !== 1 ? 'es' : ''} · Ad performance tracking</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90"
-        >
-          {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-          {showForm ? 'Cancel' : 'New Batch'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={deleteProduct}
+            disabled={deletingProduct}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[12px] font-medium text-red-400 transition hover:bg-red-500/10 disabled:opacity-50"
+          >
+            {deletingProduct ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Delete Product
+          </button>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90"
+          >
+            {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            {showForm ? 'Cancel' : 'New Batch'}
+          </button>
+        </div>
       </div>
 
       {/* Performance Stats */}
@@ -346,7 +370,7 @@ export default function ProductAdsPage() {
                         </div>
                         <div className="border-t border-border px-4 py-2 flex justify-end">
                           <button onClick={() => deleteEntry(entry.id)} disabled={deletingIds.has(entry.id)} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
-                            {deletingIds.has(entry.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete
+                            {deletingIds.has(entry.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete Batch
                           </button>
                         </div>
                       </motion.div>
