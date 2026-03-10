@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   ArrowLeft, Loader2, Plus, Trash2, Check, X, Pencil,
-  Landmark, CreditCard, Users2, Wrench, Home, AlertCircle,
-  CalendarClock, ChevronDown, ChevronUp,
+  CreditCard, Users2, Wrench, AlertCircle,
+  CalendarClock, ChevronDown, ChevronUp, CalendarDays,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 
@@ -38,14 +38,12 @@ const CATEGORIES: CategoryDef[] = [
   { key: 'salaries', label: 'Salaries & Contractors', color: 'text-blue-400', bgColor: 'bg-blue-400/8', borderColor: 'border-blue-400/20', icon: <Users2 className="h-3.5 w-3.5 text-blue-400" /> },
   { key: 'subscriptions', label: 'Subscriptions & SaaS', color: 'text-emerald-400', bgColor: 'bg-emerald-400/8', borderColor: 'border-emerald-400/20', icon: <CreditCard className="h-3.5 w-3.5 text-emerald-400" /> },
   { key: 'operations', label: 'Operations & Tools', color: 'text-violet-400', bgColor: 'bg-violet-400/8', borderColor: 'border-violet-400/20', icon: <Wrench className="h-3.5 w-3.5 text-violet-400" /> },
-  { key: 'living', label: 'Living & Overheads', color: 'text-amber-400', bgColor: 'bg-amber-400/8', borderColor: 'border-amber-400/20', icon: <Home className="h-3.5 w-3.5 text-amber-400" /> },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
   salaries: '#60A5FA',
   subscriptions: '#34D399',
   operations: '#A78BFA',
-  living: '#FBBF24',
 };
 
 const formatINR = (v: number) =>
@@ -78,7 +76,6 @@ export default function BaselinesPage() {
     try {
       const res = await fetch('/api/finance?action=baselines');
       const data = await res.json();
-      // Combine daily and monthly
       setBaselines([...(data.daily ?? []), ...(data.monthly ?? [])]);
     } catch { /* silently fail */ }
     finally { setLoading(false); }
@@ -172,28 +169,22 @@ export default function BaselinesPage() {
     );
   }
 
-  // Split into monthly baselines per category
   const monthlyBaselines = baselines.filter((b) => b.type === 'monthly');
-  const dailyBaselines = baselines.filter((b) => b.type === 'daily');
 
   const grandTotal = monthlyBaselines.reduce((s, b) => s + b.amount, 0);
-  const dailyTotal = dailyBaselines.reduce((s, b) => s + b.amount, 0);
   const paidTotal = monthlyBaselines.filter((b) => b.isPaid).reduce((s, b) => s + b.amount, 0);
   const unpaidTotal = grandTotal - paidTotal;
 
-  // Category totals
   const categoryTotals: Record<string, number> = {};
   for (const b of monthlyBaselines) {
     categoryTotals[b.category] = (categoryTotals[b.category] ?? 0) + b.amount;
   }
 
-  // Upcoming deductions (unpaid items with due dates, sorted by due day)
   const today = new Date();
   const currentDay = today.getDate();
   const upcomingDeductions = monthlyBaselines
     .filter((b) => b.dueDay && !b.isPaid)
     .sort((a, b) => {
-      // Sort: upcoming first, then past
       const aDist = ((a.dueDay! - currentDay + 31) % 31);
       const bDist = ((b.dueDay! - currentDay + 31) % 31);
       return aDist - bDist;
@@ -215,20 +206,12 @@ export default function BaselinesPage() {
       </div>
 
       {/* Summary Row */}
-      <StaggerContainer className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      <StaggerContainer className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StaggerItem>
           <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
             <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Monthly Total</p>
             <p className="text-xl font-semibold text-foreground">
               <AnimatedNumber value={grandTotal} formatter={formatINR} />
-            </p>
-          </div>
-        </StaggerItem>
-        <StaggerItem>
-          <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Daily Baseline</p>
-            <p className="text-xl font-semibold text-foreground">
-              <AnimatedNumber value={dailyTotal} formatter={(v: number) => `${formatINR(v)}/day`} />
             </p>
           </div>
         </StaggerItem>
@@ -350,7 +333,7 @@ export default function BaselinesPage() {
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="px-3 pb-3 space-y-1">
+                    <div className="px-3 pb-3 space-y-1.5">
                       {items.length === 0 && addingCategory !== cat.key && (
                         <p className="text-[12px] text-muted-foreground/50 text-center py-4">No items yet</p>
                       )}
@@ -401,9 +384,9 @@ export default function BaselinesPage() {
                       {addingCategory !== cat.key && editingId === null && (
                         <button
                           onClick={() => startAdd(cat.key)}
-                          className="w-full mt-1 py-2 rounded-lg border border-dashed border-white/[0.08] text-[11px] text-muted-foreground/50 hover:text-muted-foreground hover:border-white/[0.15] hover:bg-white/[0.02] transition"
+                          className={`w-full mt-1 py-2.5 rounded-lg border border-dashed text-[11px] font-medium transition flex items-center justify-center gap-1.5 ${cat.borderColor} ${cat.color} opacity-40 hover:opacity-80 hover:bg-white/[0.02]`}
                         >
-                          <Plus className="inline h-3 w-3 mr-1 -mt-px" />
+                          <Plus className="h-3 w-3" />
                           Add item
                         </button>
                       )}
@@ -415,39 +398,6 @@ export default function BaselinesPage() {
           );
         })}
       </div>
-
-      {/* Daily Baselines Section */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-        <div className="flex items-center gap-2 mb-3">
-          <Landmark className="h-4 w-4 text-primary" />
-          <div>
-            <p className="text-sm font-medium text-foreground">Daily Baselines</p>
-            <p className="text-[11px] text-muted-foreground">Cost per day to operate</p>
-          </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          {dailyBaselines.length === 0 ? (
-            <p className="text-[12px] text-muted-foreground text-center py-6">No daily baselines set</p>
-          ) : (
-            <div className="divide-y divide-border/50">
-              {dailyBaselines.map((b) => (
-                <div key={b.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-accent/5 transition group">
-                  <span className="text-[13px] text-foreground">{b.label}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[13px] font-medium text-foreground tabular-nums">{formatINR(b.amount)}/day</span>
-                    <button
-                      onClick={() => deleteBaseline(b.id)}
-                      className="rounded-md p-1 text-muted-foreground/30 hover:text-red-400 hover:bg-red-400/10 transition opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </motion.div>
     </PageTransition>
   );
 }
@@ -476,7 +426,7 @@ function BaselineRow({
       layout
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${
+      className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition ${
         b.isPaid
           ? 'bg-white/[0.02] border border-white/[0.04]'
           : 'bg-white/[0.03] border border-white/[0.06]'
@@ -505,7 +455,8 @@ function BaselineRow({
           )}
         </div>
         {b.dueDay && (
-          <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+          <p className="text-[10px] text-muted-foreground/60 mt-0.5 flex items-center gap-1">
+            <CalendarDays className="h-2.5 w-2.5" />
             Due {ordinal(b.dueDay)} of every month
             {b.isPaid && b.paidDate && ` · Paid ${b.paidDate}`}
           </p>
@@ -543,46 +494,59 @@ function InlineForm({
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.1]"
+      className="rounded-lg bg-white/[0.04] border border-white/[0.1] p-3 space-y-3"
     >
-      <input
-        autoFocus
-        value={label}
-        onChange={(e) => onLabelChange(e.target.value)}
-        placeholder="Label"
-        className="flex-1 min-w-0 bg-transparent border-none text-[13px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none"
-        onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
-      />
-      <input
-        value={amount}
-        onChange={(e) => onAmountChange(e.target.value)}
-        placeholder="Amount"
-        type="number"
-        className="w-20 bg-white/[0.06] border border-white/[0.1] rounded-md px-2 py-1 text-[12px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/40 focus:outline-none focus:border-white/[0.2]"
-        onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
-      />
-      <input
-        value={dueDay}
-        onChange={(e) => onDueDayChange(e.target.value)}
-        placeholder="Due"
-        type="number"
-        min={1}
-        max={31}
-        className="w-14 bg-white/[0.06] border border-white/[0.1] rounded-md px-2 py-1 text-[12px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/40 focus:outline-none focus:border-white/[0.2]"
-        title="Day of month (1-31)"
-        onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
-      />
-      <button
-        onClick={onSave}
-        disabled={saving || !label.trim() || !amount}
-        className="rounded-md p-1.5 text-[#050810] disabled:opacity-40 transition"
-        style={{ backgroundColor: color }}
-      >
-        {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-      </button>
-      <button onClick={onCancel} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground bg-white/[0.06] transition">
-        <X className="h-3 w-3" />
-      </button>
+      <div className="grid grid-cols-[1fr_100px_80px] gap-2">
+        <div className="flex flex-col gap-1">
+          <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Name</label>
+          <input
+            autoFocus
+            value={label}
+            onChange={(e) => onLabelChange(e.target.value)}
+            placeholder="e.g. Shopify Plan"
+            className="bg-white/[0.06] border border-white/[0.1] rounded-md px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:border-white/[0.25] transition"
+            onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Amount</label>
+          <input
+            value={amount}
+            onChange={(e) => onAmountChange(e.target.value)}
+            placeholder="0"
+            type="number"
+            className="bg-white/[0.06] border border-white/[0.1] rounded-md px-2.5 py-1.5 text-[13px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/30 focus:outline-none focus:border-white/[0.25] transition"
+            onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Due day</label>
+          <input
+            value={dueDay}
+            onChange={(e) => onDueDayChange(e.target.value)}
+            placeholder="1-31"
+            type="number"
+            min={1}
+            max={31}
+            className="bg-white/[0.06] border border-white/[0.1] rounded-md px-2.5 py-1.5 text-[13px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/30 focus:outline-none focus:border-white/[0.25] transition"
+            onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+          />
+        </div>
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        <button onClick={onCancel} className="rounded-md px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground bg-white/[0.06] hover:bg-white/[0.1] transition">
+          Cancel
+        </button>
+        <button
+          onClick={onSave}
+          disabled={saving || !label.trim() || !amount}
+          className="rounded-md px-3 py-1.5 text-[11px] font-medium text-[#050810] disabled:opacity-40 transition"
+          style={{ backgroundColor: color }}
+        >
+          {saving ? <Loader2 className="h-3 w-3 animate-spin inline mr-1" /> : null}
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
     </motion.div>
   );
 }

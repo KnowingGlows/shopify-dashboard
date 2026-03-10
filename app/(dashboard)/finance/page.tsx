@@ -7,6 +7,7 @@ import {
   RefreshCw, Loader2, DollarSign, Wallet, Plus,
   AlertTriangle, BanknoteIcon,
   Bell, X, Calendar, ArrowRight, Clock,
+  CalendarClock, AlertCircle, Check, Receipt,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -28,6 +29,9 @@ interface Baseline {
   category: string;
   label: string;
   amount: number;
+  dueDay?: number;
+  isPaid?: boolean;
+  paidDate?: string;
 }
 
 interface CODWeek {
@@ -46,6 +50,14 @@ interface Reminder {
   priority?: string;
 }
 
+interface Expense {
+  id: string;
+  category: string;
+  description: string;
+  amount: number;
+  date: string;
+}
+
 interface FinanceSummary {
   totalSales: number;
   totalGrossProfit: number;
@@ -57,6 +69,7 @@ interface FinanceSummary {
   dailyEntries: FinanceDailyEntry[];
   dailyBaselines: Baseline[];
   monthlyBaselines: Baseline[];
+  recentExpenses: Expense[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -73,6 +86,12 @@ function loadDeliveryRates(): Record<string, number> {
   return {};
 }
 
+function ordinal(n: number) {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function FinancePage() {
@@ -80,6 +99,7 @@ export default function FinancePage() {
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [codWeeks, setCodWeeks] = useState<CODWeek[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [baselines, setBaselines] = useState<Baseline[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -87,17 +107,19 @@ export default function FinancePage() {
     const brandRates = loadDeliveryRates();
     const ratesParam = encodeURIComponent(JSON.stringify(brandRates));
     try {
-      const [summaryRes, codRes, remindersRes] = await Promise.all([
+      const [summaryRes, codRes, remindersRes, baselinesRes] = await Promise.all([
         fetch('/api/finance'),
         fetch(`/api/finance?action=cod-projections&deliveryRates=${ratesParam}`),
         fetch('/api/finance?action=reminders'),
+        fetch('/api/finance?action=baselines'),
       ]);
-      const [summaryData, codData, remindersData] = await Promise.all([
-        summaryRes.json(), codRes.json(), remindersRes.json(),
+      const [summaryData, codData, remindersData, baselinesData] = await Promise.all([
+        summaryRes.json(), codRes.json(), remindersRes.json(), baselinesRes.json(),
       ]);
       setSummary(summaryData);
       setCodWeeks(codData.weeks ?? []);
       setReminders(remindersData.reminders ?? []);
+      setBaselines([...(baselinesData.daily ?? []), ...(baselinesData.monthly ?? [])]);
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -110,6 +132,22 @@ export default function FinancePage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'dismiss-reminder', type }),
+    }).catch(() => {});
+  };
+
+  const togglePaid = async (baseline: Baseline) => {
+    const nowPaid = !baseline.isPaid;
+    const updated = {
+      ...baseline,
+      isPaid: nowPaid,
+      paidDate: nowPaid ? new Date().toISOString().split('T')[0] : undefined,
+    };
+    // Optimistic update
+    setBaselines((prev) => prev.map((b) => b.id === baseline.id ? updated : b));
+    await fetch('/api/finance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save-baseline', ...updated }),
     }).catch(() => {});
   };
 
@@ -128,10 +166,27 @@ export default function FinancePage() {
     totalSales: 0, totalGrossProfit: 0, totalAdSpend: 0, totalNetProfit: 0,
     totalExpenses: 0,
     dailyBaselineTotal: 0, monthlyBaselineTotal: 0,
-    dailyEntries: [], dailyBaselines: [], monthlyBaselines: [],
+    dailyEntries: [], dailyBaselines: [], monthlyBaselines: [], recentExpenses: [],
   };
 
+  // Upcoming payments: unpaid baselines with due dates, sorted by proximity
+  const today = new Date();
+  const currentDay = today.getDate();
+  const monthlyBaselines = baselines.filter((b) => b.type === 'monthly');
+  const upcomingPayments = monthlyBaselines
+    .filter((b) => !b.isPaid && b.dueDay)
+    .sort((a, b) => {
+      const aDist = ((a.dueDay! - currentDay + 31) % 31);
+      const bDist = ((b.dueDay! - currentDay + 31) % 31);
+      return aDist - bDist;
+    });
+  // Also show recently paid today
+  const paidToday = monthlyBaselines.filter((b) => b.isPaid && b.paidDate === new Date().toISOString().split('T')[0]);
 
+  // Recent expenses (today and upcoming within 7 days)
+  const todayStr = new Date().toISOString().split('T')[0];
+  const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+  const recentExpenses = (d.recentExpenses ?? []).filter((e) => e.date >= todayStr && e.date <= weekFromNow);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -190,6 +245,83 @@ export default function FinancePage() {
         </StaggerItem>
       </StaggerContainer>
 
+      {/* ═══ Upcoming Payments ═══ */}
+      {(upcomingPayments.length > 0 || paidToday.length > 0 || recentExpenses.length > 0) && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-amber-400" />
+              <h2 className="text-sm font-semibold text-foreground">Upcoming Payments</h2>
+              {upcomingPayments.length > 0 && (
+                <span className="text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">{upcomingPayments.length}</span>
+              )}
+            </div>
+            <Link href="/finance/baselines" className="text-[11px] text-primary hover:text-primary/80 transition">
+              Manage baselines →
+            </Link>
+          </div>
+          <div className="divide-y divide-border/30">
+            {/* Paid today */}
+            {paidToday.map((b) => (
+              <div key={b.id} className="flex items-center gap-3 px-4 py-2.5 bg-emerald-500/5">
+                <div className="h-5 w-5 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                  <Check className="h-3 w-3 text-emerald-400" />
+                </div>
+                <span className="text-[13px] text-muted-foreground line-through flex-1">{b.label}</span>
+                <span className="text-[12px] text-muted-foreground tabular-nums">{formatINR(b.amount)}</span>
+                <span className="text-[10px] text-emerald-400 font-medium">Paid today</span>
+              </div>
+            ))}
+            {/* Recent expenses */}
+            {recentExpenses.map((exp) => {
+              const isToday = exp.date === todayStr;
+              return (
+                <div key={exp.id} className={`flex items-center gap-3 px-4 py-2.5 transition hover:bg-accent/5 ${isToday ? 'bg-violet-500/5' : ''}`}>
+                  <div className="h-5 w-5 rounded-full border border-violet-400/30 bg-violet-400/10 flex items-center justify-center shrink-0">
+                    <Receipt className="h-3 w-3 text-violet-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[13px] font-medium text-foreground">{exp.description || exp.category}</span>
+                    <p className="text-[10px] text-muted-foreground/60">{isToday ? 'Today' : exp.date} · {exp.category}</p>
+                  </div>
+                  <span className="text-[13px] font-semibold text-violet-400 tabular-nums">{formatINR(exp.amount)}</span>
+                </div>
+              );
+            })}
+            {/* Upcoming baselines */}
+            {upcomingPayments.slice(0, 6).map((b) => {
+              const isOverdue = b.dueDay! < currentDay;
+              const isDueToday = b.dueDay === currentDay;
+              const daysUntil = ((b.dueDay! - currentDay + 31) % 31);
+
+              return (
+                <div key={b.id} className={`flex items-center gap-3 px-4 py-2.5 transition hover:bg-accent/5 ${isOverdue ? 'bg-red-500/5' : isDueToday ? 'bg-amber-500/5' : ''}`}>
+                  <div className={`h-5 w-5 rounded-full border flex items-center justify-center shrink-0 ${
+                    isOverdue ? 'border-red-400/40 bg-red-400/10' : isDueToday ? 'border-amber-400/40 bg-amber-400/10' : 'border-border bg-background'
+                  }`}>
+                    {isOverdue ? <AlertCircle className="h-3 w-3 text-red-400" /> : <CalendarClock className="h-3 w-3 text-muted-foreground/50" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-[13px] font-medium ${isOverdue ? 'text-red-400' : 'text-foreground'}`}>{b.label}</span>
+                    <p className="text-[10px] text-muted-foreground/60">
+                      {isOverdue ? `Overdue — was due ${ordinal(b.dueDay!)}` : isDueToday ? 'Due today' : `Due ${ordinal(b.dueDay!)} — in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`}
+                    </p>
+                  </div>
+                  <span className={`text-[13px] font-semibold tabular-nums ${isOverdue ? 'text-red-400' : 'text-foreground'}`}>
+                    {formatINR(b.amount)}
+                  </span>
+                  <button
+                    onClick={() => togglePaid(b)}
+                    className="rounded-md px-2.5 py-1 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition shrink-0"
+                  >
+                    Mark Paid
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* ═══ COD Cash-In Projections (Weekly) ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>

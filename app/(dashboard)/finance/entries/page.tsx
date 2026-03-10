@@ -6,8 +6,18 @@ import Link from 'next/link';
 import {
   ArrowLeft, Loader2, ClipboardList, RefreshCw, Trash2,
   ChevronLeft, ChevronRight, CalendarDays, TrendingUp, Wallet, DollarSign,
+  ChevronDown, Save, Check,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
+
+interface BrandDailyData {
+  sales: number;
+  grossMargin: number;
+  grossProfit: number;
+  adSpend: number;
+  codSales: number;
+  deliveryRate: number;
+}
 
 interface FinanceDailyEntry {
   date: string;
@@ -16,6 +26,9 @@ interface FinanceDailyEntry {
   grossProfit: number;
   adSpend: number;
   netProfit: number;
+  brandData?: Record<string, BrandDailyData>;
+  codSalesByBrand?: Record<string, number>;
+  enteredBy?: string;
 }
 
 const formatINR = (v: number) =>
@@ -42,6 +55,10 @@ export default function DailyEntriesPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [monthFilter, setMonthFilter] = useState('all');
+  const [editingDate, setEditingDate] = useState<string | null>(null);
+  const [editData, setEditData] = useState<Record<string, BrandDailyData>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
   const fetchEntries = useCallback(async () => {
     try {
@@ -65,10 +82,105 @@ export default function DailyEntriesPage() {
       });
       if (res.ok) {
         setEntries((prev) => prev.filter((e) => e.date !== date));
+        if (editingDate === date) setEditingDate(null);
       }
     } catch { /* silently fail */ }
     finally { setDeleting(null); }
   };
+
+  const startEditing = (entry: FinanceDailyEntry) => {
+    if (editingDate === entry.date) {
+      setEditingDate(null);
+      return;
+    }
+    // Build editable brand data from entry
+    if (entry.brandData && Object.keys(entry.brandData).length > 0) {
+      setEditData(JSON.parse(JSON.stringify(entry.brandData)));
+    } else {
+      // Legacy entry without per-brand data — create a single "All" brand
+      setEditData({
+        All: {
+          sales: entry.totalSales,
+          grossMargin: entry.grossMargin * 100,
+          grossProfit: entry.grossProfit,
+          adSpend: entry.adSpend,
+          codSales: 0,
+          deliveryRate: 65,
+        },
+      });
+    }
+    setEditingDate(entry.date);
+    setSaveStatus('idle');
+  };
+
+  const updateEditField = (brand: string, field: keyof BrandDailyData, value: number) => {
+    setEditData((prev) => {
+      const updated = { ...prev, [brand]: { ...prev[brand], [field]: value } };
+      // Recalculate grossProfit when sales or margin changes
+      const b = updated[brand];
+      if (field === 'sales' || field === 'grossMargin') {
+        b.grossProfit = Math.round(b.sales * (b.grossMargin / 100));
+      }
+      return updated;
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingDate) return;
+    setSaving(true);
+    setSaveStatus('idle');
+    try {
+      const brandData: Record<string, BrandDailyData> = {};
+      for (const [brand, data] of Object.entries(editData)) {
+        brandData[brand] = {
+          sales: data.sales,
+          grossMargin: data.grossMargin / 100,
+          grossProfit: Math.round(data.sales * (data.grossMargin / 100)),
+          adSpend: data.adSpend,
+          codSales: data.codSales,
+          deliveryRate: data.deliveryRate,
+        };
+      }
+      const res = await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save-daily', date: editingDate, brandData }),
+      });
+      if (res.ok) {
+        // Update local entries
+        setEntries((prev) =>
+          prev.map((e) => {
+            if (e.date !== editingDate) return e;
+            let totalSales = 0, grossProfit = 0, adSpend = 0;
+            for (const d of Object.values(brandData)) {
+              totalSales += d.sales;
+              grossProfit += d.grossProfit;
+              adSpend += d.adSpend;
+            }
+            const netProfit = grossProfit - Math.round(adSpend * 1.14);
+            const grossMargin = totalSales > 0 ? grossProfit / totalSales : 0;
+            return { ...e, totalSales, grossProfit, grossMargin, adSpend, netProfit, brandData };
+          }),
+        );
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } else {
+        setSaveStatus('error');
+      }
+    } catch { setSaveStatus('error'); }
+    finally { setSaving(false); }
+  };
+
+  // Computed edit totals
+  const editTotals = Object.values(editData).reduce(
+    (acc, b) => ({
+      sales: acc.sales + b.sales,
+      grossProfit: acc.grossProfit + Math.round(b.sales * (b.grossMargin / 100)),
+      adSpend: acc.adSpend + b.adSpend,
+    }),
+    { sales: 0, grossProfit: 0, adSpend: 0 },
+  );
+  const editNetProfit = editTotals.grossProfit - Math.round(editTotals.adSpend * 1.14);
 
   // Filter by month
   const filtered = monthFilter === 'all'
@@ -80,7 +192,6 @@ export default function DailyEntriesPage() {
   const safePage = Math.min(page, totalPages);
   const paginatedEntries = filtered.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
 
-  // Reset page when filter changes
   useEffect(() => { setPage(1); }, [monthFilter]);
 
   // Totals for filtered
@@ -181,43 +292,136 @@ export default function DailyEntriesPage() {
                     <th className="px-4 py-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Gross Profit</th>
                     <th className="px-4 py-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ad Cost (14%)</th>
                     <th className="px-4 py-3 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Net Profit</th>
-                    <th className="w-12 px-2 py-3"></th>
+                    <th className="w-20 px-2 py-3"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  <AnimatePresence>
-                    {paginatedEntries.map((entry) => (
+                  {paginatedEntries.map((entry) => {
+                    const isEditing = editingDate === entry.date;
+                    return (
                       <motion.tr
                         key={entry.date}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        className="group border-b border-border/50 last:border-0 hover:bg-accent/5 transition-colors"
+                        layout
+                        className="group border-b border-border/50 last:border-0"
                       >
-                        <td className="px-4 py-3 text-[13px] text-muted-foreground font-medium">{entry.date}</td>
-                        <td className="px-4 py-3 text-[13px] text-right font-medium text-foreground tabular-nums">{formatINR(entry.totalSales)}</td>
-                        <td className="px-4 py-3 text-[13px] text-right font-medium text-emerald-400 tabular-nums">{formatINR(entry.grossProfit)}</td>
-                        <td className="px-4 py-3 text-[13px] text-right font-medium text-orange-400 tabular-nums">{formatINR(Math.round(entry.adSpend * 1.14))}</td>
-                        <td className={`px-4 py-3 text-[13px] font-semibold text-right tabular-nums ${entry.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {formatINR(entry.netProfit)}
-                        </td>
-                        <td className="px-2 py-3 text-center">
-                          <button
-                            onClick={() => handleDelete(entry.date)}
-                            disabled={deleting === entry.date}
-                            className="rounded-md p-1.5 text-muted-foreground/40 hover:text-red-400 hover:bg-red-400/10 transition opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                            title="Delete entry"
+                        <td colSpan={6} className="p-0">
+                          {/* Row summary */}
+                          <div
+                            className={`grid grid-cols-[1fr_repeat(4,minmax(0,auto))_80px] items-center cursor-pointer transition-colors ${isEditing ? 'bg-primary/5' : 'hover:bg-accent/5'}`}
+                            onClick={() => startEditing(entry)}
                           >
-                            {deleting === entry.date ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-3.5 w-3.5" />
+                            <div className="px-4 py-3 text-[13px] text-muted-foreground font-medium">{entry.date}</div>
+                            <div className="px-4 py-3 text-[13px] text-right font-medium text-foreground tabular-nums">{formatINR(entry.totalSales)}</div>
+                            <div className="px-4 py-3 text-[13px] text-right font-medium text-emerald-400 tabular-nums">{formatINR(entry.grossProfit)}</div>
+                            <div className="px-4 py-3 text-[13px] text-right font-medium text-orange-400 tabular-nums">{formatINR(Math.round(entry.adSpend * 1.14))}</div>
+                            <div className={`px-4 py-3 text-[13px] font-semibold text-right tabular-nums ${entry.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {formatINR(entry.netProfit)}
+                            </div>
+                            <div className="px-2 py-3 flex items-center justify-end gap-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDelete(entry.date); }}
+                                disabled={deleting === entry.date}
+                                className="rounded-md p-1.5 text-muted-foreground/40 hover:text-red-400 hover:bg-red-400/10 transition opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                                title="Delete entry"
+                              >
+                                {deleting === entry.date ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                              </button>
+                              <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground/40 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
+                            </div>
+                          </div>
+
+                          {/* Expanded edit panel */}
+                          <AnimatePresence>
+                            {isEditing && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="overflow-hidden"
+                              >
+                                <div className="border-t border-border bg-background/30 px-4 py-4 space-y-4">
+                                  {Object.entries(editData).map(([brand, data]) => (
+                                    <div key={brand} className="space-y-2">
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span className="text-[12px] font-semibold text-foreground">{brand}</span>
+                                      </div>
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                                        <FieldInput
+                                          label="Sales"
+                                          value={data.sales}
+                                          onChange={(v) => updateEditField(brand, 'sales', v)}
+                                        />
+                                        <FieldInput
+                                          label="Gross Margin %"
+                                          value={data.grossMargin}
+                                          onChange={(v) => updateEditField(brand, 'grossMargin', v)}
+                                        />
+                                        <FieldInput
+                                          label="Ad Spend"
+                                          value={data.adSpend}
+                                          onChange={(v) => updateEditField(brand, 'adSpend', v)}
+                                        />
+                                        <FieldInput
+                                          label="COD Sales"
+                                          value={data.codSales}
+                                          onChange={(v) => updateEditField(brand, 'codSales', v)}
+                                        />
+                                        <FieldInput
+                                          label="Delivery %"
+                                          value={data.deliveryRate}
+                                          onChange={(v) => updateEditField(brand, 'deliveryRate', v)}
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
+
+                                  {/* Edit totals preview */}
+                                  <div className="flex items-center gap-3 rounded-lg bg-background/50 border border-border/40 px-3 py-2 overflow-x-auto text-[11px]">
+                                    <span className="text-muted-foreground">Updated:</span>
+                                    <span className="text-foreground font-medium tabular-nums">Sales {formatINR(editTotals.sales)}</span>
+                                    <span className="text-muted-foreground/30">|</span>
+                                    <span className="text-emerald-400 font-medium tabular-nums">Gross {formatINR(editTotals.grossProfit)}</span>
+                                    <span className="text-muted-foreground/30">-</span>
+                                    <span className="text-orange-400 font-medium tabular-nums">Ads {formatINR(Math.round(editTotals.adSpend * 1.14))}</span>
+                                    <span className="text-muted-foreground/30">=</span>
+                                    <span className={`font-semibold tabular-nums ${editNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                      Net {formatINR(editNetProfit)}
+                                    </span>
+                                  </div>
+
+                                  {/* Save button */}
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={handleSaveEdit}
+                                      disabled={saving}
+                                      className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
+                                    >
+                                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                                      Save Changes
+                                    </button>
+                                    <AnimatePresence>
+                                      {saveStatus === 'saved' && (
+                                        <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="inline-flex items-center gap-1 text-[12px] text-emerald-400">
+                                          <Check className="h-3.5 w-3.5" />Saved
+                                        </motion.span>
+                                      )}
+                                      {saveStatus === 'error' && (
+                                        <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-red-400">
+                                          Failed to save
+                                        </motion.span>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+                                </div>
+                              </motion.div>
                             )}
-                          </button>
+                          </AnimatePresence>
                         </td>
                       </motion.tr>
-                    ))}
-                  </AnimatePresence>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -265,5 +469,22 @@ export default function DailyEntriesPage() {
         </>
       )}
     </PageTransition>
+  );
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function FieldInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</label>
+      <input
+        type="number"
+        value={value || ''}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        className="form-input text-[13px] py-1.5"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
   );
 }
