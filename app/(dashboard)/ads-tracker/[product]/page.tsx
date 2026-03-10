@@ -11,6 +11,7 @@ import {
 import { AdsTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 import { LinkChip } from '@/components/link-chip';
+import { formatINR } from '@/lib/currency-converter';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -31,9 +32,6 @@ const RESULT_CONFIG: Record<string, { color: string; bg: string }> = {
   Testing: { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' },
   Scaled: { color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30' },
 };
-
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
 
 export default function ProductAdsPage() {
   const params = useParams();

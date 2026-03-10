@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { InventoryEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
+import { formatINR } from '@/lib/currency-converter';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -33,9 +34,6 @@ const SOURCING_CONFIG: Record<string, { label: string; leadDays: number; color: 
   'india': { label: 'India', leadDays: 1, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' },
   'china': { label: 'China', leadDays: 20, color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30' },
 };
-
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
 
 function addDays(days: number): string {
   const d = new Date();

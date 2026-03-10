@@ -9,6 +9,7 @@ import {
 import { ProductTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 import { LinkChip } from '@/components/link-chip';
+import { formatINR } from '@/lib/currency-converter';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -28,9 +29,6 @@ const STAGE_CONFIG: Record<string, { color: string; bg: string; dot: string }> =
   'Winner - Moved To OPS': { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', dot: 'bg-emerald-400' },
   'Dropped': { color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30', dot: 'bg-red-400' },
 };
-
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
 
 export default function ProductTrackerPage() {
   const [entries, setEntries] = useState<ProductTrackerEntry[]>([]);

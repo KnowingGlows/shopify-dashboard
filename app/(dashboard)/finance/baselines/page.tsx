@@ -9,6 +9,7 @@ import {
   CalendarClock, ChevronDown, ChevronUp, CalendarDays,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
+import { formatINR, ordinal } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,15 +46,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   subscriptions: '#34D399',
   operations: '#A78BFA',
 };
-
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
-
-function ordinal(n: number) {
-  const s = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
 
 // ── Main Component ───────────────────────────────────────────────────────────
 

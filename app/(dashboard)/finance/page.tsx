@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
+import { formatINR, ordinal } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,9 +75,6 @@ interface FinanceSummary {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
-
 function loadDeliveryRates(): Record<string, number> {
   if (typeof window === 'undefined') return {};
   try {
@@ -84,12 +82,6 @@ function loadDeliveryRates(): Record<string, number> {
     if (stored) return JSON.parse(stored);
   } catch { /* ignore */ }
   return {};
-}
-
-function ordinal(n: number) {
-  const s = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -169,24 +161,23 @@ export default function FinancePage() {
     dailyEntries: [], dailyBaselines: [], monthlyBaselines: [], recentExpenses: [],
   };
 
-  // Upcoming payments: unpaid baselines with due dates, sorted by proximity
-  const today = new Date();
-  const currentDay = today.getDate();
-  const monthlyBaselines = baselines.filter((b) => b.type === 'monthly');
-  const upcomingPayments = monthlyBaselines
-    .filter((b) => !b.isPaid && b.dueDay)
-    .sort((a, b) => {
-      const aDist = ((a.dueDay! - currentDay + 31) % 31);
-      const bDist = ((b.dueDay! - currentDay + 31) % 31);
-      return aDist - bDist;
-    });
-  // Also show recently paid today
-  const paidToday = monthlyBaselines.filter((b) => b.isPaid && b.paidDate === new Date().toISOString().split('T')[0]);
+  // Derived expenditure data — memoized to avoid recalculation on every render
+  const { upcomingPayments, paidToday, recentExpenses, currentDay } = useMemo(() => {
+    const today = new Date();
+    const day = today.getDate();
+    const todayStr = today.toISOString().split('T')[0];
+    const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const monthly = baselines.filter((b) => b.type === 'monthly');
 
-  // Recent expenses (today and upcoming within 7 days)
-  const todayStr = new Date().toISOString().split('T')[0];
-  const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-  const recentExpenses = (d.recentExpenses ?? []).filter((e) => e.date >= todayStr && e.date <= weekFromNow);
+    return {
+      currentDay: day,
+      upcomingPayments: monthly
+        .filter((b) => !b.isPaid && b.dueDay)
+        .sort((a, b) => ((a.dueDay! - day + 31) % 31) - ((b.dueDay! - day + 31) % 31)),
+      paidToday: monthly.filter((b) => b.isPaid && b.paidDate === todayStr),
+      recentExpenses: (d.recentExpenses ?? []).filter((e) => e.date >= todayStr && e.date <= weekFromNow),
+    };
+  }, [baselines, d.recentExpenses]);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">

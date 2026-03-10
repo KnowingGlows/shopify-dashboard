@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
+import { formatINR } from '@/lib/currency-converter';
 
 // ── Types & Helpers ──────────────────────────────────────────────────────────
 
@@ -19,9 +20,6 @@ interface BrandEntry {
   codSales: number;
   deliveryRate: number; // 0-100
 }
-
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
 
 function getYesterday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(Date.now() - 86400000));

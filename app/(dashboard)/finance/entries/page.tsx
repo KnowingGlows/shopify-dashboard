@@ -9,6 +9,7 @@ import {
   ChevronDown, Save, Check,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
+import { formatINR } from '@/lib/currency-converter';
 
 interface BrandDailyData {
   sales: number;
@@ -30,9 +31,6 @@ interface FinanceDailyEntry {
   codSalesByBrand?: Record<string, number>;
   enteredBy?: string;
 }
-
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
 
 const ITEMS_PER_PAGE = 10;
 

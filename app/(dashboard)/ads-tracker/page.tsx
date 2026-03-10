@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
@@ -9,9 +9,7 @@ import {
 } from 'lucide-react';
 import { AdsTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
-
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
+import { formatINR } from '@/lib/currency-converter';
 
 interface ProductSummary {
   name: string;
@@ -85,15 +83,19 @@ export default function OpsAdsPage() {
     finally { setAdding(false); }
   };
 
-  const products = groupByProduct(entries);
+  const products = useMemo(() => groupByProduct(entries), [entries]);
 
   // Global stats
-  const totalProducts = products.length;
-  const totalBatches = entries.length;
-  const totalSpend = entries.reduce((s, e) => s + (e.dailyAdSpend ?? 0), 0);
-  const allWinners = entries.filter((e) => e.creativeBatchResult === 'Winner').length;
-  const allLosers = entries.filter((e) => e.creativeBatchResult === 'Loser').length;
-  const globalHitRate = (allWinners + allLosers) > 0 ? Math.round((allWinners / (allWinners + allLosers)) * 100) : 0;
+  const { totalProducts, totalBatches, totalSpend, globalHitRate } = useMemo(() => {
+    const allWinners = entries.filter((e) => e.creativeBatchResult === 'Winner').length;
+    const allLosers = entries.filter((e) => e.creativeBatchResult === 'Loser').length;
+    return {
+      totalProducts: products.length,
+      totalBatches: entries.length,
+      totalSpend: entries.reduce((s, e) => s + (e.dailyAdSpend ?? 0), 0),
+      globalHitRate: (allWinners + allLosers) > 0 ? Math.round((allWinners / (allWinners + allLosers)) * 100) : 0,
+    };
+  }, [entries, products]);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">

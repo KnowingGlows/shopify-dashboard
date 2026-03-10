@@ -5,9 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Calculator, Percent } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
-
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
+import { formatINR } from '@/lib/currency-converter';
 
 export default function ProfitCalculatorPage() {
   // ROI Calculator

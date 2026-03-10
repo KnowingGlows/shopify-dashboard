@@ -8,6 +8,7 @@ import {
   CalendarClock, AlertCircle, Pencil, X,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
+import { formatINR, ordinal } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,15 +42,6 @@ type ExpenditureItem = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-const formatINR = (v: number) =>
-  new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v);
-
-function ordinal(n: number) {
-  const s = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
 
 function getMonthOptions(): Array<{ value: string; label: string }> {
   const months: Array<{ value: string; label: string }> = [{ value: 'all', label: 'All' }];
