@@ -168,6 +168,10 @@ export async function POST(request: Request) {
         return deleteBaseline(body);
       case 'delete-all-baselines':
         return deleteAllBaselines();
+      case 'delete-expense':
+        return deleteExpense(body);
+      case 'update-expense':
+        return updateExpense(body);
       case 'dismiss-reminder':
         return dismissReminder(body);
       default:
@@ -513,6 +517,31 @@ async function deleteAllBaselines() {
   snapshot.docs.forEach((doc) => batch.delete(doc.ref));
   await batch.commit();
   return NextResponse.json({ success: true, deleted: snapshot.size });
+}
+
+async function deleteExpense(body: Record<string, unknown>) {
+  const firestore = db();
+  const id = body.id as string;
+  if (!id) return NextResponse.json({ error: 'ID is required.' }, { status: 400 });
+  if (!firestore) return NextResponse.json({ success: true });
+  await firestore.collection(COLLECTIONS.FINANCE_EXPENSES).doc(id).delete();
+  return NextResponse.json({ success: true });
+}
+
+async function updateExpense(body: Record<string, unknown>) {
+  const firestore = db();
+  const id = body.id as string;
+  if (!id) return NextResponse.json({ error: 'ID is required.' }, { status: 400 });
+  if (!firestore) return NextResponse.json({ success: true });
+
+  const updates: Record<string, unknown> = {};
+  if (body.description !== undefined) updates.description = body.description;
+  if (body.amount !== undefined) updates.amount = Number(body.amount) || 0;
+  if (body.category !== undefined) updates.category = body.category;
+  if (body.date !== undefined) updates.date = body.date;
+
+  await firestore.collection(COLLECTIONS.FINANCE_EXPENSES).doc(id).update(updates);
+  return NextResponse.json({ success: true });
 }
 
 async function dismissReminder(body: Record<string, unknown>) {

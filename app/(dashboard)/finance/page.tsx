@@ -7,7 +7,7 @@ import {
   RefreshCw, Loader2, DollarSign, Wallet, Plus,
   AlertTriangle, BanknoteIcon,
   Bell, X, Calendar, ArrowRight, Clock,
-  CalendarClock, AlertCircle, Check, Receipt,
+  CalendarClock,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -303,12 +303,15 @@ export default function FinancePage() {
         )}
       </motion.div>
 
-      {/* ═══ Expenditure Tracker ═══ */}
+      {/* ═══ Expenditure Tracker (Summary) ═══ */}
       {(upcomingPayments.length > 0 || paidToday.length > 0 || recentExpenses.length > 0) && (() => {
         const totalUpcoming = upcomingPayments.reduce((s, b) => s + b.amount, 0);
         const totalPaidToday = paidToday.reduce((s, b) => s + b.amount, 0);
         const totalExpenses = recentExpenses.reduce((s, e) => s + e.amount, 0);
         const totalOutflow = totalUpcoming + totalPaidToday + totalExpenses;
+
+        // Next 5 upcoming items for the compact timeline
+        const nextUp = upcomingPayments.slice(0, 5);
 
         return (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="space-y-3">
@@ -320,12 +323,12 @@ export default function FinancePage() {
                   <p className="text-[11px] text-muted-foreground">Where your money is going this month</p>
                 </div>
               </div>
-              <Link href="/finance/baselines" className="text-[11px] text-primary hover:text-primary/80 transition font-medium">
-                Manage baselines →
+              <Link href="/finance/expenditure" className="text-[11px] text-primary hover:text-primary/80 transition font-medium">
+                View all →
               </Link>
             </div>
 
-            {/* Summary strip */}
+            {/* Summary cards */}
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-lg border border-border bg-card px-4 py-3">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Upcoming</p>
@@ -344,89 +347,28 @@ export default function FinancePage() {
               </div>
             </div>
 
-            {/* Expenditure list */}
-            <div className="rounded-xl border border-border bg-card overflow-hidden">
-              {/* Paid today */}
-              {paidToday.map((b) => (
-                <div key={b.id} className="flex items-center gap-4 px-5 py-3.5 border-b border-border/30 bg-emerald-500/[0.03]">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                    <Check className="h-4 w-4 text-emerald-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[13px] text-muted-foreground line-through">{b.label}</span>
-                    <p className="text-[10px] text-emerald-400/70 mt-0.5">Paid today · Recurring baseline</p>
-                  </div>
-                  <span className="text-[15px] font-semibold text-emerald-400 tabular-nums">{formatINR(b.amount)}</span>
-                </div>
-              ))}
-
-              {/* Recent expenses */}
-              {recentExpenses.map((exp) => {
-                const isToday = exp.date === todayStr;
-                return (
-                  <div key={exp.id} className="flex items-center gap-4 px-5 py-3.5 border-b border-border/30 transition hover:bg-accent/5">
-                    <div className="h-8 w-8 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center shrink-0">
-                      <Receipt className="h-4 w-4 text-violet-400" />
+            {/* Compact upcoming timeline */}
+            {nextUp.length > 0 && (
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                {nextUp.map((b) => {
+                  const isOverdue = b.dueDay! < currentDay;
+                  const isDueToday = b.dueDay === currentDay;
+                  const daysUntil = ((b.dueDay! - currentDay + 31) % 31);
+                  return (
+                    <div key={b.id} className={`flex items-center gap-3 px-4 py-2.5 border-b border-border/30 last:border-0 ${isOverdue ? 'bg-red-500/[0.03]' : ''}`}>
+                      <CalendarClock className={`h-3.5 w-3.5 shrink-0 ${isOverdue ? 'text-red-400' : isDueToday ? 'text-amber-400' : 'text-muted-foreground/40'}`} />
+                      <span className={`text-[12px] font-medium flex-1 truncate ${isOverdue ? 'text-red-400' : 'text-foreground'}`}>{b.label}</span>
+                      <span className="text-[10px] text-muted-foreground/50 shrink-0">
+                        {isOverdue ? `overdue` : isDueToday ? 'today' : `${daysUntil}d`}
+                      </span>
+                      <span className={`text-[13px] font-semibold tabular-nums shrink-0 ${isOverdue ? 'text-red-400' : isDueToday ? 'text-amber-400' : 'text-foreground'}`}>
+                        {formatINR(b.amount)}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[13px] font-medium text-foreground">{exp.description || exp.category}</span>
-                      <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-                        {isToday ? 'Today' : exp.date} · {exp.category.charAt(0).toUpperCase() + exp.category.slice(1).replace('-', ' ')}
-                      </p>
-                    </div>
-                    <span className="text-[15px] font-bold text-violet-400 tabular-nums">{formatINR(exp.amount)}</span>
-                  </div>
-                );
-              })}
-
-              {/* Upcoming baselines */}
-              {upcomingPayments.slice(0, 8).map((b) => {
-                const isOverdue = b.dueDay! < currentDay;
-                const isDueToday = b.dueDay === currentDay;
-                const daysUntil = ((b.dueDay! - currentDay + 31) % 31);
-
-                return (
-                  <div key={b.id} className={`flex items-center gap-4 px-5 py-3.5 border-b border-border/30 last:border-0 transition hover:bg-accent/5 ${isOverdue ? 'bg-red-500/[0.03]' : ''}`}>
-                    <div className={`h-8 w-8 rounded-lg border flex items-center justify-center shrink-0 ${
-                      isOverdue
-                        ? 'bg-red-500/15 border-red-500/20'
-                        : isDueToday
-                          ? 'bg-amber-500/15 border-amber-500/20'
-                          : 'bg-muted/30 border-border'
-                    }`}>
-                      {isOverdue ? (
-                        <AlertCircle className="h-4 w-4 text-red-400" />
-                      ) : isDueToday ? (
-                        <CalendarClock className="h-4 w-4 text-amber-400" />
-                      ) : (
-                        <CalendarClock className="h-4 w-4 text-muted-foreground/40" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className={`text-[13px] font-medium ${isOverdue ? 'text-red-400' : 'text-foreground'}`}>{b.label}</span>
-                      <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-                        {isOverdue
-                          ? `Overdue — was due ${ordinal(b.dueDay!)}`
-                          : isDueToday
-                            ? 'Due today — recurring baseline'
-                            : `Due ${ordinal(b.dueDay!)} — in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`
-                        }
-                        {b.category && ` · ${b.category}`}
-                      </p>
-                    </div>
-                    <span className={`text-[15px] font-bold tabular-nums ${isOverdue ? 'text-red-400' : isDueToday ? 'text-amber-400' : 'text-foreground'}`}>
-                      {formatINR(b.amount)}
-                    </span>
-                    <button
-                      onClick={() => togglePaid(b)}
-                      className="rounded-lg px-3 py-1.5 text-[11px] font-medium bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 transition shrink-0"
-                    >
-                      Mark Paid
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </motion.div>
         );
       })()}

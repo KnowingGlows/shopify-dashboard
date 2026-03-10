@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Box, ClipboardList, DollarSign, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Users, X,
-  PenLine, Calculator, List, Landmark,
+  PenLine, Calculator, List, Landmark, Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -31,6 +31,7 @@ const navItems: NavItem[] = [
   { href: '/finance/entry', label: 'Enter Data', icon: PenLine, section: 'core', parent: '/finance' },
   { href: '/finance/entries', label: 'Daily Entries', icon: List, section: 'core', parent: '/finance' },
   { href: '/finance/baselines', label: 'Baselines', icon: Landmark, section: 'core', parent: '/finance' },
+  { href: '/finance/expenditure', label: 'Expenditure', icon: Receipt, section: 'core', parent: '/finance' },
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'core', parent: '/finance' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },

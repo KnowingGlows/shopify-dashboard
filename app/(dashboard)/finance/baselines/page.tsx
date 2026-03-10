@@ -153,7 +153,14 @@ export default function BaselinesPage() {
     setAddingCategory(null);
     setFormLabel(b.label);
     setFormAmount(String(b.amount));
-    setFormDueDay(b.dueDay ? String(b.dueDay) : '');
+    // Convert dueDay number to a date string for the date input (use current month)
+    if (b.dueDay) {
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(b.dueDay).padStart(2, '0')}`;
+      setFormDueDay(dateStr);
+    } else {
+      setFormDueDay('');
+    }
   };
 
   const startAdd = (category: string) => {
@@ -166,13 +173,15 @@ export default function BaselinesPage() {
 
   const handleSubmit = (category: string, existingId?: string) => {
     if (!formLabel.trim() || !formAmount) return;
+    // Extract day-of-month from date string (e.g. "2026-03-15" → 15)
+    const dueDay = formDueDay ? new Date(formDueDay + 'T00:00:00').getDate() : undefined;
     saveBaseline({
       id: existingId,
       type: 'monthly',
       category,
       label: formLabel.trim(),
       amount: Number(formAmount) || 0,
-      dueDay: formDueDay ? Number(formDueDay) : undefined,
+      dueDay,
     });
   };
 
@@ -521,7 +530,7 @@ function InlineForm({
       animate={{ opacity: 1, y: 0 }}
       className="rounded-lg bg-white/[0.04] border border-white/[0.1] p-3 space-y-3"
     >
-      <div className="grid grid-cols-[1fr_100px_80px] gap-2">
+      <div className="grid grid-cols-[1fr_100px_130px] gap-2">
         <div className="flex flex-col gap-1">
           <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Name</label>
           <input
@@ -545,15 +554,12 @@ function InlineForm({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Due day</label>
+          <label className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Due Date</label>
           <input
             value={dueDay}
             onChange={(e) => onDueDayChange(e.target.value)}
-            placeholder="1-31"
-            type="number"
-            min={1}
-            max={31}
-            className="bg-white/[0.06] border border-white/[0.1] rounded-md px-2.5 py-1.5 text-[13px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/30 focus:outline-none focus:border-white/[0.25] transition"
+            type="date"
+            className="bg-white/[0.06] border border-white/[0.1] rounded-md px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:border-white/[0.25] transition"
             onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
           />
         </div>
