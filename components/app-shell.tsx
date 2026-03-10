@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Box, ClipboardList, DollarSign, Home, LogOut,
+  Box, CheckSquare, ClipboardList, DollarSign, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Users, X,
   PenLine, Calculator, List, Landmark, Receipt,
 } from 'lucide-react';
@@ -36,6 +36,7 @@ const navItems: NavItem[] = [
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
   { href: '/ads-tracker', label: 'OPS Ads', icon: Megaphone, section: 'marketing' },
+  { href: '/tasks', label: 'Tasks', icon: CheckSquare, section: 'ops' },
   { href: '/inventory', label: 'Inventory', icon: Box, section: 'ops' },
   { href: '/logs', label: 'Daily Logs', icon: ClipboardList, section: 'ops' },
   { href: '/settings', label: 'Settings', icon: Settings, section: 'system' },

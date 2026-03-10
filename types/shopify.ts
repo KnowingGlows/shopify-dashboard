@@ -114,6 +114,39 @@ export interface InventoryEntry {
   updatedAt: string;
 }
 
+// Task Management
+export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
+export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done';
+
+export interface TaskLinkedEntity {
+  type: 'product' | 'inventory' | 'ads' | 'prs' | 'expense';
+  id: string;
+  label: string; // display name at time of linking
+}
+
+export interface TaskComment {
+  id: string;
+  text: string;
+  author: string; // email
+  createdAt: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignee: string; // email
+  createdBy: string; // email
+  dueDate: string; // YYYY-MM-DD or ''
+  linkedEntities: TaskLinkedEntity[];
+  comments: TaskComment[];
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Inventory Dispatch Log
 export interface InventoryDispatch {
   id: string;

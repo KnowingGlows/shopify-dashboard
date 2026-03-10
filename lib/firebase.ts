@@ -65,4 +65,5 @@ export const COLLECTIONS = {
   REMINDERS: 'reminders',
   INVENTORY_DISPATCHES: 'inventory_dispatches',
   SETTINGS: 'app_settings',
+  TASKS: 'tasks',
 } as const;

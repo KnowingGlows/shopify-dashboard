@@ -23,13 +23,13 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 
 // Default page access per role
 export const ROLE_DEFAULT_PAGES: Record<UserRole, string[]> = {
-  ceo: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/logs', '/settings', '/users'],
-  cmo: ['/', '/brands', '/finance', '/ads-tracker', '/prs', '/logs', '/settings'],
-  operations: ['/', '/brands', '/finance', '/product-tracker', '/inventory', '/logs', '/settings'],
-  customer_success: ['/', '/brands', '/logs', '/settings'],
-  warehouse: ['/', '/inventory', '/logs', '/settings'],
-  admin: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/logs', '/settings', '/users'],
-  user: ['/', '/brands', '/settings', '/logs'],
+  ceo: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/tasks', '/logs', '/settings', '/users'],
+  cmo: ['/', '/brands', '/finance', '/ads-tracker', '/prs', '/tasks', '/logs', '/settings'],
+  operations: ['/', '/brands', '/finance', '/product-tracker', '/inventory', '/tasks', '/logs', '/settings'],
+  customer_success: ['/', '/brands', '/tasks', '/logs', '/settings'],
+  warehouse: ['/', '/inventory', '/tasks', '/logs', '/settings'],
+  admin: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/tasks', '/logs', '/settings', '/users'],
+  user: ['/', '/brands', '/tasks', '/settings', '/logs'],
 };
 
 // Pages that can be toggled per user
@@ -41,6 +41,7 @@ export const CONFIGURABLE_PAGES = [
   { path: '/ads-tracker', label: 'Ads' },
   { path: '/prs', label: 'PRS' },
   { path: '/inventory', label: 'Inventory' },
+  { path: '/tasks', label: 'Tasks' },
   { path: '/settings', label: 'Settings' },
   { path: '/logs', label: 'Daily Logs' },
 ] as const;
