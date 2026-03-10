@@ -143,6 +143,26 @@ export default function FinancePage() {
     }).catch(() => {});
   };
 
+  const summaryExpenses = summary?.recentExpenses;
+
+  // Derived expenditure data — memoized, must be before any early returns
+  const { upcomingPayments, paidToday, recentExpenses, currentDay } = useMemo(() => {
+    const today = new Date();
+    const day = today.getDate();
+    const todayStr = today.toISOString().split('T')[0];
+    const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const monthly = baselines.filter((b) => b.type === 'monthly');
+
+    return {
+      currentDay: day,
+      upcomingPayments: monthly
+        .filter((b) => !b.isPaid && b.dueDay)
+        .sort((a, b) => ((a.dueDay! - day + 31) % 31) - ((b.dueDay! - day + 31) % 31)),
+      paidToday: monthly.filter((b) => b.isPaid && b.paidDate === todayStr),
+      recentExpenses: (summaryExpenses ?? []).filter((e) => e.date >= todayStr && e.date <= weekFromNow),
+    };
+  }, [baselines, summaryExpenses]);
+
   if (loading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -160,24 +180,6 @@ export default function FinancePage() {
     dailyBaselineTotal: 0, monthlyBaselineTotal: 0,
     dailyEntries: [], dailyBaselines: [], monthlyBaselines: [], recentExpenses: [],
   };
-
-  // Derived expenditure data — memoized to avoid recalculation on every render
-  const { upcomingPayments, paidToday, recentExpenses, currentDay } = useMemo(() => {
-    const today = new Date();
-    const day = today.getDate();
-    const todayStr = today.toISOString().split('T')[0];
-    const weekFromNow = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-    const monthly = baselines.filter((b) => b.type === 'monthly');
-
-    return {
-      currentDay: day,
-      upcomingPayments: monthly
-        .filter((b) => !b.isPaid && b.dueDay)
-        .sort((a, b) => ((a.dueDay! - day + 31) % 31) - ((b.dueDay! - day + 31) % 31)),
-      paidToday: monthly.filter((b) => b.isPaid && b.paidDate === todayStr),
-      recentExpenses: (d.recentExpenses ?? []).filter((e) => e.date >= todayStr && e.date <= weekFromNow),
-    };
-  }, [baselines, d.recentExpenses]);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
