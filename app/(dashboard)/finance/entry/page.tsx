@@ -108,25 +108,25 @@ export default function FinanceEntryPage() {
         const savedMargins = loadGrossMargins();
         const savedRates = loadDeliveryRates();
 
-        const entries: Record<string, BrandEntry> = {};
-        for (const brand of brandNames) {
-          entries[brand] = {
-            sales: salesByBrand[brand] ?? 0,
-            grossMargin: savedMargins[brand] ?? 55,
-            adSpend: 0,
-            codSales: codByBrand[brand] ?? 0,
-            deliveryRate: savedRates[brand] ?? 65,
-          };
-        }
+        setBrandEntries((prev) => {
+          const entries: Record<string, BrandEntry> = {};
+          for (const brand of brandNames) {
+            entries[brand] = {
+              sales: salesByBrand[brand] ?? 0,
+              grossMargin: prev[brand]?.grossMargin ?? savedMargins[brand] ?? 55,
+              adSpend: prev[brand]?.adSpend ?? 0,
+              codSales: codByBrand[brand] ?? 0,
+              deliveryRate: prev[brand]?.deliveryRate ?? savedRates[brand] ?? 65,
+            };
+          }
+          return entries;
+        });
         setBrands(brandNames);
-        setBrandEntries(entries);
-        if (!activeBrand || !brandNames.includes(activeBrand)) {
-          setActiveBrand(brandNames[0]);
-        }
+        setActiveBrand((prev) => (!prev || !brandNames.includes(prev)) ? brandNames[0] : prev);
       }
     } catch { /* silently fail */ }
     finally { setSalesLoading(false); }
-  }, [dailyDate, activeBrand]);
+  }, [dailyDate]);
 
   useEffect(() => { if (dailyDate) fetchSales(); }, [dailyDate, fetchSales]);
 
