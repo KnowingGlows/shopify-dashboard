@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { ProductTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
+import { LinkChip } from '@/components/link-chip';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -226,12 +227,10 @@ export default function ProductTrackerPage() {
                   />
                 </FormField>
                 <FormField label="File / Drive Link">
-                  <input
-                    type="text"
+                  <LinkChip
                     value={formLink}
-                    onChange={(e) => setFormLink(e.target.value)}
+                    onChange={setFormLink}
                     placeholder="https://drive.google.com/..."
-                    className="form-input"
                   />
                 </FormField>
                 <FormField label="Stage">
@@ -380,13 +379,11 @@ export default function ProductTrackerPage() {
                       >
                         <div className="border-t border-border px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                           <FormField label="File Link">
-                            <input
-                              type="text"
+                            <LinkChip
                               value={entry.productFileLink}
-                              onChange={(e) => updateLocalField(entry.id, 'productFileLink', e.target.value)}
-                              onBlur={(e) => handleBlur(entry.id, 'productFileLink', e.target.value)}
+                              onChange={(val) => updateLocalField(entry.id, 'productFileLink', val)}
+                              onBlur={(val) => handleBlur(entry.id, 'productFileLink', val)}
                               placeholder="https://..."
-                              className="form-input"
                             />
                           </FormField>
                           <FormField label="Stage">

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { AdsTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
+import { LinkChip } from '@/components/link-chip';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -233,7 +234,7 @@ export default function ProductAdsPage() {
                   <input type="text" value={formBatch} onChange={(e) => setFormBatch(e.target.value)} placeholder={`Batch ${entries.length + 1}`} className="form-input" autoFocus />
                 </FormField>
                 <FormField label="Creative Folder">
-                  <input type="text" value={formFolder} onChange={(e) => setFormFolder(e.target.value)} placeholder="https://drive.google.com/..." className="form-input" />
+                  <LinkChip value={formFolder} onChange={setFormFolder} placeholder="https://drive.google.com/..." />
                 </FormField>
                 <FormField label="Creative Type">
                   <select value={formType} onChange={(e) => setFormType(e.target.value)} className="form-input">
@@ -324,7 +325,7 @@ export default function ProductAdsPage() {
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                         <div className="border-t border-border px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                           <FormField label="Creative Folder">
-                            <input type="text" value={entry.creativeFolderLink} onChange={(e) => updateLocalField(entry.id, 'creativeFolderLink', e.target.value)} onBlur={(e) => handleBlur(entry.id, 'creativeFolderLink', e.target.value)} placeholder="https://..." className="form-input" />
+                            <LinkChip value={entry.creativeFolderLink} onChange={(val) => updateLocalField(entry.id, 'creativeFolderLink', val)} onBlur={(val) => handleBlur(entry.id, 'creativeFolderLink', val)} placeholder="https://..." />
                           </FormField>
                           <FormField label="Creative Type">
                             <select value={entry.creativeType} onChange={(e) => handleSelectChange(entry.id, 'creativeType', e.target.value)} className={`form-input ${typeCfg?.color ?? ''}`}>
