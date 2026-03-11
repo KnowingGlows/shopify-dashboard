@@ -51,6 +51,7 @@ interface FinanceExpense {
   description: string;
   amount: number;
   date: string;
+  endDate?: string; // for date-range expenses
   createdAt: string;
 }
 
@@ -143,6 +144,8 @@ export async function GET(request: Request) {
         return getReminders();
       case 'delivery-rates':
         return getDeliveryRates();
+      case 'spending-power':
+        return getSpendingPower();
       default:
         return getFinanceSummary(searchParams);
     }
@@ -366,6 +369,7 @@ async function addExpense(body: Record<string, unknown>) {
     description: (body.description as string) ?? '',
     amount: Number(body.amount) || 0,
     date: (body.date as string) ?? now.split('T')[0],
+    endDate: (body.endDate as string) || undefined,
     createdAt: now,
   };
 
@@ -569,6 +573,7 @@ async function updateExpense(body: Record<string, unknown>) {
   if (body.amount !== undefined) updates.amount = Number(body.amount) || 0;
   if (body.category !== undefined) updates.category = body.category;
   if (body.date !== undefined) updates.date = body.date;
+  if (body.endDate !== undefined) updates.endDate = body.endDate || null;
 
   await firestore.collection(COLLECTIONS.FINANCE_EXPENSES).doc(id).update(updates);
   return NextResponse.json({ success: true });
@@ -577,6 +582,145 @@ async function updateExpense(body: Record<string, unknown>) {
 async function dismissReminder(body: Record<string, unknown>) {
   // For now just acknowledge - could store in Firestore for persistence
   return NextResponse.json({ success: true, type: body.type });
+}
+
+async function getSpendingPower() {
+  const firestore = db();
+  if (!firestore) return NextResponse.json({ projectedDeposit: 0, founderCut: 0, inventoryNeeds: 0, baselines: 0, expenses: 0, spendingPower: 0, breakdown: [] });
+
+  const today = getISTDate();
+  const todayDate = new Date(today + 'T00:00:00+05:30');
+
+  // Current week boundaries (Mon–Sun)
+  const dayOfWeek = todayDate.getDay() || 7; // Mon=1 … Sun=7
+  const weekStart = new Date(todayDate);
+  weekStart.setDate(todayDate.getDate() - (dayOfWeek - 1));
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  const weekStartStr = getISTDate(weekStart);
+  const weekEndStr = getISTDate(weekEnd);
+
+  // COD projection for this week (sales from 7 days ago → projected deposit this week)
+  const COD_DELAY_DAYS = 7;
+  const salesStart = new Date(weekStart);
+  salesStart.setDate(salesStart.getDate() - COD_DELAY_DAYS);
+  const salesEnd = new Date(weekEnd);
+  salesEnd.setDate(salesEnd.getDate() - COD_DELAY_DAYS);
+
+  // Load delivery rates
+  let brandRates: Record<string, number> = {};
+  try {
+    const doc = await firestore.collection(COLLECTIONS.SETTINGS).doc('delivery_rates').get();
+    if (doc.exists) brandRates = doc.data()?.rates ?? {};
+  } catch { /* ignore */ }
+
+  let codRevenue = 0;
+  let projectedDeposit = 0;
+  const brandBreakdown: Record<string, number> = {};
+
+  const codSnap = await firestore.collection(COLLECTIONS.FINANCE_DAILY)
+    .where('date', '>=', getISTDate(salesStart))
+    .where('date', '<=', getISTDate(salesEnd))
+    .get();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  codSnap.docs.forEach((doc: any) => {
+    const data = doc.data();
+    const codByBrand = data.codSalesByBrand ?? {};
+    for (const [brand, amount] of Object.entries(codByBrand)) {
+      const val = Number(amount) || 0;
+      brandBreakdown[brand] = (brandBreakdown[brand] ?? 0) + val;
+      codRevenue += val;
+    }
+  });
+
+  for (const [brand, amount] of Object.entries(brandBreakdown)) {
+    const rate = brandRates[brand] ?? 65;
+    projectedDeposit += Math.round(amount * (rate / 100));
+  }
+
+  // Founder cut (50%)
+  const founderCut = Math.round(projectedDeposit * 0.5);
+  let remaining = projectedDeposit - founderCut;
+
+  // Inventory needs: items with daysRemaining < 14 for brands with COD data
+  const brandNames = Object.keys(brandBreakdown);
+  let inventoryNeeds = 0;
+  try {
+    const invSnap = await firestore.collection(COLLECTIONS.INVENTORY).get();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    invSnap.docs.forEach((doc: any) => {
+      const item = doc.data();
+      const daysRemaining = item.daysRemaining ?? 999;
+      if (daysRemaining < 14 && brandNames.some((b) => (item.store ?? '').toLowerCase().includes(b.toLowerCase()))) {
+        const reorderCost = (item.costPerUnit ?? 0) * (item.reorderQty ?? item.currentStock ?? 0);
+        inventoryNeeds += reorderCost;
+      }
+    });
+  } catch { /* ignore */ }
+  remaining -= inventoryNeeds;
+
+  // Baselines due this week
+  let baselinesDue = 0;
+  const baselineItems: Array<{ label: string; amount: number; dueDay: number }> = [];
+  try {
+    const basSnap = await firestore.collection(COLLECTIONS.FINANCE_BASELINES).get();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    basSnap.docs.forEach((doc: any) => {
+      const b = doc.data();
+      if (b.type !== 'monthly' || b.isPaid) return;
+      const dueDay = b.dueDay;
+      if (!dueDay) return;
+      const startDay = weekStart.getDate();
+      const endDay = weekEnd.getDate();
+      // Check if dueDay falls within this week
+      const inRange = startDay <= endDay
+        ? (dueDay >= startDay && dueDay <= endDay)
+        : (dueDay >= startDay || dueDay <= endDay); // month wrap
+      if (inRange) {
+        baselinesDue += b.amount ?? 0;
+        baselineItems.push({ label: b.label, amount: b.amount, dueDay });
+      }
+    });
+  } catch { /* ignore */ }
+  remaining -= baselinesDue;
+
+  // Expenses this week
+  let weekExpenses = 0;
+  try {
+    const expSnap = await firestore.collection(COLLECTIONS.FINANCE_EXPENSES).get();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expSnap.docs.forEach((doc: any) => {
+      const e = doc.data();
+      if (e.date >= weekStartStr && e.date <= weekEndStr) {
+        weekExpenses += e.amount ?? 0;
+      }
+    });
+  } catch { /* ignore */ }
+  remaining -= weekExpenses;
+
+  const breakdown = [
+    { label: 'Projected Bank Deposit', amount: projectedDeposit, type: 'income' as const },
+    { label: 'Founder Cut (50%)', amount: -founderCut, type: 'deduction' as const },
+    ...(inventoryNeeds > 0 ? [{ label: 'Inventory Restock', amount: -inventoryNeeds, type: 'deduction' as const }] : []),
+    ...baselineItems.map((b) => ({ label: b.label, amount: -b.amount, type: 'deduction' as const })),
+    ...(weekExpenses > 0 ? [{ label: 'Other Expenses', amount: -weekExpenses, type: 'deduction' as const }] : []),
+    { label: 'Available to Spend', amount: Math.max(remaining, 0), type: 'result' as const },
+  ];
+
+  return NextResponse.json({
+    weekLabel: getWeekLabel(weekStart),
+    weekStart: weekStartStr,
+    weekEnd: weekEndStr,
+    codRevenue,
+    projectedDeposit,
+    founderCut,
+    inventoryNeeds,
+    baselinesDue,
+    weekExpenses,
+    spendingPower: Math.max(remaining, 0),
+    breakdown,
+  });
 }
 
 async function getFinanceSummary(params: URLSearchParams) {

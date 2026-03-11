@@ -4,8 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
-  Loader2, Plus, Save, ArrowLeft, Calculator, Megaphone,
-  Receipt, BanknoteIcon, Truck, Check,
+  Loader2, Save, ArrowLeft, Calculator, Megaphone,
+  Receipt, BanknoteIcon, Truck,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -25,9 +25,6 @@ function getYesterday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(Date.now() - 86400000));
 }
 
-function getToday(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-}
 
 async function loadDeliveryRates(): Promise<Record<string, number>> {
   try {
@@ -58,19 +55,6 @@ function saveGrossMargins(margins: Record<string, number>) {
   try { localStorage.setItem('orbyt-gross-margins', JSON.stringify(margins)); } catch { /* ignore */ }
 }
 
-const EXPENSE_CATEGORIES = [
-  { value: 'inventory', label: 'Inventory / Stock Purchase', icon: '📦' },
-  { value: 'product-testing', label: 'Product Testing', icon: '🧪' },
-  { value: 'marketing', label: 'Marketing / Ads', icon: '📣' },
-  { value: 'shipping', label: 'Shipping / Logistics', icon: '🚚' },
-  { value: 'returns', label: 'Returns / RTO', icon: '↩️' },
-  { value: 'tools', label: 'Tools / Software', icon: '🔧' },
-  { value: 'packaging', label: 'Packaging / Labels', icon: '📋' },
-  { value: 'freelance', label: 'Freelance / Services', icon: '👤' },
-  { value: 'travel', label: 'Travel / Transport', icon: '✈️' },
-  { value: 'other', label: 'Other', icon: '•' },
-];
-
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function FinanceEntryPage() {
@@ -88,13 +72,6 @@ export default function FinanceEntryPage() {
   const [brandEntries, setBrandEntries] = useState<Record<string, BrandEntry>>({});
   const [activeBrand, setActiveBrand] = useState<string | null>(null);
 
-  // Expenses
-  const [expCategory, setExpCategory] = useState('inventory');
-  const [expDescription, setExpDescription] = useState('');
-  const [expAmount, setExpAmount] = useState('');
-  const [expDate, setExpDate] = useState(getToday());
-  const [addingExpense, setAddingExpense] = useState(false);
-  const [expenseSaveStatus, setExpenseSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
   // Auto-fetch sales — only when the date actually changes
   const lastFetchedDate = useRef<string>('');
@@ -195,21 +172,6 @@ export default function FinanceEntryPage() {
     finally { setSavingDaily(false); }
   };
 
-  const handleAddExpense = async () => {
-    if (!expAmount || !expCategory) return;
-    setAddingExpense(true);
-    setExpenseSaveStatus('idle');
-    try {
-      const res = await fetch('/api/finance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add-expense', category: expCategory, description: expDescription, amount: Number(expAmount), date: expDate }),
-      });
-      if (res.ok) { setExpDescription(''); setExpAmount(''); setExpenseSaveStatus('saved'); setTimeout(() => setExpenseSaveStatus('idle'), 3000); }
-      else setExpenseSaveStatus('error');
-    } catch { setExpenseSaveStatus('error'); }
-    finally { setAddingExpense(false); }
-  };
 
   // Computed totals
   const totals = Object.values(brandEntries).reduce(
@@ -400,84 +362,18 @@ export default function FinanceEntryPage() {
         </motion.div>
       )}
 
-      {/* ═══ Log Expense ═══ */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+      {/* Link to expenditure */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+        <Link
+          href="/finance/expenditure"
+          className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-card/50 px-5 py-4 hover:border-primary/30 hover:bg-primary/[0.02] transition"
+        >
           <Receipt className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">Log Expense</h2>
-          <span className="text-[10px] text-muted-foreground ml-auto">One-off purchases, inventory, testing, etc.</span>
-        </div>
-        <div className="p-4 space-y-4">
-          {/* Category pills */}
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Category</label>
-            <div className="flex flex-wrap gap-1.5">
-              {EXPENSE_CATEGORIES.map((cat) => (
-                <button
-                  key={cat.value}
-                  onClick={() => setExpCategory(cat.value)}
-                  className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition border ${
-                    expCategory === cat.value
-                      ? 'bg-primary/15 text-primary border-primary/30'
-                      : 'text-muted-foreground border-border hover:border-border/80 hover:text-foreground'
-                  }`}
-                >
-                  <span className="mr-1">{cat.icon}</span>{cat.label}
-                </button>
-              ))}
-            </div>
+          <div className="flex-1">
+            <p className="text-[13px] font-medium text-foreground">Log an expense?</p>
+            <p className="text-[11px] text-muted-foreground">Go to Expenditure Tracker →</p>
           </div>
-
-          {/* Fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_120px_140px] gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Description</label>
-              <input
-                type="text"
-                value={expDescription}
-                onChange={(e) => setExpDescription(e.target.value)}
-                placeholder="e.g. Ordered 500 units of Eye Cream"
-                className="form-input"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Amount (₹)</label>
-              <input
-                type="number"
-                value={expAmount}
-                onChange={(e) => setExpAmount(e.target.value)}
-                placeholder="0"
-                className="form-input"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Date</label>
-              <input type="date" value={expDate} onChange={(e) => setExpDate(e.target.value)} className="form-input" />
-            </div>
-          </div>
-
-          {/* Submit */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleAddExpense}
-              disabled={addingExpense || !expAmount || !expDescription}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground hover:bg-primary/90 transition disabled:opacity-50"
-            >
-              {addingExpense ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-              Log Expense
-            </button>
-            <AnimatePresence>
-              {expenseSaveStatus === 'saved' && (
-                <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="inline-flex items-center gap-1 text-[12px] text-emerald-400">
-                  <Check className="h-3.5 w-3.5" />Added
-                </motion.span>
-              )}
-              {expenseSaveStatus === 'error' && (
-                <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-red-400">Failed</motion.span>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
+        </Link>
       </motion.div>
     </PageTransition>
   );

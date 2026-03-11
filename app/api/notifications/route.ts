@@ -32,16 +32,21 @@ export async function GET(req: NextRequest) {
 
   if (action === 'list') {
     try {
+      // Simple query without orderBy to avoid needing composite index
       const snap = await firestore
         .collection(COLLECTIONS.NOTIFICATIONS)
         .where('targetEmail', '==', user.email)
-        .orderBy('createdAt', 'desc')
-        .limit(50)
         .get();
 
-      const notifications = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const notifications = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as { id: string; status: string; createdAt: number; [key: string]: unknown }))
+        .filter((n) => n.status !== 'dismissed')
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+        .slice(0, 50);
+
       return NextResponse.json({ notifications });
-    } catch {
+    } catch (err) {
+      console.error('Notifications list error:', err);
       return NextResponse.json({ notifications: [] });
     }
   }
@@ -148,11 +153,15 @@ export async function POST(req: NextRequest) {
     const snap = await firestore
       .collection(COLLECTIONS.NOTIFICATIONS)
       .where('targetEmail', '==', user.email)
-      .where('status', 'in', ['unread', 'read'])
       .get();
 
     const batch = firestore.batch();
-    snap.docs.forEach((d) => batch.update(d.ref, { status: 'dismissed', dismissedAt: Date.now() }));
+    snap.docs.forEach((d) => {
+      const status = d.data().status;
+      if (status === 'unread' || status === 'read') {
+        batch.update(d.ref, { status: 'dismissed', dismissedAt: Date.now() });
+      }
+    });
     await batch.commit();
 
     return NextResponse.json({ success: true });
