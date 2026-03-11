@@ -79,11 +79,41 @@ export default function ExpenditurePage() {
   const [calMonth, setCalMonth] = useState(now.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
+  // COD projection data for calendar overlay
+  const [codByDate, setCodByDate] = useState<Record<string, number>>({});
+
   const fetchExpenses = useCallback(async () => {
     try {
-      const res = await fetch('/api/finance?action=expenses');
-      const data = await res.json();
-      setExpenses(data.expenses ?? []);
+      const [expRes, summaryRes, ratesRes] = await Promise.all([
+        fetch('/api/finance?action=expenses'),
+        fetch('/api/finance'),
+        fetch('/api/finance?action=delivery-rates'),
+      ]);
+      const [expData, summaryData, ratesData] = await Promise.all([
+        expRes.json(), summaryRes.json(), ratesRes.json(),
+      ]);
+      setExpenses(expData.expenses ?? []);
+
+      // Compute projected COD deposits per day (sales date + 7 days = deposit date)
+      const rates: Record<string, number> = ratesData.rates ?? {};
+      const entries: Array<{ date: string; codSalesByBrand?: Record<string, number> }> = summaryData.dailyEntries ?? [];
+      const depositMap: Record<string, number> = {};
+      for (const entry of entries) {
+        const codByBrand = entry.codSalesByBrand ?? {};
+        let deposit = 0;
+        for (const [brand, amount] of Object.entries(codByBrand)) {
+          const rate = rates[brand] ?? 65;
+          deposit += Math.round(Number(amount) * (rate / 100));
+        }
+        if (deposit > 0) {
+          // Deposit arrives 7 days after sale
+          const saleDate = new Date(entry.date + 'T00:00:00');
+          saleDate.setDate(saleDate.getDate() + 7);
+          const depositDate = saleDate.toISOString().split('T')[0];
+          depositMap[depositDate] = (depositMap[depositDate] ?? 0) + deposit;
+        }
+      }
+      setCodByDate(depositMap);
     } catch { /* silently fail */ }
     finally { setLoading(false); }
   }, []);
@@ -278,9 +308,11 @@ export default function ExpenditurePage() {
               const day = i + 1;
               const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const dayData = expensesByDate[dateStr];
+              const codDeposit = codByDate[dateStr] ?? 0;
               const isToday = dateStr === todayStr;
               const isSelected = dateStr === selectedDate;
               const isFuture = dateStr > todayStr;
+              const formatShort = (v: number) => v >= 1000 ? `${Math.round(v / 1000)}k` : `₹${v}`;
 
               return (
                 <button
@@ -297,18 +329,22 @@ export default function ExpenditurePage() {
                   }`}>
                     {day}
                   </span>
-                  {dayData && (
-                    <>
-                      <span className="text-[8px] font-semibold text-violet-400 tabular-nums leading-none">
-                        {dayData.total >= 1000 ? `${Math.round(dayData.total / 1000)}k` : formatINR(dayData.total)}
-                      </span>
-                      <div className="flex gap-0.5">
-                        {[...dayData.categories].slice(0, 3).map((cat) => (
-                          <div key={cat} className={`h-1 w-1 rounded-full ${CATEGORY_COLORS[cat] ?? 'bg-zinc-500'}`} />
-                        ))}
-                      </div>
-                    </>
+                  {codDeposit > 0 && (
+                    <span className="text-[7px] font-bold text-emerald-400 tabular-nums leading-none">
+                      +{formatShort(codDeposit)}
+                    </span>
                   )}
+                  {dayData && (
+                    <span className="text-[7px] font-semibold text-red-400 tabular-nums leading-none">
+                      −{formatShort(dayData.total)}
+                    </span>
+                  )}
+                  <div className="flex gap-0.5">
+                    {codDeposit > 0 && <div className="h-1 w-1 rounded-full bg-emerald-500" />}
+                    {dayData && [...dayData.categories].slice(0, 2).map((cat) => (
+                      <div key={cat} className={`h-1 w-1 rounded-full ${CATEGORY_COLORS[cat] ?? 'bg-zinc-500'}`} />
+                    ))}
+                  </div>
                 </button>
               );
             })}
@@ -317,9 +353,20 @@ export default function ExpenditurePage() {
 
         {/* Summary sidebar */}
         <div className="space-y-3">
+          {/* COD Inflow for selected date */}
+          {selectedDate && (codByDate[selectedDate] ?? 0) > 0 && (
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-400/70 mb-1">COD Projected Deposit</p>
+              <p className="text-2xl font-semibold text-emerald-400 tabular-nums">
+                <AnimatedNumber value={codByDate[selectedDate] ?? 0} formatter={formatINR} />
+              </p>
+              <p className="text-[10px] text-emerald-400/40 mt-0.5">Cash inflow for {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+            </div>
+          )}
+
           <div className="rounded-xl border border-border bg-card px-4 py-3">
             <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
-              {selectedDate ? `${selectedDate}` : monthLabel}
+              {selectedDate ? 'Expenses' : monthLabel}
             </p>
             <p className="text-2xl font-semibold text-violet-400 tabular-nums">
               <AnimatedNumber value={selectedDate ? totalFiltered : totalMonth} formatter={formatINR} />
@@ -327,6 +374,14 @@ export default function ExpenditurePage() {
             <p className="text-[10px] text-muted-foreground/50 mt-0.5">
               {selectedDate ? `${filtered.length} expense${filtered.length !== 1 ? 's' : ''}` : `${monthExpenses.length} this month`}
             </p>
+            {selectedDate && (codByDate[selectedDate] ?? 0) > 0 && totalFiltered > 0 && (
+              <div className="mt-2 pt-2 border-t border-border/30">
+                <p className="text-[10px] text-muted-foreground">Net cashflow</p>
+                <p className={`text-[14px] font-semibold tabular-nums ${(codByDate[selectedDate] ?? 0) - totalFiltered > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {formatINR((codByDate[selectedDate] ?? 0) - totalFiltered)}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Category breakdown */}

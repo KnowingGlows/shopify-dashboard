@@ -31,9 +31,17 @@ interface Baseline {
   category: string;
   label: string;
   amount: number;
-  dueDay?: number;
+  dueDate?: string;
   isPaid?: boolean;
   paidDate?: string;
+}
+
+interface Expense {
+  id: string;
+  category: string;
+  description: string;
+  amount: number;
+  date: string;
 }
 
 interface CODWeek {
@@ -89,6 +97,7 @@ export default function FinancePage() {
   const [spending, setSpending] = useState<SpendingPower | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [baselines, setBaselines] = useState<Baseline[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -96,16 +105,17 @@ export default function FinancePage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [summaryRes, codRes, spendRes, remindersRes, baselinesRes, ratesRes] = await Promise.all([
+      const [summaryRes, codRes, spendRes, remindersRes, baselinesRes, ratesRes, expensesRes] = await Promise.all([
         fetch('/api/finance'),
         fetch('/api/finance?action=cod-projections'),
         fetch('/api/finance?action=spending-power'),
         fetch('/api/finance?action=reminders'),
         fetch('/api/finance?action=baselines'),
         fetch('/api/finance?action=delivery-rates'),
+        fetch('/api/finance?action=expenses'),
       ]);
-      const [summaryData, codData, spendData, remindersData, baselinesData, ratesData] = await Promise.all([
-        summaryRes.json(), codRes.json(), spendRes.json(), remindersRes.json(), baselinesRes.json(), ratesRes.json(),
+      const [summaryData, codData, spendData, remindersData, baselinesData, ratesData, expensesData] = await Promise.all([
+        summaryRes.json(), codRes.json(), spendRes.json(), remindersRes.json(), baselinesRes.json(), ratesRes.json(), expensesRes.json(),
       ]);
       setSummary(summaryData);
       setCodWeeks(codData.weeks ?? []);
@@ -113,6 +123,7 @@ export default function FinancePage() {
       setReminders(remindersData.reminders ?? []);
       setBaselines([...(baselinesData.daily ?? []), ...(baselinesData.monthly ?? [])]);
       setDeliveryRates(ratesData.rates ?? {});
+      setExpenses(expensesData.expenses ?? []);
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -128,17 +139,31 @@ export default function FinancePage() {
     }).catch(() => {});
   };
 
-  const { upcomingPayments, currentDay } = useMemo(() => {
-    const today = new Date();
-    const day = today.getDate();
-    const monthly = baselines.filter((b) => b.type === 'monthly');
-    return {
-      currentDay: day,
-      upcomingPayments: monthly
-        .filter((b) => !b.isPaid && b.dueDay)
-        .sort((a, b) => ((a.dueDay! - day + 31) % 31) - ((b.dueDay! - day + 31) % 31)),
-    };
+  const todayStr = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()), []);
+
+  const upcomingPayments = useMemo(() => {
+    return baselines
+      .filter((b) => b.type === 'monthly' && !b.isPaid && b.dueDate)
+      .sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''));
   }, [baselines]);
+
+  // Build daily outflow map (expenses + baselines by date)
+  const dailyOutflows = useMemo(() => {
+    const map: Record<string, { expenses: number; baselines: number; items: string[] }> = {};
+    for (const exp of expenses) {
+      if (!map[exp.date]) map[exp.date] = { expenses: 0, baselines: 0, items: [] };
+      map[exp.date].expenses += exp.amount;
+      map[exp.date].items.push(exp.description || exp.category);
+    }
+    for (const b of baselines) {
+      if (b.type === 'monthly' && b.dueDate && !b.isPaid) {
+        if (!map[b.dueDate]) map[b.dueDate] = { expenses: 0, baselines: 0, items: [] };
+        map[b.dueDate].baselines += b.amount;
+        map[b.dueDate].items.push(b.label);
+      }
+    }
+    return map;
+  }, [expenses, baselines]);
 
   if (loading) {
     return (
@@ -178,6 +203,28 @@ export default function FinancePage() {
   });
 
   const maxDeposit = Math.max(...last7Deposits.map((e) => e.deposit), 1);
+
+  // Build outflow chart data — next 14 days from today
+  const outflowDays = useMemo(() => {
+    const days: Array<{ date: string; total: number; expenses: number; baselines: number }> = [];
+    const start = new Date(todayStr + 'T00:00:00');
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const dateStr = d.toISOString().split('T')[0];
+      const data = dailyOutflows[dateStr];
+      days.push({
+        date: dateStr,
+        total: (data?.expenses ?? 0) + (data?.baselines ?? 0),
+        expenses: data?.expenses ?? 0,
+        baselines: data?.baselines ?? 0,
+      });
+    }
+    return days;
+  }, [todayStr, dailyOutflows]);
+
+  const maxOutflow = Math.max(...outflowDays.map((d) => d.total), 1);
+  const totalOutflow14d = outflowDays.reduce((s, d) => s + d.total, 0);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -337,6 +384,81 @@ export default function FinancePage() {
         </motion.div>
       )}
 
+      {/* ═══ Cash Outflow — Bar Chart ═══ */}
+      {totalOutflow14d > 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38 }}>
+          <div className="rounded-2xl border border-red-500/15 bg-gradient-to-br from-red-500/[0.04] via-card to-card overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <ArrowDown className="h-5 w-5 text-red-400" />
+                    <h2 className="text-base font-semibold text-foreground">Cash Outflow</h2>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Next 14 days — Expenses & baselines
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Due</p>
+                  <p className="text-3xl font-bold text-red-400 tabular-nums">
+                    <AnimatedNumber value={totalOutflow14d} formatter={formatINR} />
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-4 mb-3">
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2 w-2 rounded-sm bg-red-500/40" />
+                    <span className="text-[9px] text-muted-foreground/60">Expenses</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2 w-2 rounded-sm bg-amber-500/40" />
+                    <span className="text-[9px] text-muted-foreground/60">Baselines</span>
+                  </div>
+                </div>
+                <div className="h-32">
+                  <div className="flex items-end gap-1 h-full">
+                    {outflowDays.map((day) => {
+                      const barHeight = day.total > 0 ? Math.max(Math.round((day.total / maxOutflow) * 100), 6) : 0;
+                      const expPct = day.total > 0 ? (day.expenses / day.total) * 100 : 0;
+                      const dayNum = day.date.slice(-2);
+                      const isToday = day.date === todayStr;
+                      return (
+                        <div key={day.date} className="flex-1 h-full flex flex-col justify-end items-center">
+                          {barHeight > 0 && (
+                            <div className="relative w-full group cursor-default" style={{ height: `${barHeight}%`, minHeight: '6px' }}>
+                              <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block whitespace-nowrap rounded-md bg-popover border border-border px-2 py-1 text-[10px] font-medium text-foreground shadow-lg z-10">
+                                {formatINR(day.total)}
+                              </div>
+                              <motion.div
+                                initial={{ height: 0 }}
+                                animate={{ height: '100%' }}
+                                transition={{ duration: 0.6, ease: 'easeOut' }}
+                                className="w-full h-full rounded-t-md overflow-hidden flex flex-col"
+                              >
+                                {day.expenses > 0 && (
+                                  <div className="bg-red-500/30 border-x border-t border-red-500/20 hover:bg-red-500/40 transition-colors" style={{ flex: expPct }} />
+                                )}
+                                {day.baselines > 0 && (
+                                  <div className="bg-amber-500/30 border-x border-amber-500/20 hover:bg-amber-500/40 transition-colors" style={{ flex: 100 - expPct }} />
+                                )}
+                              </motion.div>
+                            </div>
+                          )}
+                          <span className={`mt-1.5 text-[8px] tabular-nums ${isToday ? 'text-primary font-bold' : 'text-muted-foreground/40'}`}>{dayNum}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* ═══ Upcoming Payments ═══ */}
       {upcomingPayments.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="space-y-3">
@@ -360,15 +482,18 @@ export default function FinancePage() {
 
           <div className="rounded-xl border border-border bg-card overflow-hidden">
             {upcomingPayments.slice(0, 5).map((b) => {
-              const isOverdue = b.dueDay! < currentDay;
-              const isDueToday = b.dueDay === currentDay;
-              const daysUntil = ((b.dueDay! - currentDay + 31) % 31);
+              const isOverdue = b.dueDate! < todayStr;
+              const isDueToday = b.dueDate === todayStr;
+              const daysUntil = b.dueDate ? Math.max(0, Math.round((new Date(b.dueDate + 'T00:00:00').getTime() - new Date(todayStr + 'T00:00:00').getTime()) / 86400000)) : 0;
               return (
                 <div key={b.id} className={`flex items-center gap-3 px-4 py-2.5 border-b border-border/30 last:border-0 ${isOverdue ? 'bg-red-500/[0.03]' : ''}`}>
                   <CalendarClock className={`h-3.5 w-3.5 shrink-0 ${isOverdue ? 'text-red-400' : isDueToday ? 'text-amber-400' : 'text-muted-foreground/40'}`} />
                   <span className={`text-[12px] font-medium flex-1 truncate ${isOverdue ? 'text-red-400' : 'text-foreground'}`}>{b.label}</span>
                   <span className="text-[10px] text-muted-foreground/50 shrink-0">
                     {isOverdue ? 'overdue' : isDueToday ? 'today' : `${daysUntil}d`}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/40 shrink-0">
+                    {b.dueDate ? new Date(b.dueDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                   </span>
                   <span className={`text-[13px] font-semibold tabular-nums shrink-0 ${isOverdue ? 'text-red-400' : isDueToday ? 'text-amber-400' : 'text-foreground'}`}>
                     {formatINR(b.amount)}

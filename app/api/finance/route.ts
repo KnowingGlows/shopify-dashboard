@@ -39,7 +39,7 @@ interface OperationalBaseline {
   category: string;
   label: string;
   amount: number;
-  dueDay?: number; // day of month (1-31) when payment is due
+  dueDate?: string; // YYYY-MM-DD when payment is due
   isPaid?: boolean; // whether paid this month
   paidDate?: string; // YYYY-MM-DD when last paid
   updatedAt: string;
@@ -56,6 +56,13 @@ interface FinanceExpense {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+function dueDayToDate(day: number): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}-${String(day).padStart(2, '0')}`;
+}
 
 function getISTDate(date?: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date ?? new Date());
@@ -287,10 +294,10 @@ async function saveDailyEntry(body: Record<string, unknown>) {
     shippingCost: 0,
     netProfit,
     codSalesByBrand,
-    brandData: hasBrandData ? brandData : undefined,
     enteredBy: (body.enteredBy as string) ?? '',
     updatedAt: new Date().toISOString(),
   };
+  if (hasBrandData) (entry as unknown as Record<string, unknown>).brandData = brandData;
 
   if (!firestore) {
     return NextResponse.json({ success: true, entry });
@@ -324,11 +331,12 @@ async function saveBaseline(body: Record<string, unknown>) {
     category: (body.category as string) ?? '',
     label: (body.label as string) ?? '',
     amount: Number(body.amount) || 0,
-    dueDay: body.dueDay ? Number(body.dueDay) : undefined,
-    isPaid: body.isPaid === true ? true : undefined,
-    paidDate: (body.paidDate as string) || undefined,
     updatedAt: new Date().toISOString(),
   };
+  if (body.dueDate) baseline.dueDate = body.dueDate as string;
+  if (body.dueDay) baseline.dueDate = dueDayToDate(Number(body.dueDay));
+  if (body.isPaid === true) baseline.isPaid = true;
+  if (body.paidDate) baseline.paidDate = body.paidDate as string;
 
   if (!firestore) {
     return NextResponse.json({ success: true, baseline });
@@ -357,7 +365,7 @@ async function getExpenses() {
       description: data.description ?? '',
       amount: data.amount ?? 0,
       date: data.date ?? '',
-      endDate: data.endDate ?? undefined,
+      ...(data.endDate ? { endDate: data.endDate } : {}),
       createdAt: data.createdAt ?? '',
     };
   });
@@ -374,9 +382,9 @@ async function addExpense(body: Record<string, unknown>) {
     description: (body.description as string) ?? '',
     amount: Number(body.amount) || 0,
     date: (body.date as string) ?? now.split('T')[0],
-    endDate: (body.endDate as string) || undefined,
     createdAt: now,
   };
+  if (body.endDate) expense.endDate = body.endDate as string;
 
   if (!expense.category || !expense.amount) {
     return NextResponse.json({ error: 'Category and amount are required.' }, { status: 400 });
@@ -706,24 +714,18 @@ async function getSpendingPower(params: URLSearchParams) {
 
   // Baselines due this week
   let baselinesDue = 0;
-  const baselineItems: Array<{ label: string; amount: number; dueDay: number }> = [];
+  const baselineItems: Array<{ label: string; amount: number; dueDate: string }> = [];
   if (enabledItems.baselines !== false) {
     try {
       const basSnap = await firestore.collection(COLLECTIONS.FINANCE_BASELINES).get();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       basSnap.docs.forEach((doc: any) => {
         const b = doc.data();
         if (b.type !== 'monthly' || b.isPaid) return;
-        const dueDay = b.dueDay;
-        if (!dueDay) return;
-        const startDay = weekStart.getDate();
-        const endDay = weekEnd.getDate();
-        const inRange = startDay <= endDay
-          ? (dueDay >= startDay && dueDay <= endDay)
-          : (dueDay >= startDay || dueDay <= endDay);
-        if (inRange) {
+        const dueDate = b.dueDate;
+        if (!dueDate) return;
+        if (dueDate >= weekStartStr && dueDate <= weekEndStr) {
           baselinesDue += b.amount ?? 0;
-          baselineItems.push({ label: b.label, amount: b.amount, dueDay });
+          baselineItems.push({ label: b.label, amount: b.amount, dueDate });
         }
       });
     } catch { /* ignore */ }

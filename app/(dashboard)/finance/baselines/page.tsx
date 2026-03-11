@@ -9,7 +9,7 @@ import {
   ChevronDown, ChevronUp, Calendar,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
-import { formatINR, ordinal } from '@/lib/currency-converter';
+import { formatINR } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,7 +19,7 @@ interface Baseline {
   category: string;
   label: string;
   amount: number;
-  dueDay?: number;
+  dueDate?: string;
   isPaid?: boolean;
   paidDate?: string;
 }
@@ -47,7 +47,7 @@ export default function BaselinesPage() {
   const [addingCategory, setAddingCategory] = useState<string | null>(null);
   const [formLabel, setFormLabel] = useState('');
   const [formAmount, setFormAmount] = useState('');
-  const [formDueDay, setFormDueDay] = useState('');
+  const [formDueDate, setFormDueDate] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const fetchBaselines = useCallback(async () => {
@@ -101,23 +101,25 @@ export default function BaselinesPage() {
     await saveBaseline(updated);
   };
 
-  const resetForm = () => { setEditingId(null); setAddingCategory(null); setFormLabel(''); setFormAmount(''); setFormDueDay(''); };
+  const resetForm = () => { setEditingId(null); setAddingCategory(null); setFormLabel(''); setFormAmount(''); setFormDueDate(''); };
 
   const startEdit = (b: Baseline) => {
     setEditingId(b.id); setAddingCategory(null);
     setFormLabel(b.label); setFormAmount(String(b.amount));
-    setFormDueDay(b.dueDay ? String(b.dueDay) : '');
+    setFormDueDate(b.dueDate ?? '');
   };
 
   const startAdd = (category: string) => {
     setAddingCategory(category); setEditingId(null);
-    setFormLabel(''); setFormAmount(''); setFormDueDay('');
+    setFormLabel(''); setFormAmount(''); setFormDueDate('');
   };
 
   const handleSubmit = (category: string, existingId?: string) => {
     if (!formLabel.trim() || !formAmount) return;
-    const dueDay = formDueDay ? Math.min(31, Math.max(1, Number(formDueDay))) : undefined;
-    saveBaseline({ id: existingId, type: 'monthly', category, label: formLabel.trim(), amount: Number(formAmount) || 0, dueDay });
+    const payload: Record<string, unknown> = { type: 'monthly', category, label: formLabel.trim(), amount: Number(formAmount) || 0 };
+    if (existingId) payload.id = existingId;
+    if (formDueDate) payload.dueDate = formDueDate;
+    saveBaseline(payload as Partial<Baseline>);
   };
 
   if (loading) {
@@ -131,7 +133,7 @@ export default function BaselinesPage() {
   const categoryTotals: Record<string, number> = {};
   for (const b of monthlyBaselines) categoryTotals[b.category] = (categoryTotals[b.category] ?? 0) + b.amount;
 
-  const currentDay = new Date().getDate();
+  const todayStr = getToday();
 
   return (
     <PageTransition className="mx-auto max-w-5xl p-5 space-y-5">
@@ -192,7 +194,7 @@ export default function BaselinesPage() {
         {CATEGORIES.map((cat, catIdx) => {
           const items = monthlyBaselines
             .filter((b) => b.category === cat.key)
-            .sort((a, b) => { if (a.isPaid !== b.isPaid) return a.isPaid ? 1 : -1; return (a.dueDay ?? 32) - (b.dueDay ?? 32); });
+            .sort((a, b) => { if (a.isPaid !== b.isPaid) return a.isPaid ? 1 : -1; return (a.dueDate ?? 'z').localeCompare(b.dueDate ?? 'z'); });
           const catTotal = items.reduce((s, b) => s + b.amount, 0);
           const paidCount = items.filter((b) => b.isPaid).length;
           const isCollapsed = collapsed[cat.key];
@@ -230,14 +232,14 @@ export default function BaselinesPage() {
                     {items.map((b) => {
                       if (editingId === b.id) {
                         return (
-                          <InlineEditRow key={b.id} label={formLabel} amount={formAmount} dueDay={formDueDay}
-                            onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDayChange={setFormDueDay}
+                          <InlineEditRow key={b.id} label={formLabel} amount={formAmount} dueDate={formDueDate}
+                            onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDateChange={setFormDueDate}
                             onSave={() => handleSubmit(cat.key, b.id)} onCancel={resetForm} saving={saving}
                           />
                         );
                       }
-                      const isOverdue = b.dueDay && !b.isPaid && b.dueDay < currentDay;
-                      const isDueToday = b.dueDay === currentDay && !b.isPaid;
+                      const isOverdue = b.dueDate && !b.isPaid && b.dueDate < todayStr;
+                      const isDueToday = b.dueDate === todayStr && !b.isPaid;
 
                       return (
                         <div key={b.id} className="group grid grid-cols-[24px_1fr_90px_100px_80px_50px] gap-2 items-center px-5 py-2.5 border-t border-border/20 hover:bg-accent/5 transition">
@@ -253,11 +255,11 @@ export default function BaselinesPage() {
                           <span className={`text-[13px] font-semibold text-right tabular-nums`} style={{ color: b.isPaid ? 'var(--muted-foreground)' : cat.color }}>{formatINR(b.amount)}</span>
 
                           <span className={`text-[11px] text-center ${isOverdue ? 'text-red-400 font-medium' : isDueToday ? 'text-amber-400' : 'text-muted-foreground/50'}`}>
-                            {b.dueDay ? (
+                            {b.dueDate ? (
                               <span className="flex items-center justify-center gap-1">
                                 {isOverdue && <AlertCircle className="h-3 w-3" />}
                                 <Calendar className="h-2.5 w-2.5 opacity-50" />
-                                {ordinal(b.dueDay)} of month
+                                {new Date(b.dueDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                               </span>
                             ) : '—'}
                           </span>
@@ -283,8 +285,8 @@ export default function BaselinesPage() {
                     })}
 
                     {addingCategory === cat.key ? (
-                      <InlineEditRow label={formLabel} amount={formAmount} dueDay={formDueDay}
-                        onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDayChange={setFormDueDay}
+                      <InlineEditRow label={formLabel} amount={formAmount} dueDate={formDueDate}
+                        onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDateChange={setFormDueDate}
                         onSave={() => handleSubmit(cat.key)} onCancel={resetForm} saving={saving}
                       />
                     ) : editingId === null ? (
@@ -306,12 +308,12 @@ export default function BaselinesPage() {
 // ── Inline Edit Row ──────────────────────────────────────────────────────────
 
 function InlineEditRow({
-  label, amount, dueDay,
-  onLabelChange, onAmountChange, onDueDayChange,
+  label, amount, dueDate,
+  onLabelChange, onAmountChange, onDueDateChange,
   onSave, onCancel, saving,
 }: {
-  label: string; amount: string; dueDay: string;
-  onLabelChange: (v: string) => void; onAmountChange: (v: string) => void; onDueDayChange: (v: string) => void;
+  label: string; amount: string; dueDate: string;
+  onLabelChange: (v: string) => void; onAmountChange: (v: string) => void; onDueDateChange: (v: string) => void;
   onSave: () => void; onCancel: () => void; saving: boolean;
 }) {
   return (
@@ -327,13 +329,10 @@ function InlineEditRow({
         className="w-24 shrink-0 bg-transparent text-[13px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5"
         onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
       />
-      <div className="shrink-0 flex items-center gap-1">
-        <span className="text-[10px] text-muted-foreground/50">Day</span>
-        <input value={dueDay} onChange={(e) => onDueDayChange(e.target.value)} placeholder="1-31" type="number" min={1} max={31}
-          className="w-12 bg-transparent text-[13px] text-foreground text-center tabular-nums placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5"
-          onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
-        />
-      </div>
+      <input value={dueDate} onChange={(e) => onDueDateChange(e.target.value)} type="date"
+        className="w-[130px] shrink-0 bg-transparent text-[12px] text-foreground tabular-nums outline-none border-b border-primary/20 pb-0.5"
+        onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+      />
       <button type="button" onClick={onSave} disabled={saving || !label.trim() || !amount}
         className="shrink-0 rounded-md bg-primary/20 text-primary px-3 py-1.5 text-[11px] font-medium hover:bg-primary/30 transition disabled:opacity-40">
         {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
