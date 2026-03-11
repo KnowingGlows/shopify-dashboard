@@ -778,7 +778,7 @@ async function getSpendingPower(params: URLSearchParams) {
       const basSnap = await firestore.collection(COLLECTIONS.FINANCE_BASELINES).get();
       basSnap.docs.forEach((doc: any) => {
         const b = doc.data();
-        if (b.type !== 'monthly' || b.isPaid) return;
+        if (b.type !== 'monthly' || !b.isPaid) return;
         const dueDate = b.dueDate;
         if (!dueDate) return;
         if (dueDate >= weekStartStr && dueDate <= weekEndStr) {
