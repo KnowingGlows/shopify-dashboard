@@ -1039,7 +1039,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const baselineItems: Array<{ label: string; amount: number; dueDate: string }> = [];
   if (enabledItems.baselines !== false) {
     for (const b of allBaselines) {
-      if (b.type !== 'monthly' || b.isPaid) continue;
+      if (b.type !== 'monthly' || !b.isPaid) continue;
       if (b.dueDate && b.dueDate >= weekStartStr && b.dueDate <= weekEndStr) {
         baselinesDue += b.amount ?? 0;
         baselineItems.push({ label: b.label, amount: b.amount, dueDate: b.dueDate });

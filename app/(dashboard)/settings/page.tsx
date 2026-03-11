@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   KeyRound, RefreshCw, Settings, Store,
-  Check, Loader2, AlertCircle, Pencil,
+  Check, Loader2, AlertCircle, Pencil, Trash2,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 
@@ -28,6 +28,8 @@ export default function SettingsPage() {
   const [stores, setStores] = useState<StoreInfo[]>([]);
   const [storeEdits, setStoreEdits] = useState<Record<string, string>>({});
   const [savingName, setSavingName] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deletingStore, setDeletingStore] = useState<string | null>(null);
 
   const loadStores = async () => {
     try {
@@ -86,6 +88,24 @@ export default function SettingsPage() {
       console.error('Failed to update store name:', err);
     } finally {
       setSavingName(null);
+    }
+  };
+
+  const handleDeleteStore = async (handle: string) => {
+    setDeletingStore(handle);
+    try {
+      const res = await fetch('/api/stores', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handle }),
+      });
+      if (!res.ok) throw new Error('Failed to delete store.');
+      setConfirmDelete(null);
+      loadStores();
+    } catch (err) {
+      console.error('Failed to delete store:', err);
+    } finally {
+      setDeletingStore(null);
     }
   };
 
@@ -255,6 +275,30 @@ export default function SettingsPage() {
                       <p className="text-[11px] text-foreground tabular-nums">{formatTimestamp(store.tokenExpiresAt)}</p>
                     </div>
                   </div>
+
+                  {/* Delete */}
+                  {confirmDelete === store.handle ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+                      <p className="text-[11px] text-red-400 flex-1">Remove this store?</p>
+                      <button
+                        onClick={() => handleDeleteStore(store.handle)}
+                        disabled={deletingStore === store.handle}
+                        className="rounded px-2.5 py-1 text-[11px] bg-red-500/20 text-red-400 hover:bg-red-500/30 transition disabled:opacity-50"
+                      >
+                        {deletingStore === store.handle ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Yes, remove'}
+                      </button>
+                      <button onClick={() => setConfirmDelete(null)} className="rounded px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-accent transition">
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDelete(store.handle)}
+                      className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[11px] text-red-400 hover:bg-red-500/10 transition w-fit"
+                    >
+                      <Trash2 className="h-3 w-3" /> Remove Store
+                    </button>
+                  )}
                 </div>
               </StaggerItem>
             ))}
