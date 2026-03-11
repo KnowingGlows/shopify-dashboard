@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bell, BellRing, X, Send, Check, Loader2, MessageCircle,
-  Volume2, VolumeX, Zap, Clock, User as UserIcon,
+  Volume2, VolumeX, Zap, Clock, User as UserIcon, Reply,
 } from 'lucide-react';
 import { useAuth } from './auth-provider';
 import { cn } from '@/lib/utils';
@@ -216,6 +216,28 @@ export function NotificationCenter() {
     }).catch(() => {});
   };
 
+  // Reply to a ping
+  const replyToPing = async (notif: Notification, replyMsg: string) => {
+    if (!replyMsg.trim()) return false;
+    try {
+      const res = await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send-ping',
+          targetEmail: notif.senderEmail,
+          message: `↩ Re: "${notif.message.slice(0, 60)}${notif.message.length > 60 ? '…' : ''}"\n${replyMsg.trim()}`,
+        }),
+      });
+      if (res.ok) {
+        // Auto-mark the original notification as read
+        markRead(notif.id);
+        return true;
+      }
+    } catch { /* ignore */ }
+    return false;
+  };
+
   if (!user) return null;
 
   return (
@@ -325,70 +347,13 @@ export function NotificationCenter() {
                 ) : (
                   <div className="p-2 space-y-1">
                     {active.map((notif) => (
-                      <motion.div
+                      <NotificationItem
                         key={notif.id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 10 }}
-                        className={cn(
-                          'group relative flex gap-3 rounded-xl p-3 transition',
-                          notif.status === 'unread'
-                            ? 'bg-primary/5 border border-primary/10'
-                            : 'hover:bg-white/[0.03]'
-                        )}
-                      >
-                        {/* Avatar */}
-                        <div className={cn(
-                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-[11px] font-bold',
-                          notif.type === 'ping'
-                            ? 'border-primary/30 bg-primary/10 text-primary'
-                            : 'border-amber-400/30 bg-amber-400/10 text-amber-400'
-                        )}>
-                          {notif.type === 'ping' ? getInitials(notif.senderEmail) : <Zap className="h-4 w-4" />}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-semibold text-foreground truncate">
-                              {notif.type === 'ping' ? notif.senderEmail.split('@')[0] : 'Orbit'}
-                            </span>
-                            {notif.status === 'unread' && (
-                              <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                            )}
-                          </div>
-                          <p className="mt-0.5 text-[12px] text-muted-foreground leading-relaxed">
-                            {notif.message}
-                          </p>
-                          <div className="mt-1.5 flex items-center gap-2">
-                            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
-                              <Clock className="h-3 w-3" />
-                              {timeAgo(notif.createdAt)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex shrink-0 items-start gap-1 opacity-0 group-hover:opacity-100 transition">
-                          {notif.status === 'unread' && (
-                            <button
-                              type="button"
-                              onClick={() => markRead(notif.id)}
-                              className="rounded-lg p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition"
-                              title="Mark as read"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => dismiss(notif.id)}
-                            className="rounded-lg p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition"
-                            title="Dismiss"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </motion.div>
+                        notif={notif}
+                        onMarkRead={markRead}
+                        onDismiss={dismiss}
+                        onReply={replyToPing}
+                      />
                     ))}
                   </div>
                 )}
@@ -409,6 +374,164 @@ export function NotificationCenter() {
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+// ── Notification Item ─────────────────────────────────────────────────────────
+
+function NotificationItem({
+  notif,
+  onMarkRead,
+  onDismiss,
+  onReply,
+}: {
+  notif: Notification;
+  onMarkRead: (id: string) => void;
+  onDismiss: (id: string) => void;
+  onReply: (notif: Notification, msg: string) => Promise<boolean>;
+}) {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyMsg, setReplyMsg] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (replyOpen && inputRef.current) inputRef.current.focus();
+  }, [replyOpen]);
+
+  const handleSendReply = async () => {
+    if (!replyMsg.trim() || sending) return;
+    setSending(true);
+    const ok = await onReply(notif, replyMsg);
+    setSending(false);
+    if (ok) {
+      setSent(true);
+      setTimeout(() => { setSent(false); setReplyOpen(false); setReplyMsg(''); }, 1200);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 10 }}
+      className={cn(
+        'group relative rounded-xl p-3 transition',
+        notif.status === 'unread'
+          ? 'bg-primary/5 border border-primary/10'
+          : 'hover:bg-white/[0.03]'
+      )}
+    >
+      <div className="flex gap-3">
+        {/* Avatar */}
+        <div className={cn(
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-[11px] font-bold',
+          notif.type === 'ping'
+            ? 'border-primary/30 bg-primary/10 text-primary'
+            : 'border-amber-400/30 bg-amber-400/10 text-amber-400'
+        )}>
+          {notif.type === 'ping' ? getInitials(notif.senderEmail) : <Zap className="h-4 w-4" />}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-foreground truncate">
+              {notif.type === 'ping' ? notif.senderEmail.split('@')[0] : 'Orbit'}
+            </span>
+            {notif.status === 'unread' && (
+              <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+            )}
+          </div>
+          <p className="mt-0.5 text-[12px] text-muted-foreground leading-relaxed whitespace-pre-line">
+            {notif.message}
+          </p>
+          <div className="mt-1.5 flex items-center gap-2">
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/60">
+              <Clock className="h-3 w-3" />
+              {timeAgo(notif.createdAt)}
+            </span>
+            {notif.type === 'ping' && !replyOpen && !sent && (
+              <button
+                type="button"
+                onClick={() => setReplyOpen(true)}
+                className="flex items-center gap-1 text-[10px] text-primary/60 hover:text-primary transition"
+              >
+                <Reply className="h-3 w-3" />
+                Reply
+              </button>
+            )}
+            {sent && (
+              <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+                <Check className="h-3 w-3" />
+                Replied
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex shrink-0 items-start gap-1 opacity-0 group-hover:opacity-100 transition">
+          {notif.status === 'unread' && (
+            <button
+              type="button"
+              onClick={() => onMarkRead(notif.id)}
+              className="rounded-lg p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition"
+              title="Mark as read"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onDismiss(notif.id)}
+            className="rounded-lg p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition"
+            title="Dismiss"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Inline reply input */}
+      <AnimatePresence>
+        {replyOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-2 ml-12 flex items-center gap-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={replyMsg}
+                onChange={(e) => setReplyMsg(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSendReply(); if (e.key === 'Escape') setReplyOpen(false); }}
+                placeholder={`Reply to ${notif.senderEmail.split('@')[0]}...`}
+                className="flex-1 rounded-lg border border-border/50 bg-background/60 px-3 py-1.5 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20 transition"
+              />
+              <button
+                type="button"
+                onClick={handleSendReply}
+                disabled={!replyMsg.trim() || sending}
+                className="rounded-lg bg-primary/90 p-1.5 text-white transition hover:bg-primary disabled:opacity-40"
+              >
+                {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setReplyOpen(false); setReplyMsg(''); }}
+                className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
