@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   RefreshCw, Loader2, DollarSign, Wallet, Plus,
-  Bell, X, ArrowRight, Clock,
+  Bell, X, ArrowRight, Clock, Calendar,
   TrendingDown, TrendingUp,
   ArrowDown, BanknoteIcon, Settings2,
   Check, ToggleLeft, ToggleRight,
@@ -104,10 +104,22 @@ export default function FinancePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
 
+  // Date range filter
+  const [dateRange, setDateRange] = useState<'30d' | '7d' | '90d' | 'custom'>('30d');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+
   const fetchAll = useCallback(async () => {
     try {
+      let summaryUrl = '/api/finance';
+      if (dateRange === 'custom' && customStart && customEnd) {
+        summaryUrl = `/api/finance?start=${customStart}&end=${customEnd}`;
+      } else {
+        const days = dateRange === '7d' ? 7 : dateRange === '90d' ? 90 : 30;
+        summaryUrl = `/api/finance?days=${days}`;
+      }
       const [summaryRes, codRes, spendRes, remindersRes, baselinesRes, ratesRes, expensesRes] = await Promise.all([
-        fetch('/api/finance'),
+        fetch(summaryUrl),
         fetch('/api/finance?action=cod-projections'),
         fetch('/api/finance?action=spending-power'),
         fetch('/api/finance?action=reminders'),
@@ -127,7 +139,8 @@ export default function FinancePage() {
       setExpenses(expensesData.expenses ?? []);
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange, customStart, customEnd]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -248,7 +261,7 @@ export default function FinancePage() {
         <div className="flex items-center gap-2">
           <Link
             href="/finance/entry"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary/90 px-4 py-2 text-[12px] font-medium text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:bg-primary hover:shadow-md hover:shadow-primary/25 active:scale-[0.97]"
           >
             <Plus className="h-3.5 w-3.5" />
             Daily P&L
@@ -259,23 +272,72 @@ export default function FinancePage() {
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-[12px] font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
           </button>
         </div>
       </div>
 
+      {/* Date Range Filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+        {(['7d', '30d', '90d'] as const).map((range) => (
+          <button
+            key={range}
+            onClick={() => setDateRange(range)}
+            className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
+              dateRange === range
+                ? 'bg-primary/15 text-primary border border-primary/30'
+                : 'border border-border text-muted-foreground hover:text-foreground hover:border-border/80'
+            }`}
+          >
+            {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
+          </button>
+        ))}
+        <button
+          onClick={() => setDateRange('custom')}
+          className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
+            dateRange === 'custom'
+              ? 'bg-primary/15 text-primary border border-primary/30'
+              : 'border border-border text-muted-foreground hover:text-foreground hover:border-border/80'
+          }`}
+        >
+          Custom
+        </button>
+        {dateRange === 'custom' && (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11px] text-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20"
+            />
+            <span className="text-[10px] text-muted-foreground">to</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11px] text-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20"
+            />
+          </div>
+        )}
+      </div>
+
       {/* Key Metrics */}
-      <StaggerContainer className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <StaggerItem>
-          <MetricCard label="Total Sales (30d)" value={d.totalSales} icon={<DollarSign className="h-4 w-4 text-emerald-400" />} color="text-foreground" />
-        </StaggerItem>
-        <StaggerItem>
-          <MetricCard label="Bank Deposits (4wk)" value={totalCODProjected} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color="text-emerald-400" />
-        </StaggerItem>
-        <StaggerItem>
-          <MetricCard label="Net Profit (30d)" value={d.totalNetProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={d.totalNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-        </StaggerItem>
-      </StaggerContainer>
+      {(() => {
+        const rangeLabel = dateRange === 'custom' ? 'Custom' : dateRange === '7d' ? '7d' : dateRange === '90d' ? '90d' : '30d';
+        return (
+          <StaggerContainer className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <StaggerItem>
+              <MetricCard label={`Total Sales (${rangeLabel})`} value={d.totalSales} icon={<DollarSign className="h-4 w-4 text-emerald-400" />} color="text-foreground" />
+            </StaggerItem>
+            <StaggerItem>
+              <MetricCard label="Bank Deposits (4wk)" value={totalCODProjected} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color="text-emerald-400" />
+            </StaggerItem>
+            <StaggerItem>
+              <MetricCard label={`Net Profit (${rangeLabel})`} value={d.totalNetProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={d.totalNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+            </StaggerItem>
+          </StaggerContainer>
+        );
+      })()}
 
       {/* ═══ COD Cash-In — Hero Card ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
@@ -490,11 +552,11 @@ export default function FinancePage() {
                     <span className="text-[9px] text-muted-foreground/60">Baselines</span>
                   </div>
                 </div>
-                <div className="flex gap-2 mt-1">
-                  <Link href="/finance/expenditure" className="text-[9px] text-primary/60 hover:text-primary transition">
+                <div className="flex gap-2 mt-2">
+                  <Link href="/finance/expenditure" className="inline-flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[10px] font-medium text-red-400 transition hover:bg-red-500/10 hover:border-red-500/30">
                     Expenditure →
                   </Link>
-                  <Link href="/finance/baselines" className="text-[9px] text-primary/60 hover:text-primary transition">
+                  <Link href="/finance/baselines" className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-1.5 text-[10px] font-medium text-amber-400 transition hover:bg-amber-500/10 hover:border-amber-500/30">
                     Baselines →
                   </Link>
                 </div>
@@ -619,39 +681,36 @@ function SpendingBreakdownModal({ spending, onClose, onRefresh }: { spending: Sp
         {/* Waterfall */}
         <div className="p-4 space-y-0">
           {(() => {
-            // Group expense and baseline deductions into totals
-            const expenseItems = spending.breakdown.filter((item) => item.type === 'deduction' && item.label.toLowerCase().includes('expense'));
-            const baselineItems = spending.breakdown.filter((item) => item.type === 'deduction' && item.label.toLowerCase().includes('baseline'));
-            const otherItems = spending.breakdown.filter((item) =>
-              item.type !== 'deduction' ||
-              (!item.label.toLowerCase().includes('expense') && !item.label.toLowerCase().includes('baseline'))
+            // Group ALL deductions into: Founder Cut, Inventory, Expenses total, Baselines total
+            const knownDeductions = ['founder cut', 'inventory'];
+            const isKnownDeduction = (label: string) => knownDeductions.some((k) => label.toLowerCase().includes(k));
+
+            // Known deductions stay as individual rows (founder cut, inventory)
+            const keepItems = spending.breakdown.filter((item) =>
+              item.type === 'income' || item.type === 'result' || (item.type === 'deduction' && isKnownDeduction(item.label))
             );
 
-            const totalExpenses = expenseItems.reduce((s, item) => s + Math.abs(item.amount), 0);
-            const totalBaselines = baselineItems.reduce((s, item) => s + Math.abs(item.amount), 0);
+            // Everything else gets grouped into Expenses or Baselines total
+            const otherDeductions = spending.breakdown.filter((item) =>
+              item.type === 'deduction' && !isKnownDeduction(item.label)
+            );
+
+            // Use spending.weekExpenses and spending.baselinesDue for accurate totals
+            const totalExpenses = spending.weekExpenses;
+            const totalBaselines = spending.baselinesDue;
 
             // Build grouped breakdown
             const grouped: Array<{ label: string; amount: number; type: 'income' | 'deduction' | 'result' }> = [];
-            for (const item of otherItems) {
-              // Insert grouped expenses/baselines before the result row
+            for (const item of keepItems) {
               if (item.type === 'result') {
                 if (totalExpenses > 0) {
-                  grouped.push({ label: `Expenses (${expenseItems.length} item${expenseItems.length !== 1 ? 's' : ''})`, amount: -totalExpenses, type: 'deduction' });
+                  grouped.push({ label: 'Expenses', amount: -totalExpenses, type: 'deduction' });
                 }
                 if (totalBaselines > 0) {
-                  grouped.push({ label: 'Baselines Due', amount: -totalBaselines, type: 'deduction' });
+                  grouped.push({ label: 'Baselines', amount: -totalBaselines, type: 'deduction' });
                 }
               }
               grouped.push(item);
-            }
-            // If there was no result row, append at end
-            if (!otherItems.some((item) => item.type === 'result')) {
-              if (totalExpenses > 0) {
-                grouped.push({ label: `Expenses (${expenseItems.length} item${expenseItems.length !== 1 ? 's' : ''})`, amount: -totalExpenses, type: 'deduction' });
-              }
-              if (totalBaselines > 0) {
-                grouped.push({ label: 'Baselines Due', amount: -totalBaselines, type: 'deduction' });
-              }
             }
 
             return grouped.map((item, i) => {
@@ -697,10 +756,10 @@ function SpendingBreakdownModal({ spending, onClose, onRefresh }: { spending: Sp
 
           {/* Quick links */}
           <div className="flex gap-2 px-4 pt-4">
-            <Link href="/finance/expenditure" className="flex-1 rounded-lg border border-border px-3 py-2 text-[11px] font-medium text-center text-muted-foreground hover:text-foreground hover:border-border/80 transition">
+            <Link href="/finance/expenditure" className="flex-1 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-[11px] font-medium text-center text-red-400 transition hover:bg-red-500/10 hover:border-red-500/30">
               View Expenditure →
             </Link>
-            <Link href="/finance/baselines" className="flex-1 rounded-lg border border-border px-3 py-2 text-[11px] font-medium text-center text-muted-foreground hover:text-foreground hover:border-border/80 transition">
+            <Link href="/finance/baselines" className="flex-1 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-[11px] font-medium text-center text-amber-400 transition hover:bg-amber-500/10 hover:border-amber-500/30">
               View Baselines →
             </Link>
           </div>

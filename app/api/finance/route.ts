@@ -657,10 +657,8 @@ async function getSpendingPower(params: URLSearchParams) {
   const today = getISTDate();
   const todayDate = new Date(today + 'T00:00:00+05:30');
 
-  // Current week boundaries (Mon–Sun)
-  const dayOfWeek = todayDate.getDay() || 7; // Mon=1 … Sun=7
+  // 7-day window starting from today (matches COD Cash-In timeline)
   const weekStart = new Date(todayDate);
-  weekStart.setDate(todayDate.getDate() - (dayOfWeek - 1));
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
   const weekStartStr = getISTDate(weekStart);
@@ -829,9 +827,8 @@ async function getSpendingPower(params: URLSearchParams) {
 async function getFinanceSummary(params: URLSearchParams) {
   const firestore = db();
   const days = Number(params.get('days')) || 30;
-  const endDate = getISTDate();
-  const startDateObj = new Date(Date.now() - days * 86400000);
-  const startDate = getISTDate(startDateObj);
+  const endDate = params.get('end') ?? getISTDate();
+  const startDate = params.get('start') ?? getISTDate(new Date(Date.now() - days * 86400000));
 
   // Fetch all data sources in parallel
   const [dailyEntries, baselines, expenses, productEntries, adsEntries, inventoryEntries] = await Promise.all([

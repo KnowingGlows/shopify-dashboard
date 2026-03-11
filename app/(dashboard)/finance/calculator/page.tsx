@@ -5,12 +5,16 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Calculator, Percent } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
-import { formatINR } from '@/lib/currency-converter';
+import { formatINR, formatUSD } from '@/lib/currency-converter';
+
+const USD_TO_INR = 90.7;
 
 export default function ProfitCalculatorPage() {
+  const [currency, setCurrency] = useState<'USD' | 'INR'>('USD');
+
   // ROI Calculator
   const [margin, setMargin] = useState('0.6');
-  const [adSpend, setAdSpend] = useState('20000');
+  const [adSpend, setAdSpend] = useState('250');
   const [roas, setRoas] = useState('6');
   const [numDays, setNumDays] = useState('30');
 
@@ -18,6 +22,8 @@ export default function ProfitCalculatorPage() {
   const [sellingPrice, setSellingPrice] = useState('100');
   const [costPrice, setCostPrice] = useState('35');
   const [deliveryRate, setDeliveryRate] = useState('95');
+
+  const fmt = (amount: number) => currency === 'USD' ? formatUSD(amount) : formatINR(amount);
 
   // ROI calculations
   const marginVal = parseFloat(margin) || 0;
@@ -41,13 +47,30 @@ export default function ProfitCalculatorPage() {
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/finance" className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Profit Calculator</h1>
-          <p className="text-[11px] text-muted-foreground">Calculate ROI & profit margins for paid advertising</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/finance" className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div>
+            <h1 className="text-lg font-semibold text-foreground">Profit Calculator</h1>
+            <p className="text-[11px] text-muted-foreground">Calculate ROI & profit margins for paid advertising</p>
+          </div>
+        </div>
+        {/* Currency toggle */}
+        <div className="flex items-center rounded-lg border border-border bg-card overflow-hidden">
+          <button
+            onClick={() => setCurrency('USD')}
+            className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'USD' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            $ USD
+          </button>
+          <button
+            onClick={() => setCurrency('INR')}
+            className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'INR' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            ₹ INR
+          </button>
         </div>
       </div>
 
@@ -71,7 +94,7 @@ export default function ProfitCalculatorPage() {
               <CalcField label="Avg Profit Margin" hint="e.g. 0.6 = 60%">
                 <input type="text" value={margin} onChange={(e) => setMargin(e.target.value)} className="form-input" />
               </CalcField>
-              <CalcField label="Ad Spend">
+              <CalcField label={`Ad Spend (${currency})`}>
                 <input type="text" value={adSpend} onChange={(e) => setAdSpend(e.target.value)} className="form-input" />
               </CalcField>
               <CalcField label="ROAS Multiplier">
@@ -86,10 +109,10 @@ export default function ProfitCalculatorPage() {
 
             <div className="space-y-1.5">
               <ResultRow label="Breakeven ROAS" value={`${breakevenRoas}x`} />
-              <ResultRow label="Revenue from Ad Spend" value={formatINR(revenue)} />
-              <ResultRow label="Profit After Margin" value={formatINR(profitMargin)} />
-              <ResultRow label="Profit After Ad Spend" value={formatINR(profitAdSpend)} highlight="primary" />
-              <ResultRow label={`True Profit (${daysVal} days)`} value={formatINR(profitAdSpend)} highlight="success" />
+              <ResultRow label="Revenue from Ad Spend" value={fmt(revenue)} />
+              <ResultRow label="Profit After Margin" value={fmt(profitMargin)} />
+              <ResultRow label="Profit After Ad Spend" value={fmt(profitAdSpend)} highlight="primary" />
+              <ResultRow label={`True Profit (${daysVal} days)`} value={fmt(profitAdSpend)} highlight="success" />
             </div>
 
             {/* Big ROI stat */}
@@ -118,10 +141,10 @@ export default function ProfitCalculatorPage() {
             </div>
           </div>
           <div className="relative z-10 p-4 space-y-4">
-            <CalcField label="Selling Price (incl. shipping)">
+            <CalcField label={`Selling Price (incl. shipping) — ${currency}`}>
               <input type="text" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} className="form-input" />
             </CalcField>
-            <CalcField label="Cost of Product (incl. shipping)">
+            <CalcField label={`Cost of Product (incl. shipping) — ${currency}`}>
               <input type="text" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} className="form-input" />
             </CalcField>
             <CalcField label="Delivery Rate %" hint="Successful delivery rate - multiplied to margin">
