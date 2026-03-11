@@ -47,7 +47,7 @@ export default function BaselinesPage() {
   const [addingCategory, setAddingCategory] = useState<string | null>(null);
   const [formLabel, setFormLabel] = useState('');
   const [formAmount, setFormAmount] = useState('');
-  const [formDueDate, setFormDueDate] = useState('');
+  const [formDueDay, setFormDueDay] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const fetchBaselines = useCallback(async () => {
@@ -101,32 +101,22 @@ export default function BaselinesPage() {
     await saveBaseline(updated);
   };
 
-  const resetForm = () => { setEditingId(null); setAddingCategory(null); setFormLabel(''); setFormAmount(''); setFormDueDate(''); };
+  const resetForm = () => { setEditingId(null); setAddingCategory(null); setFormLabel(''); setFormAmount(''); setFormDueDay(''); };
 
   const startEdit = (b: Baseline) => {
     setEditingId(b.id); setAddingCategory(null);
     setFormLabel(b.label); setFormAmount(String(b.amount));
-    // Convert dueDay to a date string for the current month
-    if (b.dueDay) {
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(b.dueDay).padStart(2, '0');
-      setFormDueDate(`${year}-${month}-${day}`);
-    } else {
-      setFormDueDate('');
-    }
+    setFormDueDay(b.dueDay ? String(b.dueDay) : '');
   };
 
   const startAdd = (category: string) => {
     setAddingCategory(category); setEditingId(null);
-    setFormLabel(''); setFormAmount(''); setFormDueDate('');
+    setFormLabel(''); setFormAmount(''); setFormDueDay('');
   };
 
   const handleSubmit = (category: string, existingId?: string) => {
     if (!formLabel.trim() || !formAmount) return;
-    // Extract day from the date
-    const dueDay = formDueDate ? new Date(formDueDate + 'T00:00:00').getDate() : undefined;
+    const dueDay = formDueDay ? Math.min(31, Math.max(1, Number(formDueDay))) : undefined;
     saveBaseline({ id: existingId, type: 'monthly', category, label: formLabel.trim(), amount: Number(formAmount) || 0, dueDay });
   };
 
@@ -240,8 +230,8 @@ export default function BaselinesPage() {
                     {items.map((b) => {
                       if (editingId === b.id) {
                         return (
-                          <InlineEditRow key={b.id} label={formLabel} amount={formAmount} dueDate={formDueDate}
-                            onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDateChange={setFormDueDate}
+                          <InlineEditRow key={b.id} label={formLabel} amount={formAmount} dueDay={formDueDay}
+                            onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDayChange={setFormDueDay}
                             onSave={() => handleSubmit(cat.key, b.id)} onCancel={resetForm} saving={saving}
                           />
                         );
@@ -293,8 +283,8 @@ export default function BaselinesPage() {
                     })}
 
                     {addingCategory === cat.key ? (
-                      <InlineEditRow label={formLabel} amount={formAmount} dueDate={formDueDate}
-                        onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDateChange={setFormDueDate}
+                      <InlineEditRow label={formLabel} amount={formAmount} dueDay={formDueDay}
+                        onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDayChange={setFormDueDay}
                         onSave={() => handleSubmit(cat.key)} onCancel={resetForm} saving={saving}
                       />
                     ) : editingId === null ? (
@@ -316,38 +306,39 @@ export default function BaselinesPage() {
 // ── Inline Edit Row ──────────────────────────────────────────────────────────
 
 function InlineEditRow({
-  label, amount, dueDate,
-  onLabelChange, onAmountChange, onDueDateChange,
+  label, amount, dueDay,
+  onLabelChange, onAmountChange, onDueDayChange,
   onSave, onCancel, saving,
 }: {
-  label: string; amount: string; dueDate: string;
-  onLabelChange: (v: string) => void; onAmountChange: (v: string) => void; onDueDateChange: (v: string) => void;
+  label: string; amount: string; dueDay: string;
+  onLabelChange: (v: string) => void; onAmountChange: (v: string) => void; onDueDayChange: (v: string) => void;
   onSave: () => void; onCancel: () => void; saving: boolean;
 }) {
   return (
     <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-      className="grid grid-cols-[24px_1fr_90px_100px_80px_50px] gap-2 items-center px-5 py-3 border-t border-primary/10 bg-primary/[0.02]"
+      className="flex items-center gap-3 px-5 py-3 border-t border-primary/10 bg-primary/[0.02]"
     >
-      <span />
+      <span className="w-[18px] shrink-0" />
       <input autoFocus value={label} onChange={(e) => onLabelChange(e.target.value)} placeholder="Name"
-        className="bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5"
+        className="flex-1 min-w-0 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5"
         onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
       />
-      <input value={amount} onChange={(e) => onAmountChange(e.target.value)} placeholder="₹" type="number"
-        className="bg-transparent text-[13px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5"
+      <input value={amount} onChange={(e) => onAmountChange(e.target.value)} placeholder="Amount" type="number"
+        className="w-24 shrink-0 bg-transparent text-[13px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5"
         onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
       />
-      <input value={dueDate} onChange={(e) => onDueDateChange(e.target.value)} type="date"
-        className="bg-transparent text-[11px] text-foreground text-center outline-none border-b border-primary/20 pb-0.5 w-full"
-        onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
-      />
-      <div className="flex justify-center">
-        <button onClick={onSave} disabled={saving || !label.trim() || !amount}
-          className="rounded-md bg-primary/20 text-primary px-2 py-1 text-[10px] font-medium hover:bg-primary/30 transition disabled:opacity-40">
-          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
-        </button>
+      <div className="shrink-0 flex items-center gap-1">
+        <span className="text-[10px] text-muted-foreground/50">Day</span>
+        <input value={dueDay} onChange={(e) => onDueDayChange(e.target.value)} placeholder="1-31" type="number" min={1} max={31}
+          className="w-12 bg-transparent text-[13px] text-foreground text-center tabular-nums placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5"
+          onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+        />
       </div>
-      <button onClick={onCancel} className="rounded-md p-1 text-muted-foreground hover:text-foreground transition flex justify-end"><X className="h-3.5 w-3.5" /></button>
+      <button type="button" onClick={onSave} disabled={saving || !label.trim() || !amount}
+        className="shrink-0 rounded-md bg-primary/20 text-primary px-3 py-1.5 text-[11px] font-medium hover:bg-primary/30 transition disabled:opacity-40">
+        {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+      </button>
+      <button type="button" onClick={onCancel} className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:text-foreground transition"><X className="h-3.5 w-3.5" /></button>
     </motion.div>
   );
 }

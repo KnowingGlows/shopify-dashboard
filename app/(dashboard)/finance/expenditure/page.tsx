@@ -121,6 +121,10 @@ export default function ExpenditurePage() {
   };
 
   const handleAddExpense = async (data: { category: string; description: string; amount: number; date: string; endDate?: string }) => {
+    // Optimistically add a temporary entry so the user sees immediate feedback
+    const tempId = crypto.randomUUID();
+    const tempExpense: Expense = { id: tempId, ...data };
+    setExpenses((prev) => [tempExpense, ...prev]);
     try {
       const res = await fetch('/api/finance', {
         method: 'POST',
@@ -129,9 +133,10 @@ export default function ExpenditurePage() {
       });
       const result = await res.json();
       if (result.success && result.expense) {
-        setExpenses((prev) => [result.expense, ...prev]);
+        // Replace temp entry with server entry
+        setExpenses((prev) => prev.map((e) => e.id === tempId ? result.expense : e));
       }
-    } catch { /* ignore */ }
+    } catch { /* keep temp entry */ }
   };
 
   // Expenses by date (for calendar dots)

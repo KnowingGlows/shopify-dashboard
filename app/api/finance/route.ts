@@ -357,6 +357,7 @@ async function getExpenses() {
       description: data.description ?? '',
       amount: data.amount ?? 0,
       date: data.date ?? '',
+      endDate: data.endDate ?? undefined,
       createdAt: data.createdAt ?? '',
     };
   });
