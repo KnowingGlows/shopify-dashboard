@@ -49,20 +49,20 @@ class NotificationSound {
     osc.connect(gain);
     gain.connect(ctx.destination);
 
-    // Pleasant two-tone chime
+    // Soft, warm two-tone chime (lower frequencies, gentle envelope)
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
-    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.24);
+    osc.frequency.setValueAtTime(520, ctx.currentTime);
+    osc.frequency.setValueAtTime(660, ctx.currentTime + 0.15);
+    osc.frequency.setValueAtTime(520, ctx.currentTime + 0.3);
 
     gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.03);
-    gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 0.12);
-    gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.15);
-    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.4);
+    gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 0.08);
+    gain.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.15);
+    gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 0.22);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.55);
 
     osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.4);
+    osc.stop(ctx.currentTime + 0.55);
   }
 
   startLoop() {
