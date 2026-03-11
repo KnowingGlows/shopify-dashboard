@@ -196,48 +196,55 @@ export function NotificationCenter() {
   return (
     <>
       {/* Bell button */}
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => { setPanelOpen(!panelOpen); if (pingOpen) setPingOpen(false); }}
-          className={cn(
-            'relative flex h-9 w-9 items-center justify-center rounded-xl border transition-all duration-200',
-            hasUnread
-              ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20'
-              : 'border-border/60 bg-background/60 text-muted-foreground hover:text-foreground hover:border-border'
-          )}
-          aria-label={`${active.length} notifications`}
-        >
-          {hasUnread ? (
-            <motion.div
-              animate={{ rotate: [0, -15, 15, -10, 10, 0] }}
-              transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
-            >
-              <BellRing className="h-4 w-4" />
-            </motion.div>
-          ) : (
-            <Bell className="h-4 w-4" />
-          )}
-          {active.length > 0 && (
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              className="absolute -right-1 -top-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-white min-w-[18px] h-[18px] px-0.5"
-            >
-              {active.length}
-            </motion.span>
-          )}
-        </button>
+      <button
+        type="button"
+        onClick={() => { setPanelOpen(!panelOpen); if (pingOpen) setPingOpen(false); }}
+        className={cn(
+          'relative flex h-9 w-9 items-center justify-center rounded-xl border transition-all duration-200',
+          hasUnread
+            ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/20'
+            : 'border-border/60 bg-background/60 text-muted-foreground hover:text-foreground hover:border-border'
+        )}
+        aria-label={`${active.length} notifications`}
+      >
+        {hasUnread ? (
+          <motion.div
+            animate={{ rotate: [0, -15, 15, -10, 10, 0] }}
+            transition={{ duration: 0.5, repeat: Infinity, repeatDelay: 2 }}
+          >
+            <BellRing className="h-4 w-4" />
+          </motion.div>
+        ) : (
+          <Bell className="h-4 w-4" />
+        )}
+        {active.length > 0 && (
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="absolute -right-1 -top-1 flex items-center justify-center rounded-full bg-primary text-[9px] font-bold text-white min-w-[18px] h-[18px] px-0.5"
+          >
+            {active.length}
+          </motion.span>
+        )}
+      </button>
 
-        {/* Notification Panel */}
-        <AnimatePresence>
-          {panelOpen && (
+      {/* Notification Panel — fixed center modal */}
+      <AnimatePresence>
+        {panelOpen && (
+          <div className="fixed inset-0 z-[60] flex items-start justify-center pt-[10vh] md:pt-[12vh]">
             <motion.div
-              initial={{ opacity: 0, y: -8, scale: 0.95 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => setPanelOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -12, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.95 }}
+              exit={{ opacity: 0, y: -12, scale: 0.95 }}
               transition={{ duration: 0.2 }}
-              className="absolute right-0 top-full mt-2 z-[60] w-[360px] rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl"
+              className="relative z-10 w-[90vw] max-w-[400px] rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl mx-4"
             >
               {/* Header */}
               <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
@@ -362,14 +369,9 @@ export function NotificationCenter() {
                 )}
               </div>
             </motion.div>
+          </div>
           )}
         </AnimatePresence>
-      </div>
-
-      {/* Click-away for panel */}
-      {panelOpen && (
-        <div className="fixed inset-0 z-[55]" onClick={() => setPanelOpen(false)} />
-      )}
 
       {/* Ping Modal */}
       <AnimatePresence>
