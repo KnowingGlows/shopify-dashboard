@@ -95,6 +95,11 @@ export default function TasksPage() {
   const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
   const [filterAssignee, setFilterAssignee] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [showOnlyMine, setShowOnlyMine] = useState(true);
+
+  // Drag and drop (board view)
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -123,6 +128,9 @@ export default function TasksPage() {
 
   const filteredTasks = useMemo(() => {
     let result = tasks;
+    if (showOnlyMine && user?.email) {
+      result = result.filter((t) => t.assignee === user.email);
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       result = result.filter((t) =>
@@ -138,7 +146,7 @@ export default function TasksPage() {
       result = result.filter((t) => t.assignee === filterAssignee);
     }
     return result;
-  }, [tasks, searchQuery, filterPriority, filterAssignee]);
+  }, [tasks, searchQuery, filterPriority, filterAssignee, showOnlyMine, user?.email]);
 
   // Stats
   const stats = useMemo(() => ({
@@ -253,6 +261,16 @@ export default function TasksPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* My Tasks toggle */}
+            <button
+              onClick={() => setShowOnlyMine(!showOnlyMine)}
+              className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition border ${
+                showOnlyMine ? 'bg-primary/15 text-primary border-primary/30' : 'text-muted-foreground border-border hover:text-foreground'
+              }`}
+            >
+              {showOnlyMine ? 'My Tasks' : 'All Tasks'}
+            </button>
+
             {/* Filter toggle */}
             <button
               onClick={() => setShowFilters(!showFilters)}
@@ -347,7 +365,19 @@ export default function TasksPage() {
               const config = STATUS_CONFIG[status];
               const columnTasks = filteredTasks.filter((t) => t.status === status);
               return (
-                <div key={status} className="flex flex-col">
+                <div
+                  key={status}
+                  className={cn('flex flex-col rounded-xl transition-all', dragOverCol === status ? 'ring-2 ring-primary/30 bg-primary/5' : '')}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverCol(status); }}
+                  onDragLeave={() => setDragOverCol(null)}
+                  onDrop={() => {
+                    if (draggedTaskId) {
+                      updateTask(draggedTaskId, { status });
+                      setDraggedTaskId(null);
+                      setDragOverCol(null);
+                    }
+                  }}
+                >
                   {/* Column header */}
                   <div className={cn('mb-3 flex items-center gap-2 rounded-lg px-3 py-2', config.bg)}>
                     <div className={cn('h-2 w-2 rounded-full', config.color.replace('text-', 'bg-'))} />
@@ -360,11 +390,17 @@ export default function TasksPage() {
                     <StaggerContainer className="flex flex-col gap-2.5">
                       {columnTasks.map((task) => (
                         <StaggerItem key={task.id}>
-                          <TaskCard
-                            task={task}
-                            onClick={() => setDetailTask(task)}
-                            onStatusCycle={() => cycleStatus(task)}
-                          />
+                          <div
+                            draggable
+                            onDragStart={() => setDraggedTaskId(task.id)}
+                            className="cursor-grab active:cursor-grabbing"
+                          >
+                            <TaskCard
+                              task={task}
+                              onClick={() => setDetailTask(task)}
+                              onStatusCycle={() => cycleStatus(task)}
+                            />
+                          </div>
                         </StaggerItem>
                       ))}
                     </StaggerContainer>

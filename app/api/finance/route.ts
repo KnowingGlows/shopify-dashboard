@@ -317,6 +317,37 @@ async function getBaselines() {
   const snapshot = await firestore.collection(COLLECTIONS.FINANCE_BASELINES).get();
   const baselines = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
+  // Auto-advance monthly baselines: if dueDate is in a past month and isPaid, advance to same day this month
+  const today = getISTDate();
+  const currentMonth = today.slice(0, 7); // YYYY-MM
+  const updates: Array<{ id: string; dueDate: string }> = [];
+
+  for (const b of baselines) {
+    const bl = b as Record<string, unknown>;
+    if (bl.type !== 'monthly' || !bl.dueDate) continue;
+    const blMonth = (bl.dueDate as string).slice(0, 7);
+    if (blMonth < currentMonth) {
+      // Advance to same day in current month
+      const day = (bl.dueDate as string).slice(8, 10);
+      const newDate = `${currentMonth}-${day}`;
+      bl.dueDate = newDate;
+      bl.isPaid = false;
+      delete bl.paidDate;
+      updates.push({ id: bl.id as string, dueDate: newDate });
+    }
+  }
+
+  // Persist updates in background
+  if (updates.length > 0) {
+    for (const u of updates) {
+      firestore.collection(COLLECTIONS.FINANCE_BASELINES).doc(u.id).update({
+        dueDate: u.dueDate,
+        isPaid: false,
+        paidDate: null,
+      }).catch(() => {});
+    }
+  }
+
   const daily = baselines.filter((b: Record<string, unknown>) => b.type === 'daily');
   const monthly = baselines.filter((b: Record<string, unknown>) => b.type === 'monthly');
 

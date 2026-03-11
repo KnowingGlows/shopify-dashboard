@@ -228,6 +228,15 @@ export default function ExpenditurePage() {
   const topCategories = Object.entries(categoryBreakdown).sort((a, b) => b[1] - a[1]);
   const usedCategories = [...new Set(expenses.map((e) => e.category))];
 
+  // Monthly COD inflow total
+  const monthCodInflow = useMemo(() => {
+    let total = 0;
+    for (const [date, amount] of Object.entries(codByDate)) {
+      if (date.startsWith(calMonthStr)) total += amount;
+    }
+    return total;
+  }, [codByDate, calMonthStr]);
+
   // Calendar grid
   const daysInMonth = getDaysInMonth(calYear, calMonth);
   const firstDay = getFirstDayOfWeek(calYear, calMonth);
@@ -353,6 +362,35 @@ export default function ExpenditurePage() {
 
         {/* Summary sidebar */}
         <div className="space-y-3">
+          {/* Monthly cashflow summary (default, no date selected) */}
+          {!selectedDate && (
+            <>
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-400/70 mb-1">Monthly COD Inflow</p>
+                <p className="text-2xl font-semibold text-emerald-400 tabular-nums">
+                  <AnimatedNumber value={monthCodInflow} formatter={formatINR} />
+                </p>
+                <p className="text-[10px] text-emerald-400/40 mt-0.5">Projected deposits for {monthLabel}</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card px-4 py-3">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">{monthLabel} Expenses</p>
+                <p className="text-2xl font-semibold text-violet-400 tabular-nums">
+                  <AnimatedNumber value={totalMonth} formatter={formatINR} />
+                </p>
+                <p className="text-[10px] text-muted-foreground/50 mt-0.5">{monthExpenses.length} expense{monthExpenses.length !== 1 ? 's' : ''} this month</p>
+              </div>
+              <div className="rounded-xl border border-border bg-card px-4 py-3">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Net Cashflow</p>
+                <p className={`text-2xl font-semibold tabular-nums ${monthCodInflow - totalMonth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <AnimatedNumber value={monthCodInflow - totalMonth} formatter={formatINR} />
+                </p>
+                <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                  {monthCodInflow - totalMonth >= 0 ? 'Positive' : 'Negative'} cashflow for {monthLabel}
+                </p>
+              </div>
+            </>
+          )}
+
           {/* COD Inflow for selected date */}
           {selectedDate && (codByDate[selectedDate] ?? 0) > 0 && (
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
@@ -364,25 +402,25 @@ export default function ExpenditurePage() {
             </div>
           )}
 
-          <div className="rounded-xl border border-border bg-card px-4 py-3">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
-              {selectedDate ? 'Expenses' : monthLabel}
-            </p>
-            <p className="text-2xl font-semibold text-violet-400 tabular-nums">
-              <AnimatedNumber value={selectedDate ? totalFiltered : totalMonth} formatter={formatINR} />
-            </p>
-            <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-              {selectedDate ? `${filtered.length} expense${filtered.length !== 1 ? 's' : ''}` : `${monthExpenses.length} this month`}
-            </p>
-            {selectedDate && (codByDate[selectedDate] ?? 0) > 0 && totalFiltered > 0 && (
-              <div className="mt-2 pt-2 border-t border-border/30">
-                <p className="text-[10px] text-muted-foreground">Net cashflow</p>
-                <p className={`text-[14px] font-semibold tabular-nums ${(codByDate[selectedDate] ?? 0) - totalFiltered > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {formatINR((codByDate[selectedDate] ?? 0) - totalFiltered)}
-                </p>
-              </div>
-            )}
-          </div>
+          {selectedDate && (
+            <div className="rounded-xl border border-border bg-card px-4 py-3">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Expenses</p>
+              <p className="text-2xl font-semibold text-violet-400 tabular-nums">
+                <AnimatedNumber value={totalFiltered} formatter={formatINR} />
+              </p>
+              <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                {filtered.length} expense{filtered.length !== 1 ? 's' : ''}
+              </p>
+              {(codByDate[selectedDate] ?? 0) > 0 && totalFiltered > 0 && (
+                <div className="mt-2 pt-2 border-t border-border/30">
+                  <p className="text-[10px] text-muted-foreground">Net cashflow</p>
+                  <p className={`text-[14px] font-semibold tabular-nums ${(codByDate[selectedDate] ?? 0) - totalFiltered > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {formatINR((codByDate[selectedDate] ?? 0) - totalFiltered)}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Category breakdown */}
           {topCategories.length > 0 && (

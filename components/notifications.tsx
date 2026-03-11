@@ -146,6 +146,9 @@ export function NotificationCenter() {
   const unread = notifications.filter((n) => n.status === 'unread');
   const hasUnread = unread.length > 0;
 
+  // Track whether we need to play sound after user interaction (browser requires gesture for AudioContext)
+  const pendingSoundRef = useRef(false);
+
   useEffect(() => {
     if (!notifSound) return;
 
@@ -155,13 +158,35 @@ export function NotificationCenter() {
     prevUnreadIdsRef.current = currentUnreadIds;
 
     if (hasUnread && hasNew && !muted) {
-      notifSound.startLoop();
+      // Try to play immediately; if AudioContext is suspended, queue for first user interaction
+      try {
+        notifSound.startLoop();
+      } catch { /* ignore */ }
+      pendingSoundRef.current = true;
     } else if (!hasUnread || muted) {
       notifSound.stop();
+      pendingSoundRef.current = false;
     }
 
     return () => { notifSound.stop(); };
   }, [hasUnread, muted, unread]);
+
+  // Resume AudioContext on first user interaction (browser policy requires gesture)
+  useEffect(() => {
+    if (!notifSound) return;
+    const resumeAudio = () => {
+      if (pendingSoundRef.current && hasUnread && !muted) {
+        notifSound.stop();
+        notifSound.startLoop();
+      }
+    };
+    document.addEventListener('click', resumeAudio, { once: true });
+    document.addEventListener('keydown', resumeAudio, { once: true });
+    return () => {
+      document.removeEventListener('click', resumeAudio);
+      document.removeEventListener('keydown', resumeAudio);
+    };
+  }, [hasUnread, muted]);
 
   // Actions
   const dismiss = async (id: string) => {

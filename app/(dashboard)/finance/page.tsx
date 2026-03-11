@@ -346,37 +346,62 @@ export default function FinancePage() {
         )}
       </motion.div>
 
-      {/* ═══ Spending Power — Compact Card ═══ */}
+      {/* ═══ Spending Power — Hero Card ═══ */}
       {spending && spending.projectedDeposit > 0 && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="px-6 py-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-8 w-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-                    <TrendingDown className="h-4 w-4 text-violet-400" />
+          <div className="rounded-2xl border border-violet-500/15 bg-gradient-to-br from-violet-500/[0.04] via-card to-card overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingDown className="h-5 w-5 text-violet-400" />
+                    <h2 className="text-base font-semibold text-foreground">Spending Power</h2>
                   </div>
-                  <div>
-                    <h2 className="text-sm font-semibold text-foreground">Spending Power</h2>
-                    <p className="text-[11px] text-muted-foreground">
-                      {spending.weekStart} → {spending.weekEnd}
-                    </p>
-                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {spending.weekStart} <ArrowRight className="inline h-2.5 w-2.5" /> {spending.weekEnd}
+                  </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setBreakdownOpen(true)}
-                    className="rounded-lg border border-border px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border/80 transition"
-                  >
-                    View Breakdown
-                  </button>
-                  <div className="text-right">
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Available</p>
-                    <p className={`text-2xl font-bold tabular-nums ${spending.spendingPower > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      <AnimatedNumber value={spending.spendingPower} formatter={formatINR} />
-                    </p>
-                  </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Available</p>
+                  <p className={`text-3xl font-bold tabular-nums ${spending.spendingPower > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <AnimatedNumber value={spending.spendingPower} formatter={formatINR} />
+                  </p>
                 </div>
+              </div>
+
+              {/* Mini waterfall summary */}
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 rounded-sm bg-emerald-500/40" />
+                  <span className="text-[9px] text-muted-foreground/60">Deposit {formatINR(spending.projectedDeposit)}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 rounded-sm bg-red-500/40" />
+                  <span className="text-[9px] text-muted-foreground/60">Outflow {formatINR(spending.projectedDeposit - spending.spendingPower)}</span>
+                </div>
+              </div>
+
+              {/* Spending power bar */}
+              <div className="h-3 rounded-full bg-border/30 overflow-hidden flex">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(100, (spending.spendingPower / spending.projectedDeposit) * 100)}%` }}
+                  transition={{ duration: 0.8 }}
+                  className={`h-full rounded-full ${spending.spendingPower > 0 ? 'bg-emerald-500/50' : 'bg-red-500/50'}`}
+                />
+              </div>
+              <div className="flex justify-between mt-1.5">
+                <span className="text-[9px] text-muted-foreground/40">₹0</span>
+                <span className="text-[9px] text-muted-foreground/40">{formatINR(spending.projectedDeposit)}</span>
+              </div>
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => setBreakdownOpen(true)}
+                  className="rounded-lg border border-border px-4 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border/80 transition"
+                >
+                  View Breakdown
+                </button>
               </div>
             </div>
           </div>
@@ -417,6 +442,14 @@ export default function FinancePage() {
                     <span className="text-[9px] text-muted-foreground/60">Baselines</span>
                   </div>
                 </div>
+                <div className="flex gap-2 mt-1">
+                  <Link href="/finance/expenditure" className="text-[9px] text-primary/60 hover:text-primary transition">
+                    Expenditure →
+                  </Link>
+                  <Link href="/finance/baselines" className="text-[9px] text-primary/60 hover:text-primary transition">
+                    Baselines →
+                  </Link>
+                </div>
                 <div className="h-32">
                   <div className="flex items-end gap-1 h-full">
                     {outflowDays.map((day) => {
@@ -429,7 +462,10 @@ export default function FinancePage() {
                           {barHeight > 0 && (
                             <div className="relative w-full group cursor-default" style={{ height: `${barHeight}%`, minHeight: '6px' }}>
                               <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block whitespace-nowrap rounded-md bg-popover border border-border px-2 py-1 text-[10px] font-medium text-foreground shadow-lg z-10">
-                                {formatINR(day.total)}
+                                {day.expenses > 0 && day.baselines > 0
+                                  ? `${formatINR(day.expenses)} exp + ${formatINR(day.baselines)} base`
+                                  : formatINR(day.total)
+                                }
                               </div>
                               <motion.div
                                 initial={{ height: 0 }}
@@ -579,45 +615,92 @@ function SpendingBreakdownModal({ spending, onClose, onRefresh }: { spending: Sp
 
         {/* Waterfall */}
         <div className="p-4 space-y-0">
-          {spending.breakdown.map((item, i) => {
-            const isIncome = item.type === 'income';
-            const isResult = item.type === 'result';
-            const isDeduction = item.type === 'deduction';
-
-            return (
-              <motion.div
-                key={item.label}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className={`flex items-center gap-3 px-4 py-3 ${
-                  isResult
-                    ? 'rounded-xl border border-emerald-500/20 bg-emerald-500/5 mt-2'
-                    : i > 0 ? 'border-t border-border/30' : ''
-                }`}
-              >
-                <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
-                  isIncome ? 'bg-emerald-500/10 border border-emerald-500/20'
-                    : isResult ? 'bg-emerald-500/15 border border-emerald-500/30'
-                    : 'bg-red-500/8 border border-red-500/15'
-                }`}>
-                  {isIncome ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> :
-                   isResult ? <Wallet className="h-3.5 w-3.5 text-emerald-400" /> :
-                   <ArrowDown className="h-3.5 w-3.5 text-red-400" />}
-                </div>
-                <span className={`text-[13px] flex-1 ${isResult ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
-                  {item.label}
-                </span>
-                <span className={`text-[14px] font-semibold tabular-nums ${
-                  isIncome ? 'text-emerald-400'
-                    : isResult ? (item.amount > 0 ? 'text-emerald-400' : 'text-red-400')
-                    : 'text-red-400'
-                }`}>
-                  {isDeduction ? '−' : ''}{formatINR(Math.abs(item.amount))}
-                </span>
-              </motion.div>
+          {(() => {
+            // Group expense and baseline deductions into totals
+            const expenseItems = spending.breakdown.filter((item) => item.type === 'deduction' && item.label.toLowerCase().includes('expense'));
+            const baselineItems = spending.breakdown.filter((item) => item.type === 'deduction' && item.label.toLowerCase().includes('baseline'));
+            const otherItems = spending.breakdown.filter((item) =>
+              item.type !== 'deduction' ||
+              (!item.label.toLowerCase().includes('expense') && !item.label.toLowerCase().includes('baseline'))
             );
-          })}
+
+            const totalExpenses = expenseItems.reduce((s, item) => s + Math.abs(item.amount), 0);
+            const totalBaselines = baselineItems.reduce((s, item) => s + Math.abs(item.amount), 0);
+
+            // Build grouped breakdown
+            const grouped: Array<{ label: string; amount: number; type: 'income' | 'deduction' | 'result' }> = [];
+            for (const item of otherItems) {
+              // Insert grouped expenses/baselines before the result row
+              if (item.type === 'result') {
+                if (totalExpenses > 0) {
+                  grouped.push({ label: `Expenses (${expenseItems.length} item${expenseItems.length !== 1 ? 's' : ''})`, amount: -totalExpenses, type: 'deduction' });
+                }
+                if (totalBaselines > 0) {
+                  grouped.push({ label: 'Baselines Due', amount: -totalBaselines, type: 'deduction' });
+                }
+              }
+              grouped.push(item);
+            }
+            // If there was no result row, append at end
+            if (!otherItems.some((item) => item.type === 'result')) {
+              if (totalExpenses > 0) {
+                grouped.push({ label: `Expenses (${expenseItems.length} item${expenseItems.length !== 1 ? 's' : ''})`, amount: -totalExpenses, type: 'deduction' });
+              }
+              if (totalBaselines > 0) {
+                grouped.push({ label: 'Baselines Due', amount: -totalBaselines, type: 'deduction' });
+              }
+            }
+
+            return grouped.map((item, i) => {
+              const isIncome = item.type === 'income';
+              const isResult = item.type === 'result';
+              const isDeduction = item.type === 'deduction';
+
+              return (
+                <motion.div
+                  key={item.label}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className={`flex items-center gap-3 px-4 py-3 ${
+                    isResult
+                      ? 'rounded-xl border border-emerald-500/20 bg-emerald-500/5 mt-2'
+                      : i > 0 ? 'border-t border-border/30' : ''
+                  }`}
+                >
+                  <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
+                    isIncome ? 'bg-emerald-500/10 border border-emerald-500/20'
+                      : isResult ? 'bg-emerald-500/15 border border-emerald-500/30'
+                      : 'bg-red-500/8 border border-red-500/15'
+                  }`}>
+                    {isIncome ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> :
+                     isResult ? <Wallet className="h-3.5 w-3.5 text-emerald-400" /> :
+                     <ArrowDown className="h-3.5 w-3.5 text-red-400" />}
+                  </div>
+                  <span className={`text-[13px] flex-1 ${isResult ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
+                    {item.label}
+                  </span>
+                  <span className={`text-[14px] font-semibold tabular-nums ${
+                    isIncome ? 'text-emerald-400'
+                      : isResult ? (item.amount > 0 ? 'text-emerald-400' : 'text-red-400')
+                      : 'text-red-400'
+                  }`}>
+                    {isDeduction ? '−' : ''}{formatINR(Math.abs(item.amount))}
+                  </span>
+                </motion.div>
+              );
+            });
+          })()}
+
+          {/* Quick links */}
+          <div className="flex gap-2 px-4 pt-4">
+            <Link href="/finance/expenditure" className="flex-1 rounded-lg border border-border px-3 py-2 text-[11px] font-medium text-center text-muted-foreground hover:text-foreground hover:border-border/80 transition">
+              View Expenditure →
+            </Link>
+            <Link href="/finance/baselines" className="flex-1 rounded-lg border border-border px-3 py-2 text-[11px] font-medium text-center text-muted-foreground hover:text-foreground hover:border-border/80 transition">
+              View Baselines →
+            </Link>
+          </div>
         </div>
 
         {/* Settings */}

@@ -125,7 +125,6 @@ export default function ProductAdsPage() {
       if (!res.ok) throw new Error();
       const remaining = entries.filter((e) => e.id !== id);
       setEntries(remaining);
-      if (remaining.length === 0) router.push('/ads-tracker');
     } catch { /* silently fail */ }
     finally { setDeletingIds((prev) => { const n = new Set(prev); n.delete(id); return n; }); }
   };
