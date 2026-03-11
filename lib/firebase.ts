@@ -66,4 +66,5 @@ export const COLLECTIONS = {
   INVENTORY_DISPATCHES: 'inventory_dispatches',
   SETTINGS: 'app_settings',
   TASKS: 'tasks',
+  NOTIFICATIONS: 'notifications',
 } as const;

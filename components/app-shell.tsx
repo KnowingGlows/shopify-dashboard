@@ -14,6 +14,7 @@ import { SplashScreen } from './splash-screen';
 import { OrbytLogo } from './orbyt-logo';
 import { useAuth } from './auth-provider';
 import { PendingUsersNotification } from './pending-users';
+import { NotificationCenter } from './notifications';
 import { RestrictedPage } from './restricted-page';
 
 type NavItem = {
@@ -124,6 +125,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
           <p className="text-sm font-semibold text-foreground">Orbit</p>
         </motion.div>
         <div className="flex items-center gap-1">
+          <NotificationCenter />
           <PendingUsersNotification />
           {showClose && (
             <button type="button" onClick={onNavigate} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground" aria-label="Close">
@@ -233,7 +235,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Menu className="h-5 w-5" />
             </button>
             <span className="text-xs font-medium text-muted-foreground">{activeItem.label}</span>
-            <div className="w-8" />
+            <NotificationCenter />
           </div>
           <AnimatePresence mode="wait">
             <motion.div
