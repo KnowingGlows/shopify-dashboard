@@ -1,21 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { BackgroundDecor } from '@/components/background-decor';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
-import { Store, Sparkles, Loader2, TrendingUp, Wallet } from 'lucide-react';
+import { Store, Sparkles, Loader2, TrendingUp, Wallet, Plus } from 'lucide-react';
 
-const brandInfo: Record<string, { description: string; highlight: string }> = {
-  Kairova: {
-    description: 'Luxury essentials, curated and fast moving.',
-    highlight: 'Top performer this week',
-  },
-  Mavric: {
-    description: 'Street luxe drops with bold, high energy edits.',
-    highlight: 'New arrivals trending',
-  },
+type StoreInfo = {
+  handle: string;
+  displayName: string | null;
 };
 
 type BrandData = {
@@ -32,24 +27,20 @@ export default function BrandsPage() {
   useEffect(() => {
     const fetchBrands = async () => {
       try {
-        const res = await fetch('/api/pnl');
-        const data = await res.json();
-        const entries: BrandData[] = data.entries ?? [];
+        const [storesRes, pnlRes] = await Promise.all([fetch('/api/stores'), fetch('/api/pnl')]);
+        const storesData = await storesRes.json();
+        const pnlData = await pnlRes.json();
 
-        const allBrands: BrandData[] = ['Kairova', 'Mavric'].map((name) => {
-          const existing = entries.find((e) => e.brand === name);
-          return existing ?? { brand: name, profit: 0, cashflow: 0, adspend: 0 };
-        });
-        setBrands(allBrands);
-      } catch {
-        setBrands(
-          ['Kairova', 'Mavric'].map((name) => ({
-            brand: name,
-            profit: 0,
-            cashflow: 0,
-            adspend: 0,
-          }))
+        const storeNames: string[] = (storesData.stores ?? []).map(
+          (s: StoreInfo) => s.displayName || s.handle
         );
+        const entries: BrandData[] = pnlData.entries ?? [];
+
+        setBrands(
+          storeNames.map((name) => entries.find((e) => e.brand === name) ?? { brand: name, profit: 0, cashflow: 0, adspend: 0 })
+        );
+      } catch {
+        setBrands([]);
       } finally {
         setLoading(false);
       }
@@ -76,8 +67,17 @@ export default function BrandsPage() {
                   Monitor every brand pulse from a single command center.
                 </p>
               </div>
-              <div className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-xs uppercase tracking-[0.25em] text-muted-foreground">
-                {brands.length} active brands
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-xs uppercase tracking-[0.25em] text-muted-foreground">
+                  {brands.length} active brands
+                </div>
+                <Link
+                  href="/settings"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary/90 px-4 py-2.5 text-[12px] font-medium text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:bg-primary hover:shadow-md hover:shadow-primary/25 active:scale-[0.97]"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Store
+                </Link>
               </div>
             </div>
           </div>
@@ -89,12 +89,7 @@ export default function BrandsPage() {
           </div>
         ) : (
           <StaggerContainer className="grid gap-4 md:grid-cols-2">
-            {brands.map((brand) => {
-              const info = brandInfo[brand.brand] ?? {
-                description: '',
-                highlight: '',
-              };
-              return (
+            {brands.map((brand) => (
                 <StaggerItem key={brand.brand}>
                   <Card className="group relative overflow-hidden border-border/50 bg-card/70 shadow-[0_0_30px_rgba(15,23,42,0.25)] transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_0_40px_rgba(167,139,250,0.15)]">
                     <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(167,139,250,0.06),transparent_60%)] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
@@ -105,12 +100,11 @@ export default function BrandsPage() {
                         </span>
                         <div>
                           <CardTitle className="text-2xl">{brand.brand}</CardTitle>
-                          <CardDescription>{info.highlight}</CardDescription>
+                          <CardDescription>Active Shopify store</CardDescription>
                         </div>
                       </div>
                     </CardHeader>
                     <CardContent className="relative space-y-4">
-                      <p className="text-sm text-muted-foreground">{info.description}</p>
                       <div className="grid gap-3 text-xs uppercase tracking-[0.2em] text-muted-foreground sm:grid-cols-2">
                         <div className="rounded-2xl border border-border/50 bg-background/50 px-3 py-2">
                           <div className="flex items-center gap-1.5">
@@ -134,8 +128,7 @@ export default function BrandsPage() {
                     </CardContent>
                   </Card>
                 </StaggerItem>
-              );
-            })}
+            ))}
           </StaggerContainer>
         )}
 
