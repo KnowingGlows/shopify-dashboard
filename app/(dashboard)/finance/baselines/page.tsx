@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, Loader2, Plus, Trash2, Check, X, Pencil,
   CreditCard, Users2, Wrench, AlertCircle,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Calendar,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { formatINR, ordinal } from '@/lib/currency-converter';
@@ -32,6 +32,10 @@ const CATEGORIES = [
   { key: 'operations', label: 'Operations & Overhead', color: '#A78BFA', textColor: 'text-violet-400', bgColor: 'bg-violet-500/8', borderColor: 'border-violet-500/20', icon: <Wrench className="h-4 w-4 text-violet-400" /> },
 ];
 
+function getToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function BaselinesPage() {
@@ -43,7 +47,7 @@ export default function BaselinesPage() {
   const [addingCategory, setAddingCategory] = useState<string | null>(null);
   const [formLabel, setFormLabel] = useState('');
   const [formAmount, setFormAmount] = useState('');
-  const [formDueDay, setFormDueDay] = useState('');
+  const [formDueDate, setFormDueDate] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const fetchBaselines = useCallback(async () => {
@@ -97,21 +101,33 @@ export default function BaselinesPage() {
     await saveBaseline(updated);
   };
 
-  const resetForm = () => { setEditingId(null); setAddingCategory(null); setFormLabel(''); setFormAmount(''); setFormDueDay(''); };
+  const resetForm = () => { setEditingId(null); setAddingCategory(null); setFormLabel(''); setFormAmount(''); setFormDueDate(''); };
 
   const startEdit = (b: Baseline) => {
     setEditingId(b.id); setAddingCategory(null);
-    setFormLabel(b.label); setFormAmount(String(b.amount)); setFormDueDay(b.dueDay ? String(b.dueDay) : '');
+    setFormLabel(b.label); setFormAmount(String(b.amount));
+    // Convert dueDay to a date string for the current month
+    if (b.dueDay) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(b.dueDay).padStart(2, '0');
+      setFormDueDate(`${year}-${month}-${day}`);
+    } else {
+      setFormDueDate('');
+    }
   };
 
   const startAdd = (category: string) => {
     setAddingCategory(category); setEditingId(null);
-    setFormLabel(''); setFormAmount(''); setFormDueDay('');
+    setFormLabel(''); setFormAmount(''); setFormDueDate('');
   };
 
   const handleSubmit = (category: string, existingId?: string) => {
     if (!formLabel.trim() || !formAmount) return;
-    saveBaseline({ id: existingId, type: 'monthly', category, label: formLabel.trim(), amount: Number(formAmount) || 0, dueDay: formDueDay ? Number(formDueDay) : undefined });
+    // Extract day from the date
+    const dueDay = formDueDate ? new Date(formDueDate + 'T00:00:00').getDate() : undefined;
+    saveBaseline({ id: existingId, type: 'monthly', category, label: formLabel.trim(), amount: Number(formAmount) || 0, dueDay });
   };
 
   if (loading) {
@@ -208,11 +224,11 @@ export default function BaselinesPage() {
                 {!isCollapsed && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
                     {/* Table header */}
-                    <div className="grid grid-cols-[24px_1fr_90px_70px_80px_50px] gap-2 px-5 py-2 border-t border-border/50 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">
+                    <div className="grid grid-cols-[24px_1fr_90px_100px_80px_50px] gap-2 px-5 py-2 border-t border-border/50 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">
                       <span />
                       <span>Name</span>
                       <span className="text-right">Amount</span>
-                      <span className="text-center">Due</span>
+                      <span className="text-center">Due Date</span>
                       <span className="text-center">Status</span>
                       <span />
                     </div>
@@ -224,8 +240,8 @@ export default function BaselinesPage() {
                     {items.map((b) => {
                       if (editingId === b.id) {
                         return (
-                          <InlineEditRow key={b.id} label={formLabel} amount={formAmount} dueDay={formDueDay}
-                            onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDayChange={setFormDueDay}
+                          <InlineEditRow key={b.id} label={formLabel} amount={formAmount} dueDate={formDueDate}
+                            onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDateChange={setFormDueDate}
                             onSave={() => handleSubmit(cat.key, b.id)} onCancel={resetForm} saving={saving}
                           />
                         );
@@ -234,7 +250,7 @@ export default function BaselinesPage() {
                       const isDueToday = b.dueDay === currentDay && !b.isPaid;
 
                       return (
-                        <div key={b.id} className="group grid grid-cols-[24px_1fr_90px_70px_80px_50px] gap-2 items-center px-5 py-2.5 border-t border-border/20 hover:bg-accent/5 transition">
+                        <div key={b.id} className="group grid grid-cols-[24px_1fr_90px_100px_80px_50px] gap-2 items-center px-5 py-2.5 border-t border-border/20 hover:bg-accent/5 transition">
                           <button
                             onClick={() => togglePaid(b)}
                             className={`h-[18px] w-[18px] rounded border transition flex items-center justify-center ${b.isPaid ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'border-white/[0.15] hover:border-white/[0.3]'}`}
@@ -247,7 +263,13 @@ export default function BaselinesPage() {
                           <span className={`text-[13px] font-semibold text-right tabular-nums`} style={{ color: b.isPaid ? 'var(--muted-foreground)' : cat.color }}>{formatINR(b.amount)}</span>
 
                           <span className={`text-[11px] text-center ${isOverdue ? 'text-red-400 font-medium' : isDueToday ? 'text-amber-400' : 'text-muted-foreground/50'}`}>
-                            {b.dueDay ? (isOverdue ? <span className="flex items-center justify-center gap-0.5"><AlertCircle className="h-3 w-3" />{ordinal(b.dueDay)}</span> : ordinal(b.dueDay)) : '—'}
+                            {b.dueDay ? (
+                              <span className="flex items-center justify-center gap-1">
+                                {isOverdue && <AlertCircle className="h-3 w-3" />}
+                                <Calendar className="h-2.5 w-2.5 opacity-50" />
+                                {ordinal(b.dueDay)} of month
+                              </span>
+                            ) : '—'}
                           </span>
 
                           <span className="text-center">
@@ -271,8 +293,8 @@ export default function BaselinesPage() {
                     })}
 
                     {addingCategory === cat.key ? (
-                      <InlineEditRow label={formLabel} amount={formAmount} dueDay={formDueDay}
-                        onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDayChange={setFormDueDay}
+                      <InlineEditRow label={formLabel} amount={formAmount} dueDate={formDueDate}
+                        onLabelChange={setFormLabel} onAmountChange={setFormAmount} onDueDateChange={setFormDueDate}
                         onSave={() => handleSubmit(cat.key)} onCancel={resetForm} saving={saving}
                       />
                     ) : editingId === null ? (
@@ -294,17 +316,17 @@ export default function BaselinesPage() {
 // ── Inline Edit Row ──────────────────────────────────────────────────────────
 
 function InlineEditRow({
-  label, amount, dueDay,
-  onLabelChange, onAmountChange, onDueDayChange,
+  label, amount, dueDate,
+  onLabelChange, onAmountChange, onDueDateChange,
   onSave, onCancel, saving,
 }: {
-  label: string; amount: string; dueDay: string;
-  onLabelChange: (v: string) => void; onAmountChange: (v: string) => void; onDueDayChange: (v: string) => void;
+  label: string; amount: string; dueDate: string;
+  onLabelChange: (v: string) => void; onAmountChange: (v: string) => void; onDueDateChange: (v: string) => void;
   onSave: () => void; onCancel: () => void; saving: boolean;
 }) {
   return (
     <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-      className="grid grid-cols-[24px_1fr_90px_70px_80px_50px] gap-2 items-center px-5 py-3 border-t border-primary/10 bg-primary/[0.02]"
+      className="grid grid-cols-[24px_1fr_90px_100px_80px_50px] gap-2 items-center px-5 py-3 border-t border-primary/10 bg-primary/[0.02]"
     >
       <span />
       <input autoFocus value={label} onChange={(e) => onLabelChange(e.target.value)} placeholder="Name"
@@ -315,8 +337,8 @@ function InlineEditRow({
         className="bg-transparent text-[13px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5"
         onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
       />
-      <input value={dueDay} onChange={(e) => onDueDayChange(e.target.value)} placeholder="Day" type="number" min={1} max={31}
-        className="bg-transparent text-[13px] text-foreground text-center tabular-nums placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5 w-full"
+      <input value={dueDate} onChange={(e) => onDueDateChange(e.target.value)} type="date"
+        className="bg-transparent text-[11px] text-foreground text-center outline-none border-b border-primary/20 pb-0.5 w-full"
         onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
       />
       <div className="flex justify-center">

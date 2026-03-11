@@ -5,13 +5,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, Loader2, Check, AlertTriangle,
   X, Box, ChevronDown, Package, Clock, CalendarClock,
-  Ship, MapPin, Store, Send,
+  Ship, MapPin, Store, Send, History, ChevronRight,
 } from 'lucide-react';
 import type { InventoryEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+interface DispatchLog {
+  id: string;
+  inventoryId: string;
+  quantity: number;
+  date: string;
+  createdAt: string;
+}
 
 const STORE_OPTIONS = ['', 'Kairova', 'Mavric'];
 const SOURCING_OPTIONS = ['', 'india', 'china'];
@@ -63,10 +71,12 @@ export default function InventoryPage() {
   const [addingItem, setAddingItem] = useState(false);
   const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>({});
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dispatchQuantities, setDispatchQuantities] = useState<Record<string, string>>({});
   const [savingDispatches, setSavingDispatches] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [dispatchLogs, setDispatchLogs] = useState<Record<string, DispatchLog[]>>({});
+  const [loadingLogs, setLoadingLogs] = useState<Record<string, boolean>>({});
   const saveTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Form state
@@ -91,6 +101,17 @@ export default function InventoryPage() {
   }, []);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
+  const fetchDispatchLogs = async (inventoryId: string) => {
+    if (dispatchLogs[inventoryId]) return; // already loaded
+    setLoadingLogs((prev) => ({ ...prev, [inventoryId]: true }));
+    try {
+      const res = await fetch(`/api/inventory?action=dispatches&inventoryId=${inventoryId}`);
+      const data = await res.json();
+      setDispatchLogs((prev) => ({ ...prev, [inventoryId]: data.dispatches ?? [] }));
+    } catch { /* ignore */ }
+    finally { setLoadingLogs((prev) => ({ ...prev, [inventoryId]: false })); }
+  };
 
   const resetForm = () => {
     setFormName(''); setFormSku(''); setFormStock(''); setFormReorder('');
@@ -167,18 +188,26 @@ export default function InventoryPage() {
       if (res.ok) {
         setDispatchQuantities({});
         setDispatchStatus('saved');
+        // Clear cached dispatch logs so they reload
+        setDispatchLogs({});
         fetchEntries();
         setTimeout(() => { setShowDispatch(false); setDispatchStatus('idle'); }, 1500);
       } else {
-        const data = await res.json().catch(() => ({}));
-        console.error('Dispatch error:', data);
         setDispatchStatus('error');
       }
-    } catch (err) {
-      console.error('Dispatch error:', err);
+    } catch {
       setDispatchStatus('error');
     }
     finally { setSavingDispatches(false); }
+  };
+
+  const toggleExpand = (id: string) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+    } else {
+      setExpandedId(id);
+      fetchDispatchLogs(id);
+    }
   };
 
   // Stats
@@ -226,12 +255,7 @@ export default function InventoryPage() {
       {/* Reorder Alerts */}
       <AnimatePresence>
         {reorderAlerts.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden"
-          >
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.03] p-4 space-y-2">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle className="h-4 w-4 text-amber-400" />
@@ -251,17 +275,10 @@ export default function InventoryPage() {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 shrink-0 text-right">
-                      <div>
-                        <p className={`text-[12px] font-semibold ${t.urgent ? 'text-red-400' : 'text-amber-400'}`}>
-                          {t.urgent ? 'ORDER NOW' : `${t.daysRemaining}d left`}
-                        </p>
-                        {t.reorderDate && (
-                          <p className="text-[10px] text-muted-foreground">
-                            Order by {t.reorderDate}
-                          </p>
-                        )}
-                      </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <p className={`text-[12px] font-semibold ${t.urgent ? 'text-red-400' : 'text-amber-400'}`}>
+                        {t.urgent ? 'ORDER NOW' : `${t.daysRemaining}d left`}
+                      </p>
                       {sourcing && (
                         <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${sourcing.bg} ${sourcing.color}`}>
                           {sourcing.label} ({sourcing.leadDays}d)
@@ -297,7 +314,7 @@ export default function InventoryPage() {
       <AnimatePresence>
         {showDispatch && entries.length > 0 && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <div className="rounded-xl border border-blue-500/20 bg-card p-5 shadow-[0_0_30px_rgba(59,130,246,0.04)]">
+            <div className="rounded-xl border border-blue-500/20 bg-card p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/15 text-blue-400"><Send className="h-4 w-4" /></div>
                 <div>
@@ -351,7 +368,7 @@ export default function InventoryPage() {
                     <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-emerald-400">Dispatches saved</motion.span>
                   )}
                   {dispatchStatus === 'error' && (
-                    <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-red-400">Failed to save - check console</motion.span>
+                    <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-red-400">Failed to save</motion.span>
                   )}
                 </AnimatePresence>
               </div>
@@ -364,7 +381,7 @@ export default function InventoryPage() {
       <AnimatePresence>
         {showForm && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <div className="rounded-xl border border-primary/20 bg-card p-5 shadow-[0_0_30px_rgba(167,139,250,0.06)]">
+            <div className="rounded-xl border border-primary/20 bg-card p-5">
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary"><Box className="h-4 w-4" /></div>
                 <h2 className="text-sm font-semibold text-foreground">New Inventory Item</h2>
@@ -415,7 +432,7 @@ export default function InventoryPage() {
         )}
       </AnimatePresence>
 
-      {/* Entries */}
+      {/* Inventory Table */}
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : entries.length === 0 ? (
@@ -425,175 +442,235 @@ export default function InventoryPage() {
           <p className="text-[11px] text-muted-foreground/60 mt-1">Click &quot;Add Item&quot; to get started</p>
         </motion.div>
       ) : (
-        <StaggerContainer className="space-y-2">
-          {entries.map((entry) => {
-            const cfg = STATUS_CONFIG[entry.status];
-            const storeCfg = STORE_CONFIG[entry.store];
-            const sourcing = SOURCING_CONFIG[entry.sourcingOrigin];
-            const timeline = calcTimeline(entry);
-            const isEditing = editingId === entry.id;
-            const status = saveStatus[entry.id] ?? 'idle';
-            const stockPct = entry.reorderLevel > 0
-              ? Math.min(100, Math.round((entry.currentStock / (entry.reorderLevel * 3)) * 100))
-              : entry.currentStock > 0 ? 80 : 0;
-            const stockColor = timeline.urgent ? 'bg-red-400' : timeline.warning ? 'bg-amber-400' : 'bg-emerald-400';
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {/* Table header */}
+          <div className="grid grid-cols-[1fr_80px_60px_80px_70px_70px_30px] sm:grid-cols-[1fr_100px_70px_90px_80px_80px_30px] gap-2 px-4 py-2.5 border-b border-border/50 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50 bg-card">
+            <span>Product</span>
+            <span className="text-right">Stock</span>
+            <span className="text-right">Avg/Day</span>
+            <span className="text-right">Days Left</span>
+            <span className="text-center">Status</span>
+            <span className="text-right">Value</span>
+            <span />
+          </div>
 
-            return (
-              <StaggerItem key={entry.id}>
-                <motion.div layout className={`group rounded-xl border bg-card transition-all hover:shadow-[0_0_20px_rgba(167,139,250,0.04)] ${timeline.urgent ? 'border-red-500/30 bg-red-500/[0.02]' : timeline.warning ? 'border-amber-500/30 bg-amber-500/[0.02]' : 'border-border hover:border-border/80'} ${isEditing ? 'ring-1 ring-primary/20' : ''}`}>
+          {/* Table body */}
+          <div className="max-h-[600px] overflow-y-auto">
+            {entries.map((entry) => {
+              const cfg = STATUS_CONFIG[entry.status];
+              const storeCfg = STORE_CONFIG[entry.store];
+              const sourcing = SOURCING_CONFIG[entry.sourcingOrigin];
+              const timeline = calcTimeline(entry);
+              const isExpanded = expandedId === entry.id;
+              const status = saveStatus[entry.id] ?? 'idle';
+              const stockPct = entry.reorderLevel > 0
+                ? Math.min(100, Math.round((entry.currentStock / (entry.reorderLevel * 3)) * 100))
+                : entry.currentStock > 0 ? 80 : 0;
+              const stockColor = timeline.urgent ? 'bg-red-400' : timeline.warning ? 'bg-amber-400' : 'bg-emerald-400';
+              const logs = dispatchLogs[entry.id];
+
+              return (
+                <div key={entry.id} className={`border-b border-border/20 last:border-0 ${timeline.urgent ? 'bg-red-500/[0.02]' : timeline.warning ? 'bg-amber-500/[0.02]' : ''}`}>
                   {/* Main row */}
-                  <div className="px-4 py-3 space-y-2">
-                    <div className="flex items-center gap-3">
-                      {cfg && <span className={`h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-[14px] font-medium text-foreground truncate">{entry.productName || <span className="text-muted-foreground/40 italic">Unnamed</span>}</p>
-                          {storeCfg && (
-                            <span className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${storeCfg.bg} ${storeCfg.color}`}>
-                              <Store className="h-2.5 w-2.5" />{entry.store}
-                            </span>
-                          )}
-                          {sourcing && (
-                            <span className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded border ${sourcing.bg} ${sourcing.color}`}>
-                              <MapPin className="h-2.5 w-2.5" />{sourcing.label}
-                            </span>
-                          )}
-                        </div>
-                        {entry.sku && <p className="text-[11px] text-muted-foreground">{entry.sku}{entry.supplier ? ` · ${entry.supplier}` : ''}</p>}
+                  <button
+                    onClick={() => toggleExpand(entry.id)}
+                    className="w-full grid grid-cols-[1fr_80px_60px_80px_70px_70px_30px] sm:grid-cols-[1fr_100px_70px_90px_80px_80px_30px] gap-2 items-center px-4 py-3 hover:bg-accent/5 transition text-left"
+                  >
+                    {/* Product */}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        {cfg && <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${cfg.dot}`} />}
+                        <span className="text-[13px] font-medium text-foreground truncate">{entry.productName || 'Unnamed'}</span>
                       </div>
-
-                      <div className="flex items-center gap-3 shrink-0 flex-wrap justify-end">
-                        {/* Stock */}
-                        <div className="text-right">
-                          <p className={`text-[14px] font-semibold ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-foreground'}`}>{entry.currentStock}</p>
-                          <p className="text-[9px] text-muted-foreground uppercase">in stock</p>
-                        </div>
-
-                        {/* Daily avg */}
-                        {entry.dailyAvgOrders > 0 && (
-                          <div className="text-right">
-                            <p className="text-[13px] font-medium text-foreground">{entry.dailyAvgOrders}</p>
-                            <p className="text-[9px] text-muted-foreground uppercase">avg/day</p>
-                          </div>
+                      <div className="flex items-center gap-1.5 mt-0.5 pl-3.5">
+                        {storeCfg && (
+                          <span className={`text-[8px] font-semibold px-1 py-0.5 rounded-full border ${storeCfg.bg} ${storeCfg.color}`}>
+                            {entry.store}
+                          </span>
                         )}
-
-                        {/* Status badge */}
-                        {entry.status && cfg && (
-                          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${cfg.bg} ${cfg.color}`}>{entry.status}</span>
+                        {sourcing && (
+                          <span className={`text-[8px] font-semibold px-1 py-0.5 rounded border ${sourcing.bg} ${sourcing.color}`}>
+                            {sourcing.label}
+                          </span>
                         )}
-
-                        {status === 'saving' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-                        {status === 'saved' && <Check className="h-3 w-3 text-emerald-400" />}
-                        {status === 'error' && <AlertTriangle className="h-3 w-3 text-red-400" />}
-
-                        <button onClick={() => setEditingId(isEditing ? null : entry.id)} className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition">
-                          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
-                        </button>
                       </div>
                     </div>
 
-                    {/* Timeline bar */}
-                    {entry.dailyAvgOrders > 0 && (
-                      <div className="flex items-center gap-3 pl-5">
-                        <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${stockPct}%` }}
-                            transition={{ duration: 0.8, ease: 'easeOut' }}
-                            className={`h-full rounded-full ${stockColor}`}
-                          />
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          <span className={`text-[11px] font-medium ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-muted-foreground'}`}>
-                            {timeline.daysRemaining === Infinity ? '--' : `${timeline.daysRemaining}d left`}
-                          </span>
-                          {timeline.reorderDate && sourcing && (
-                            <>
-                              <CalendarClock className="h-3 w-3 text-muted-foreground ml-1" />
-                              <span className={`text-[11px] font-medium ${timeline.urgent ? 'text-red-400' : 'text-muted-foreground'}`}>
-                                Order by {timeline.reorderDate}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    {/* Stock */}
+                    <div className="text-right">
+                      <span className={`text-[13px] font-semibold tabular-nums ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-foreground'}`}>
+                        {entry.currentStock}
+                      </span>
+                    </div>
 
-                  {/* Edit panel */}
+                    {/* Avg/Day */}
+                    <span className="text-[12px] text-muted-foreground tabular-nums text-right">
+                      {entry.dailyAvgOrders > 0 ? entry.dailyAvgOrders : '—'}
+                    </span>
+
+                    {/* Days Left */}
+                    <div className="text-right">
+                      <span className={`text-[12px] font-medium tabular-nums ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                        {timeline.daysRemaining === Infinity ? '—' : `${timeline.daysRemaining}d`}
+                      </span>
+                      {timeline.reorderDate && sourcing && (
+                        <p className="text-[9px] text-muted-foreground/50">Order {timeline.reorderDate}</p>
+                      )}
+                    </div>
+
+                    {/* Status */}
+                    <div className="text-center">
+                      {entry.status && cfg && (
+                        <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${cfg.bg} ${cfg.color}`}>
+                          {entry.status}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Value */}
+                    <span className="text-[11px] font-medium text-muted-foreground tabular-nums text-right">
+                      {entry.costPerUnit > 0 && entry.currentStock > 0 ? formatINR(entry.costPerUnit * entry.currentStock) : '—'}
+                    </span>
+
+                    {/* Expand arrow */}
+                    <div className="flex items-center justify-end">
+                      <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground/40 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                    </div>
+                  </button>
+
+                  {/* Stock bar */}
+                  {entry.dailyAvgOrders > 0 && (
+                    <div className="px-4 pb-2">
+                      <div className="h-1 rounded-full bg-border overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${stockPct}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut' }}
+                          className={`h-full rounded-full ${stockColor}`}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expanded detail panel */}
                   <AnimatePresence>
-                    {isEditing && (
+                    {isExpanded && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                        <div className="border-t border-border px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                          <FormField label="Product Name">
-                            <input type="text" value={entry.productName} onChange={(e) => updateField(entry.id, 'productName', e.target.value)} onBlur={() => saveEntry(entry.id)} className="form-input" />
-                          </FormField>
-                          <FormField label="Store">
-                            <select value={entry.store} onChange={(e) => { updateField(entry.id, 'store', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className="form-input">
-                              {STORE_OPTIONS.map((s) => <option key={s} value={s}>{s || 'Select...'}</option>)}
-                            </select>
-                          </FormField>
-                          <FormField label="Sourcing Origin">
-                            <select value={entry.sourcingOrigin} onChange={(e) => { updateField(entry.id, 'sourcingOrigin', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className="form-input">
-                              {SOURCING_OPTIONS.map((s) => <option key={s} value={s}>{s ? SOURCING_CONFIG[s]?.label : 'Select...'}</option>)}
-                            </select>
-                          </FormField>
-                          <FormField label="SKU">
-                            <input type="text" value={entry.sku} onChange={(e) => updateField(entry.id, 'sku', e.target.value)} onBlur={() => saveEntry(entry.id)} className="form-input" />
-                          </FormField>
-                          <FormField label="Current Stock">
-                            <input type="number" value={entry.currentStock || ''} onChange={(e) => updateField(entry.id, 'currentStock', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={() => saveEntry(entry.id)} className="form-input" />
-                          </FormField>
-                          <FormField label="Reorder Level">
-                            <input type="number" value={entry.reorderLevel || ''} onChange={(e) => updateField(entry.id, 'reorderLevel', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={() => saveEntry(entry.id)} className="form-input" />
-                          </FormField>
-                          <FormField label="Supplier">
-                            <input type="text" value={entry.supplier} onChange={(e) => updateField(entry.id, 'supplier', e.target.value)} onBlur={() => saveEntry(entry.id)} className="form-input" />
-                          </FormField>
-                          <FormField label="Cost per Unit">
-                            <input type="number" value={entry.costPerUnit || ''} onChange={(e) => updateField(entry.id, 'costPerUnit', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={() => saveEntry(entry.id)} className="form-input" />
-                          </FormField>
-                          <FormField label="Status">
-                            <select value={entry.status} onChange={(e) => { updateField(entry.id, 'status', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className={`form-input ${cfg?.color ?? ''}`}>
-                              {STATUS_OPTIONS.map((s) => <option key={s} value={s} className="bg-card text-foreground">{s || 'Select...'}</option>)}
-                            </select>
-                          </FormField>
-                        </div>
-                        {/* Inventory info */}
-                        {entry.dailyAvgOrders > 0 && (
-                          <div className="border-t border-border px-4 py-2.5 flex items-center gap-4 flex-wrap">
-                            <InfoPill icon={<Package className="h-3 w-3" />} label="Avg daily orders" value={String(entry.dailyAvgOrders)} />
-                            <InfoPill icon={<Clock className="h-3 w-3" />} label="Days remaining" value={timeline.daysRemaining === Infinity ? '--' : `${timeline.daysRemaining}d`} color={timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : undefined} />
-                            {sourcing && <InfoPill icon={<Ship className="h-3 w-3" />} label="Lead time" value={`${sourcing.leadDays}d (${sourcing.label})`} />}
-                            {timeline.reorderDate && <InfoPill icon={<CalendarClock className="h-3 w-3" />} label="Reorder by" value={timeline.reorderDate} color={timeline.urgent ? 'text-red-400' : undefined} />}
-                            {entry.costPerUnit > 0 && entry.currentStock > 0 && <InfoPill icon={<Store className="h-3 w-3" />} label="Value" value={formatINR(entry.costPerUnit * entry.currentStock)} />}
+                        <div className="border-t border-border/30">
+                          {/* Edit fields */}
+                          <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                            <FormField label="Product Name">
+                              <input type="text" value={entry.productName} onChange={(e) => updateField(entry.id, 'productName', e.target.value)} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
+                            </FormField>
+                            <FormField label="Store">
+                              <select value={entry.store} onChange={(e) => { updateField(entry.id, 'store', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className="form-input text-[12px]">
+                                {STORE_OPTIONS.map((s) => <option key={s} value={s}>{s || 'Select...'}</option>)}
+                              </select>
+                            </FormField>
+                            <FormField label="Sourcing">
+                              <select value={entry.sourcingOrigin} onChange={(e) => { updateField(entry.id, 'sourcingOrigin', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className="form-input text-[12px]">
+                                {SOURCING_OPTIONS.map((s) => <option key={s} value={s}>{s ? SOURCING_CONFIG[s]?.label : 'Select...'}</option>)}
+                              </select>
+                            </FormField>
+                            <FormField label="Current Stock">
+                              <input type="number" value={entry.currentStock || ''} onChange={(e) => updateField(entry.id, 'currentStock', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
+                            </FormField>
+                            <FormField label="Reorder Level">
+                              <input type="number" value={entry.reorderLevel || ''} onChange={(e) => updateField(entry.id, 'reorderLevel', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
+                            </FormField>
+                            <FormField label="Cost/Unit">
+                              <input type="number" value={entry.costPerUnit || ''} onChange={(e) => updateField(entry.id, 'costPerUnit', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
+                            </FormField>
+                            <FormField label="Status">
+                              <select value={entry.status} onChange={(e) => { updateField(entry.id, 'status', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className={`form-input text-[12px] ${cfg?.color ?? ''}`}>
+                                {STATUS_OPTIONS.map((s) => <option key={s} value={s} className="bg-card text-foreground">{s || 'Select...'}</option>)}
+                              </select>
+                            </FormField>
+                            <FormField label="Supplier">
+                              <input type="text" value={entry.supplier} onChange={(e) => updateField(entry.id, 'supplier', e.target.value)} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
+                            </FormField>
                           </div>
-                        )}
-                        <div className="border-t border-border px-4 py-2 flex justify-end">
-                          <button onClick={() => deleteEntry(entry.id)} disabled={deletingIds.has(entry.id)} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
-                            {deletingIds.has(entry.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete
-                          </button>
+
+                          {/* Save status */}
+                          {status !== 'idle' && (
+                            <div className="px-4 pb-2 flex items-center gap-1.5">
+                              {status === 'saving' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                              {status === 'saved' && <Check className="h-3 w-3 text-emerald-400" />}
+                              {status === 'error' && <AlertTriangle className="h-3 w-3 text-red-400" />}
+                              <span className="text-[10px] text-muted-foreground">{status === 'saving' ? 'Saving...' : status === 'saved' ? 'Saved' : 'Error saving'}</span>
+                            </div>
+                          )}
+
+                          {/* Dispatch Log */}
+                          <div className="border-t border-border/30 px-4 py-3">
+                            <div className="flex items-center gap-2 mb-3">
+                              <History className="h-3.5 w-3.5 text-muted-foreground" />
+                              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Dispatch History</p>
+                            </div>
+
+                            {loadingLogs[entry.id] ? (
+                              <div className="flex items-center gap-2 py-3">
+                                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                                <span className="text-[11px] text-muted-foreground">Loading...</span>
+                              </div>
+                            ) : logs && logs.length > 0 ? (
+                              <div className="rounded-lg border border-border/30 overflow-hidden max-h-48 overflow-y-auto">
+                                <div className="grid grid-cols-[1fr_80px_120px] gap-2 px-3 py-1.5 bg-accent/5 text-[8px] font-medium uppercase tracking-wider text-muted-foreground/40 border-b border-border/20">
+                                  <span>Date</span>
+                                  <span className="text-right">Qty</span>
+                                  <span className="text-right">Logged At</span>
+                                </div>
+                                {logs.map((log) => (
+                                  <div key={log.id} className="grid grid-cols-[1fr_80px_120px] gap-2 px-3 py-2 border-b border-border/10 last:border-0">
+                                    <span className="text-[11px] text-foreground tabular-nums">{log.date}</span>
+                                    <span className="text-[11px] font-semibold text-foreground tabular-nums text-right">{log.quantity} units</span>
+                                    <span className="text-[10px] text-muted-foreground/50 text-right">
+                                      {new Date(log.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-muted-foreground/40 py-2">No dispatches logged yet</p>
+                            )}
+                          </div>
+
+                          {/* Timeline info */}
+                          {entry.dailyAvgOrders > 0 && (
+                            <div className="border-t border-border/30 px-4 py-2.5 flex items-center gap-4 flex-wrap">
+                              <InfoPill icon={<Package className="h-3 w-3" />} label="Avg daily" value={String(entry.dailyAvgOrders)} />
+                              <InfoPill icon={<Clock className="h-3 w-3" />} label="Days left" value={timeline.daysRemaining === Infinity ? '--' : `${timeline.daysRemaining}d`} color={timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : undefined} />
+                              {sourcing && <InfoPill icon={<Ship className="h-3 w-3" />} label="Lead" value={`${sourcing.leadDays}d (${sourcing.label})`} />}
+                              {timeline.reorderDate && <InfoPill icon={<CalendarClock className="h-3 w-3" />} label="Reorder by" value={timeline.reorderDate} color={timeline.urgent ? 'text-red-400' : undefined} />}
+                            </div>
+                          )}
+
+                          {/* Delete */}
+                          <div className="border-t border-border/30 px-4 py-2 flex justify-end">
+                            <button onClick={() => deleteEntry(entry.id)} disabled={deletingIds.has(entry.id)} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
+                              {deletingIds.has(entry.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete
+                            </button>
+                          </div>
                         </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </motion.div>
-              </StaggerItem>
-            );
-          })}
-        </StaggerContainer>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
-      <p className="text-[11px] text-muted-foreground">{totalProducts} item{totalProducts !== 1 ? 's' : ''} · Click a row to edit · Auto-saves</p>
+      <p className="text-[11px] text-muted-foreground">{totalProducts} item{totalProducts !== 1 ? 's' : ''} · Click a row to expand · Auto-saves</p>
     </PageTransition>
   );
 }
 
 function FormField({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}{required && <span className="text-primary ml-0.5">*</span>}</label>
+    <div className="flex flex-col gap-1">
+      <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}{required && <span className="text-primary ml-0.5">*</span>}</label>
       {children}
     </div>
   );

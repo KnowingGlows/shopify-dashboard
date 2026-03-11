@@ -29,7 +29,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: Home, section: 'core' },
   { href: '/finance', label: 'Finance', icon: DollarSign, section: 'core' },
-  { href: '/finance/entry', label: 'Enter Data', icon: PenLine, section: 'core', parent: '/finance' },
+  { href: '/finance/entry', label: 'Daily P&L', icon: PenLine, section: 'core', parent: '/finance' },
   { href: '/finance/entries', label: 'Daily Entries', icon: List, section: 'core', parent: '/finance' },
   { href: '/finance/baselines', label: 'Baselines', icon: Landmark, section: 'core', parent: '/finance' },
   { href: '/finance/expenditure', label: 'Expenditure', icon: Receipt, section: 'core', parent: '/finance' },

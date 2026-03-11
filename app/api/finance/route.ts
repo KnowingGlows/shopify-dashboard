@@ -145,7 +145,9 @@ export async function GET(request: Request) {
       case 'delivery-rates':
         return getDeliveryRates();
       case 'spending-power':
-        return getSpendingPower();
+        return getSpendingPower(searchParams);
+      case 'spending-config':
+        return getSpendingConfig();
       default:
         return getFinanceSummary(searchParams);
     }
@@ -179,6 +181,8 @@ export async function POST(request: Request) {
         return updateExpense(body);
       case 'save-delivery-rates':
         return saveDeliveryRates(body);
+      case 'save-spending-config':
+        return saveSpendingConfig(body);
       case 'dismiss-reminder':
         return dismissReminder(body);
       default:
@@ -584,7 +588,29 @@ async function dismissReminder(body: Record<string, unknown>) {
   return NextResponse.json({ success: true, type: body.type });
 }
 
-async function getSpendingPower() {
+async function getSpendingConfig() {
+  const firestore = db();
+  if (!firestore) return NextResponse.json({ founderCutPct: 50, enabledItems: { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true } });
+  try {
+    const doc = await firestore.collection(COLLECTIONS.SETTINGS).doc('spending_config').get();
+    if (doc.exists) return NextResponse.json(doc.data());
+    return NextResponse.json({ founderCutPct: 50, enabledItems: { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true } });
+  } catch { return NextResponse.json({ founderCutPct: 50, enabledItems: { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true } }); }
+}
+
+async function saveSpendingConfig(body: Record<string, unknown>) {
+  const firestore = db();
+  if (!firestore) return NextResponse.json({ success: true });
+  const config = {
+    founderCutPct: Number(body.founderCutPct) ?? 50,
+    enabledItems: (body.enabledItems as Record<string, boolean>) ?? {},
+    updatedAt: new Date().toISOString(),
+  };
+  await firestore.collection(COLLECTIONS.SETTINGS).doc('spending_config').set(config, { merge: true });
+  return NextResponse.json({ success: true });
+}
+
+async function getSpendingPower(params: URLSearchParams) {
   const firestore = db();
   if (!firestore) return NextResponse.json({ projectedDeposit: 0, founderCut: 0, inventoryNeeds: 0, baselines: 0, expenses: 0, spendingPower: 0, breakdown: [] });
 
@@ -599,6 +625,21 @@ async function getSpendingPower() {
   weekEnd.setDate(weekStart.getDate() + 6);
   const weekStartStr = getISTDate(weekStart);
   const weekEndStr = getISTDate(weekEnd);
+
+  // Load spending config
+  let founderCutPct = 50;
+  let enabledItems: Record<string, boolean> = { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true };
+  try {
+    const configDoc = await firestore.collection(COLLECTIONS.SETTINGS).doc('spending_config').get();
+    if (configDoc.exists) {
+      const configData = configDoc.data();
+      founderCutPct = configData?.founderCutPct ?? 50;
+      enabledItems = configData?.enabledItems ?? enabledItems;
+    }
+  } catch { /* ignore */ }
+
+  // Override from query params if provided
+  if (params.get('founderCutPct')) founderCutPct = Number(params.get('founderCutPct'));
 
   // COD projection for this week (sales from 7 days ago → projected deposit this week)
   const COD_DELAY_DAYS = 7;
@@ -639,72 +680,77 @@ async function getSpendingPower() {
     projectedDeposit += Math.round(amount * (rate / 100));
   }
 
-  // Founder cut (50%)
-  const founderCut = Math.round(projectedDeposit * 0.5);
+  // Founder cut
+  const founderCut = enabledItems.founderCut !== false ? Math.round(projectedDeposit * (founderCutPct / 100)) : 0;
   let remaining = projectedDeposit - founderCut;
 
   // Inventory needs: items with daysRemaining < 14 for brands with COD data
   const brandNames = Object.keys(brandBreakdown);
   let inventoryNeeds = 0;
-  try {
-    const invSnap = await firestore.collection(COLLECTIONS.INVENTORY).get();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    invSnap.docs.forEach((doc: any) => {
-      const item = doc.data();
-      const daysRemaining = item.daysRemaining ?? 999;
-      if (daysRemaining < 14 && brandNames.some((b) => (item.store ?? '').toLowerCase().includes(b.toLowerCase()))) {
-        const reorderCost = (item.costPerUnit ?? 0) * (item.reorderQty ?? item.currentStock ?? 0);
-        inventoryNeeds += reorderCost;
-      }
-    });
-  } catch { /* ignore */ }
-  remaining -= inventoryNeeds;
+  if (enabledItems.inventoryNeeds !== false) {
+    try {
+      const invSnap = await firestore.collection(COLLECTIONS.INVENTORY).get();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      invSnap.docs.forEach((doc: any) => {
+        const item = doc.data();
+        const daysRemaining = item.daysRemaining ?? 999;
+        if (daysRemaining < 14 && brandNames.some((b) => (item.store ?? '').toLowerCase().includes(b.toLowerCase()))) {
+          const reorderCost = (item.costPerUnit ?? 0) * (item.reorderQty ?? item.currentStock ?? 0);
+          inventoryNeeds += reorderCost;
+        }
+      });
+    } catch { /* ignore */ }
+    remaining -= inventoryNeeds;
+  }
 
   // Baselines due this week
   let baselinesDue = 0;
   const baselineItems: Array<{ label: string; amount: number; dueDay: number }> = [];
-  try {
-    const basSnap = await firestore.collection(COLLECTIONS.FINANCE_BASELINES).get();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    basSnap.docs.forEach((doc: any) => {
-      const b = doc.data();
-      if (b.type !== 'monthly' || b.isPaid) return;
-      const dueDay = b.dueDay;
-      if (!dueDay) return;
-      const startDay = weekStart.getDate();
-      const endDay = weekEnd.getDate();
-      // Check if dueDay falls within this week
-      const inRange = startDay <= endDay
-        ? (dueDay >= startDay && dueDay <= endDay)
-        : (dueDay >= startDay || dueDay <= endDay); // month wrap
-      if (inRange) {
-        baselinesDue += b.amount ?? 0;
-        baselineItems.push({ label: b.label, amount: b.amount, dueDay });
-      }
-    });
-  } catch { /* ignore */ }
-  remaining -= baselinesDue;
+  if (enabledItems.baselines !== false) {
+    try {
+      const basSnap = await firestore.collection(COLLECTIONS.FINANCE_BASELINES).get();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      basSnap.docs.forEach((doc: any) => {
+        const b = doc.data();
+        if (b.type !== 'monthly' || b.isPaid) return;
+        const dueDay = b.dueDay;
+        if (!dueDay) return;
+        const startDay = weekStart.getDate();
+        const endDay = weekEnd.getDate();
+        const inRange = startDay <= endDay
+          ? (dueDay >= startDay && dueDay <= endDay)
+          : (dueDay >= startDay || dueDay <= endDay);
+        if (inRange) {
+          baselinesDue += b.amount ?? 0;
+          baselineItems.push({ label: b.label, amount: b.amount, dueDay });
+        }
+      });
+    } catch { /* ignore */ }
+    remaining -= baselinesDue;
+  }
 
   // Expenses this week
   let weekExpenses = 0;
-  try {
-    const expSnap = await firestore.collection(COLLECTIONS.FINANCE_EXPENSES).get();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expSnap.docs.forEach((doc: any) => {
-      const e = doc.data();
-      if (e.date >= weekStartStr && e.date <= weekEndStr) {
-        weekExpenses += e.amount ?? 0;
-      }
-    });
-  } catch { /* ignore */ }
-  remaining -= weekExpenses;
+  if (enabledItems.expenses !== false) {
+    try {
+      const expSnap = await firestore.collection(COLLECTIONS.FINANCE_EXPENSES).get();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expSnap.docs.forEach((doc: any) => {
+        const e = doc.data();
+        if (e.date >= weekStartStr && e.date <= weekEndStr) {
+          weekExpenses += e.amount ?? 0;
+        }
+      });
+    } catch { /* ignore */ }
+    remaining -= weekExpenses;
+  }
 
   const breakdown = [
     { label: 'Projected Bank Deposit', amount: projectedDeposit, type: 'income' as const },
-    { label: 'Founder Cut (50%)', amount: -founderCut, type: 'deduction' as const },
-    ...(inventoryNeeds > 0 ? [{ label: 'Inventory Restock', amount: -inventoryNeeds, type: 'deduction' as const }] : []),
-    ...baselineItems.map((b) => ({ label: b.label, amount: -b.amount, type: 'deduction' as const })),
-    ...(weekExpenses > 0 ? [{ label: 'Other Expenses', amount: -weekExpenses, type: 'deduction' as const }] : []),
+    ...(enabledItems.founderCut !== false && founderCut > 0 ? [{ label: `Founder Cut (${founderCutPct}%)`, amount: -founderCut, type: 'deduction' as const }] : []),
+    ...(enabledItems.inventoryNeeds !== false && inventoryNeeds > 0 ? [{ label: 'Inventory Restock', amount: -inventoryNeeds, type: 'deduction' as const }] : []),
+    ...(enabledItems.baselines !== false ? baselineItems.map((b) => ({ label: b.label, amount: -b.amount, type: 'deduction' as const })) : []),
+    ...(enabledItems.expenses !== false && weekExpenses > 0 ? [{ label: 'Other Expenses', amount: -weekExpenses, type: 'deduction' as const }] : []),
     { label: 'Available to Spend', amount: Math.max(remaining, 0), type: 'result' as const },
   ];
 
@@ -715,11 +761,13 @@ async function getSpendingPower() {
     codRevenue,
     projectedDeposit,
     founderCut,
+    founderCutPct,
     inventoryNeeds,
     baselinesDue,
     weekExpenses,
     spendingPower: Math.max(remaining, 0),
     breakdown,
+    enabledItems,
   });
 }
 

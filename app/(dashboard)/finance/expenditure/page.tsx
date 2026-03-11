@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   ArrowLeft, Loader2, Trash2, Receipt, Check,
   Pencil, X, Plus, Calendar, Search,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
@@ -38,21 +39,25 @@ const EXPENSE_CATEGORIES = [
 ];
 
 const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(EXPENSE_CATEGORIES.map((c) => [c.value, c.label]));
+const CATEGORY_COLORS: Record<string, string> = {
+  inventory: 'bg-orange-500', supplier: 'bg-rose-500', shipping: 'bg-sky-500',
+  'product-testing': 'bg-emerald-500', marketing: 'bg-violet-500', returns: 'bg-red-500',
+  packaging: 'bg-amber-500', freelance: 'bg-blue-500', tools: 'bg-cyan-500',
+  travel: 'bg-pink-500', other: 'bg-zinc-500',
+};
 
 function getToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
-function getMonthOptions(): Array<{ value: string; label: string }> {
-  const months: Array<{ value: string; label: string }> = [{ value: 'all', label: 'All time' }];
-  const now = new Date();
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-    months.push({ value, label });
-  }
-  return months;
+// ── Calendar Helpers ─────────────────────────────────────────────────────────
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function getFirstDayOfWeek(year: number, month: number): number {
+  return new Date(year, month, 1).getDay(); // 0=Sun
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -60,7 +65,6 @@ function getMonthOptions(): Array<{ value: string; label: string }> {
 export default function ExpenditurePage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
-  const [monthFilter, setMonthFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [editingExpense, setEditingExpense] = useState<string | null>(null);
@@ -68,6 +72,12 @@ export default function ExpenditurePage() {
   const [editDesc, setEditDesc] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
+
+  // Calendar state
+  const now = new Date();
+  const [calYear, setCalYear] = useState(now.getFullYear());
+  const [calMonth, setCalMonth] = useState(now.getMonth());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const fetchExpenses = useCallback(async () => {
     try {
@@ -124,18 +134,42 @@ export default function ExpenditurePage() {
     } catch { /* ignore */ }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  // Expenses by date (for calendar dots)
+  const expensesByDate = useMemo(() => {
+    const map: Record<string, { total: number; count: number; categories: Set<string> }> = {};
+    for (const e of expenses) {
+      if (!map[e.date]) map[e.date] = { total: 0, count: 0, categories: new Set() };
+      map[e.date].total += e.amount;
+      map[e.date].count += 1;
+      map[e.date].categories.add(e.category);
+    }
+    return map;
+  }, [expenses]);
+
+  // Calendar navigation
+  const prevMonth = () => {
+    if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); }
+    else setCalMonth(calMonth - 1);
+  };
+  const nextMonth = () => {
+    if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); }
+    else setCalMonth(calMonth + 1);
+  };
+  const goToToday = () => {
+    const n = new Date();
+    setCalYear(n.getFullYear());
+    setCalMonth(n.getMonth());
+    setSelectedDate(null);
+  };
+
+  // Current month string for filtering
+  const calMonthStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}`;
+  const monthLabel = new Date(calYear, calMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   // Filtering
-  let filtered = expenses;
-  if (monthFilter !== 'all') {
-    filtered = filtered.filter((e) => e.date.startsWith(monthFilter));
+  let filtered = expenses.filter((e) => e.date.startsWith(calMonthStr));
+  if (selectedDate) {
+    filtered = filtered.filter((e) => e.date === selectedDate);
   }
   if (categoryFilter !== 'all') {
     filtered = filtered.filter((e) => e.category === categoryFilter);
@@ -144,23 +178,33 @@ export default function ExpenditurePage() {
     const q = searchQuery.toLowerCase();
     filtered = filtered.filter((e) => (e.description ?? '').toLowerCase().includes(q) || (e.category ?? '').toLowerCase().includes(q));
   }
-
-  // Sort by date desc
   filtered.sort((a, b) => b.date.localeCompare(a.date));
 
   // Stats
-  const totalAll = expenses.reduce((s, e) => s + e.amount, 0);
+  const monthExpenses = expenses.filter((e) => e.date.startsWith(calMonthStr));
+  const totalMonth = monthExpenses.reduce((s, e) => s + e.amount, 0);
   const totalFiltered = filtered.reduce((s, e) => s + e.amount, 0);
 
-  // Category breakdown for filtered
+  // Category breakdown for the month
   const categoryBreakdown: Record<string, number> = {};
-  for (const e of filtered) {
+  for (const e of monthExpenses) {
     categoryBreakdown[e.category] = (categoryBreakdown[e.category] ?? 0) + e.amount;
   }
-  const topCategories = Object.entries(categoryBreakdown).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-  const monthOptions = getMonthOptions();
+  const topCategories = Object.entries(categoryBreakdown).sort((a, b) => b[1] - a[1]);
   const usedCategories = [...new Set(expenses.map((e) => e.category))];
+
+  // Calendar grid
+  const daysInMonth = getDaysInMonth(calYear, calMonth);
+  const firstDay = getFirstDayOfWeek(calYear, calMonth);
+  const todayStr = getToday();
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -172,7 +216,7 @@ export default function ExpenditurePage() {
           </Link>
           <div>
             <h1 className="text-lg font-semibold text-foreground">Expenditure Tracker</h1>
-            <p className="text-[11px] text-muted-foreground">COGS, supplier payments, shipping, testing & all business expenses</p>
+            <p className="text-[11px] text-muted-foreground">All business expenses with calendar view</p>
           </div>
         </div>
         <button
@@ -184,71 +228,144 @@ export default function ExpenditurePage() {
         </button>
       </div>
 
-      {/* Summary Cards */}
-      <StaggerContainer className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StaggerItem>
-          <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Total (All Time)</p>
-            <p className="text-xl font-semibold text-foreground tabular-nums"><AnimatedNumber value={totalAll} formatter={formatINR} /></p>
-          </div>
-        </StaggerItem>
-        <StaggerItem>
-          <div className="card-hover-glow rounded-lg border border-violet-500/20 bg-violet-500/5 px-4 py-3">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-violet-400/70 mb-1">Filtered Total</p>
-            <p className="text-xl font-semibold text-violet-400 tabular-nums"><AnimatedNumber value={totalFiltered} formatter={formatINR} /></p>
-          </div>
-        </StaggerItem>
-        <StaggerItem>
-          <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Transactions</p>
-            <p className="text-xl font-semibold text-foreground tabular-nums">{filtered.length}</p>
-          </div>
-        </StaggerItem>
-        <StaggerItem>
-          <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Avg / Transaction</p>
-            <p className="text-xl font-semibold text-foreground tabular-nums">{filtered.length > 0 ? formatINR(Math.round(totalFiltered / filtered.length)) : '—'}</p>
-          </div>
-        </StaggerItem>
-      </StaggerContainer>
-
-      {/* Category breakdown bar */}
-      {topCategories.length > 0 && totalFiltered > 0 && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="space-y-2">
-          <div className="h-2 rounded-full overflow-hidden flex gap-0.5">
-            {topCategories.map(([cat, amount]) => (
-              <motion.div
-                key={cat}
-                initial={{ flex: 0 }}
-                animate={{ flex: amount }}
-                transition={{ duration: 0.8 }}
-                className="rounded-full bg-violet-500/40 first:bg-violet-500 [&:nth-child(2)]:bg-violet-500/70 [&:nth-child(3)]:bg-violet-500/50"
-              />
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            {topCategories.map(([cat, amount]) => (
-              <button key={cat} onClick={() => setCategoryFilter(categoryFilter === cat ? 'all' : cat)} className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition">
-                <div className="h-2 w-2 rounded-sm bg-violet-500/50" />
-                <span>{CATEGORY_LABELS[cat] ?? cat}</span>
-                <span className="font-medium text-foreground">{Math.round((amount / totalFiltered) * 100)}%</span>
+      {/* Calendar + Summary Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+        {/* Calendar */}
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {/* Calendar header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+            <button onClick={prevMonth} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <div className="flex items-center gap-2">
+              <h3 className="text-[13px] font-semibold text-foreground">{monthLabel}</h3>
+              <button onClick={goToToday} className="rounded-md px-2 py-0.5 text-[9px] font-medium text-muted-foreground hover:text-foreground border border-border/50 hover:border-border transition">
+                Today
               </button>
+              {selectedDate && (
+                <button onClick={() => setSelectedDate(null)} className="rounded-md px-2 py-0.5 text-[9px] font-medium text-primary bg-primary/10 border border-primary/30 hover:bg-primary/20 transition">
+                  Clear filter
+                </button>
+              )}
+            </div>
+            <button onClick={nextMonth} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Day headers */}
+          <div className="grid grid-cols-7 text-center border-b border-border/30">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+              <div key={d} className="py-2 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">
+                {d}
+              </div>
             ))}
           </div>
-        </motion.div>
-      )}
+
+          {/* Calendar grid */}
+          <div className="grid grid-cols-7">
+            {/* Empty cells for offset */}
+            {Array.from({ length: firstDay }).map((_, i) => (
+              <div key={`empty-${i}`} className="aspect-square border-b border-r border-border/10" />
+            ))}
+
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const dayData = expensesByDate[dateStr];
+              const isToday = dateStr === todayStr;
+              const isSelected = dateStr === selectedDate;
+              const isFuture = dateStr > todayStr;
+
+              return (
+                <button
+                  key={day}
+                  onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                  className={`relative aspect-square border-b border-r border-border/10 flex flex-col items-center justify-center gap-0.5 transition hover:bg-accent/10 ${
+                    isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : ''
+                  } ${isFuture ? 'opacity-40' : ''}`}
+                >
+                  <span className={`text-[11px] tabular-nums leading-none ${
+                    isToday ? 'font-bold text-primary' :
+                    isSelected ? 'font-semibold text-primary' :
+                    'text-foreground'
+                  }`}>
+                    {day}
+                  </span>
+                  {dayData && (
+                    <>
+                      <span className="text-[8px] font-semibold text-violet-400 tabular-nums leading-none">
+                        {dayData.total >= 1000 ? `${Math.round(dayData.total / 1000)}k` : formatINR(dayData.total)}
+                      </span>
+                      <div className="flex gap-0.5">
+                        {[...dayData.categories].slice(0, 3).map((cat) => (
+                          <div key={cat} className={`h-1 w-1 rounded-full ${CATEGORY_COLORS[cat] ?? 'bg-zinc-500'}`} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Summary sidebar */}
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-card px-4 py-3">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
+              {selectedDate ? `${selectedDate}` : monthLabel}
+            </p>
+            <p className="text-2xl font-semibold text-violet-400 tabular-nums">
+              <AnimatedNumber value={selectedDate ? totalFiltered : totalMonth} formatter={formatINR} />
+            </p>
+            <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+              {selectedDate ? `${filtered.length} expense${filtered.length !== 1 ? 's' : ''}` : `${monthExpenses.length} this month`}
+            </p>
+          </div>
+
+          {/* Category breakdown */}
+          {topCategories.length > 0 && (
+            <div className="rounded-xl border border-border bg-card px-4 py-3 space-y-2">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Categories</p>
+              {topCategories.map(([cat, amount]) => {
+                const pct = totalMonth > 0 ? Math.round((amount / totalMonth) * 100) : 0;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setCategoryFilter(categoryFilter === cat ? 'all' : cat)}
+                    className={`w-full flex items-center gap-2 text-left rounded-lg px-2 py-1.5 transition ${
+                      categoryFilter === cat ? 'bg-primary/10 ring-1 ring-primary/20' : 'hover:bg-accent/10'
+                    }`}
+                  >
+                    <div className={`h-2 w-2 rounded-full shrink-0 ${CATEGORY_COLORS[cat] ?? 'bg-zinc-500'}`} />
+                    <span className="text-[11px] text-foreground flex-1 truncate">{CATEGORY_LABELS[cat] ?? cat}</span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums">{pct}%</span>
+                    <span className="text-[11px] font-semibold text-foreground tabular-nums">{formatINR(amount)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Quick stats */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-border bg-card px-3 py-2">
+              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">All Time</p>
+              <p className="text-[14px] font-semibold text-foreground tabular-nums mt-0.5">{formatINR(expenses.reduce((s, e) => s + e.amount, 0))}</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card px-3 py-2">
+              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Avg/Day</p>
+              <p className="text-[14px] font-semibold text-foreground tabular-nums mt-0.5">
+                {monthExpenses.length > 0 ? formatINR(Math.round(totalMonth / new Date().getDate())) : '—'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="flex items-center gap-2 flex-wrap">
-        <select
-          value={monthFilter}
-          onChange={(e) => setMonthFilter(e.target.value)}
-          className="form-input h-[34px] text-[12px] pr-8"
-        >
-          {monthOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
@@ -269,11 +386,19 @@ export default function ExpenditurePage() {
             className="form-input h-[34px] text-[12px] pl-8 w-full"
           />
         </div>
+        {(categoryFilter !== 'all' || selectedDate || searchQuery) && (
+          <button
+            onClick={() => { setCategoryFilter('all'); setSelectedDate(null); setSearchQuery(''); }}
+            className="text-[11px] text-muted-foreground hover:text-foreground transition"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
-      {/* Expenses list */}
+      {/* Expenses table */}
       {filtered.length === 0 ? (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-xl border border-dashed border-border bg-card/50 py-16 text-center">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-xl border border-dashed border-border bg-card/50 py-12 text-center">
           <Receipt className="mx-auto h-8 w-8 text-muted-foreground/30 mb-3" />
           <p className="text-sm text-muted-foreground">No expenses found</p>
           <button onClick={() => setAddModalOpen(true)} className="mt-3 text-[12px] text-primary hover:text-primary/80 transition font-medium">
@@ -281,75 +406,105 @@ export default function ExpenditurePage() {
           </button>
         </motion.div>
       ) : (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-xl border border-border bg-card overflow-hidden">
-          {filtered.map((exp) => {
-            const isEditing = editingExpense === exp.id;
-            const isRange = exp.endDate && exp.endDate !== exp.date;
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          {/* Table header */}
+          <div className="grid grid-cols-[1fr_120px_100px_50px] sm:grid-cols-[1fr_140px_120px_100px_50px] gap-2 px-4 py-2 border-b border-border/50 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">
+            <span>Expense</span>
+            <span className="hidden sm:block">Category</span>
+            <span>Date</span>
+            <span className="text-right">Amount</span>
+            <span />
+          </div>
 
-            return (
-              <div key={exp.id} className="group border-b border-border/30 last:border-0">
-                <div className="flex items-center gap-4 px-5 py-3.5 transition hover:bg-accent/5">
-                  <div className="h-9 w-9 rounded-lg bg-violet-500/12 border border-violet-500/20 flex items-center justify-center shrink-0">
-                    <Receipt className="h-4 w-4 text-violet-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    {isEditing ? (
-                      <input
-                        value={editDesc}
-                        onChange={(e) => setEditDesc(e.target.value)}
-                        className="w-full bg-transparent text-[13px] font-medium text-foreground outline-none border-b border-primary/30 pb-0.5"
-                        autoFocus
-                        onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(exp); if (e.key === 'Escape') setEditingExpense(null); }}
-                      />
-                    ) : (
-                      <span className="text-[13px] font-medium text-foreground">{exp.description || (CATEGORY_LABELS[exp.category] ?? exp.category)}</span>
-                    )}
-                    <p className="text-[10px] text-muted-foreground/50 mt-0.5 flex items-center gap-1">
-                      {isRange ? (
-                        <><Calendar className="h-2.5 w-2.5" />{exp.date} → {exp.endDate}</>
+          {/* Table body */}
+          <div className="max-h-[500px] overflow-y-auto">
+            {filtered.map((exp) => {
+              const isEditing = editingExpense === exp.id;
+              const isRange = exp.endDate && exp.endDate !== exp.date;
+              const catColor = CATEGORY_COLORS[exp.category] ?? 'bg-zinc-500';
+
+              return (
+                <div key={exp.id} className="group border-b border-border/20 last:border-0">
+                  <div className="grid grid-cols-[1fr_120px_100px_50px] sm:grid-cols-[1fr_140px_120px_100px_50px] gap-2 items-center px-4 py-2.5 hover:bg-accent/5 transition">
+                    {/* Description */}
+                    <div className="min-w-0">
+                      {isEditing ? (
+                        <input
+                          value={editDesc}
+                          onChange={(e) => setEditDesc(e.target.value)}
+                          className="w-full bg-transparent text-[12px] font-medium text-foreground outline-none border-b border-primary/30 pb-0.5"
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(exp); if (e.key === 'Escape') setEditingExpense(null); }}
+                        />
                       ) : (
-                        exp.date
+                        <div className="flex items-center gap-2">
+                          <div className={`h-2 w-2 rounded-full shrink-0 ${catColor}`} />
+                          <span className="text-[12px] font-medium text-foreground truncate">
+                            {exp.description || (CATEGORY_LABELS[exp.category] ?? exp.category)}
+                          </span>
+                        </div>
                       )}
-                      {' · '}{CATEGORY_LABELS[exp.category] ?? exp.category}
-                    </p>
-                  </div>
-                  {isEditing ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        value={editAmount}
-                        onChange={(e) => setEditAmount(e.target.value)}
-                        className="w-24 bg-transparent text-[15px] font-bold text-violet-400 text-right outline-none border-b border-primary/30 pb-0.5 tabular-nums"
-                        onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(exp); if (e.key === 'Escape') setEditingExpense(null); }}
-                      />
-                      <button onClick={() => saveEdit(exp)} className="rounded-md p-1.5 text-emerald-400 hover:bg-emerald-400/10 transition"><Check className="h-3.5 w-3.5" /></button>
-                      <button onClick={() => setEditingExpense(null)} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground transition"><X className="h-3.5 w-3.5" /></button>
                     </div>
-                  ) : (
-                    <>
-                      <span className="text-[15px] font-bold text-violet-400 tabular-nums">{formatINR(exp.amount)}</span>
-                      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
-                        <button onClick={() => startEdit(exp)} className="rounded-md p-1.5 text-muted-foreground/40 hover:text-foreground transition"><Pencil className="h-3 w-3" /></button>
+
+                    {/* Category */}
+                    <span className="hidden sm:block text-[10px] text-muted-foreground/60 truncate">
+                      {CATEGORY_LABELS[exp.category] ?? exp.category}
+                    </span>
+
+                    {/* Date */}
+                    <span className="text-[10px] text-muted-foreground/50">
+                      {isRange ? (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-2.5 w-2.5" />
+                          {exp.date.slice(5)} → {exp.endDate!.slice(5)}
+                        </span>
+                      ) : exp.date.slice(5)}
+                    </span>
+
+                    {/* Amount */}
+                    {isEditing ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={editAmount}
+                          onChange={(e) => setEditAmount(e.target.value)}
+                          className="w-20 bg-transparent text-[13px] font-bold text-violet-400 text-right outline-none border-b border-primary/30 pb-0.5 tabular-nums"
+                          onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(exp); if (e.key === 'Escape') setEditingExpense(null); }}
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-[13px] font-semibold text-violet-400 tabular-nums text-right">{formatINR(exp.amount)}</span>
+                    )}
+
+                    {/* Actions */}
+                    {isEditing ? (
+                      <div className="flex gap-0.5 justify-end">
+                        <button onClick={() => saveEdit(exp)} className="rounded-md p-1 text-emerald-400 hover:bg-emerald-400/10 transition"><Check className="h-3 w-3" /></button>
+                        <button onClick={() => setEditingExpense(null)} className="rounded-md p-1 text-muted-foreground hover:text-foreground transition"><X className="h-3 w-3" /></button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-0.5 justify-end opacity-0 group-hover:opacity-100 transition">
+                        <button onClick={() => startEdit(exp)} className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition"><Pencil className="h-3 w-3" /></button>
                         <button
                           onClick={() => deleteExpense(exp.id)}
                           disabled={deletingId === exp.id}
-                          className="rounded-md p-1.5 text-muted-foreground/40 hover:text-red-400 transition disabled:opacity-50"
+                          className="rounded-md p-1 text-muted-foreground/40 hover:text-red-400 transition disabled:opacity-50"
                         >
                           {deletingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                         </button>
                       </div>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </motion.div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       <p className="text-[11px] text-muted-foreground">
         {filtered.length} expense{filtered.length !== 1 ? 's' : ''}
-        {(monthFilter !== 'all' || categoryFilter !== 'all' || searchQuery) && ' · filtered'}
+        {(categoryFilter !== 'all' || selectedDate || searchQuery) && ' (filtered)'}
       </p>
 
       {/* Add Expense Modal */}

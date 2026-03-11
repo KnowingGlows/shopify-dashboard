@@ -15,8 +15,15 @@ const db = () => (isFirebaseAvailable() ? getFirestore() : null);
 
 // ── GET /api/inventory ───────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const action = searchParams.get('action');
+
+    if (action === 'dispatches') {
+      return getDispatches(searchParams);
+    }
+
     const firestore = db();
 
     if (!firestore) {
@@ -52,6 +59,29 @@ export async function GET() {
     console.error('Error fetching inventory entries:', error);
     return NextResponse.json({ error: 'Failed to fetch inventory entries.' }, { status: 500 });
   }
+}
+
+async function getDispatches(params: URLSearchParams) {
+  const inventoryId = params.get('inventoryId');
+  const firestore = db();
+
+  if (!firestore) {
+    const dispatches = inventoryId
+      ? inMemoryDispatches.filter((d) => d.inventoryId === inventoryId)
+      : inMemoryDispatches;
+    return NextResponse.json({ dispatches: dispatches.sort((a, b) => b.date.localeCompare(a.date)) });
+  }
+
+  let query = firestore.collection(COLLECTIONS.INVENTORY_DISPATCHES) as FirebaseFirestore.Query;
+  if (inventoryId) {
+    query = query.where('inventoryId', '==', inventoryId);
+  }
+  const snap = await query.get();
+  const dispatches = snap.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() } as InventoryDispatch & { id: string }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  return NextResponse.json({ dispatches });
 }
 
 // ── POST /api/inventory ──────────────────────────────────────────────────────

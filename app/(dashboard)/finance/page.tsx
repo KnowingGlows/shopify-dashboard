@@ -1,17 +1,16 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   RefreshCw, Loader2, DollarSign, Wallet, Plus,
-  AlertTriangle, BanknoteIcon,
   Bell, X, ArrowRight, Clock,
   CalendarClock, TrendingDown, TrendingUp,
-  ArrowDown, Minus,
+  ArrowDown, BanknoteIcon, Settings2,
+  Check, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
-import { useAuth } from '@/components/auth-provider';
 import { formatINR } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -23,6 +22,7 @@ interface FinanceDailyEntry {
   grossProfit: number;
   adSpend: number;
   netProfit: number;
+  codSalesByBrand?: Record<string, number>;
 }
 
 interface Baseline {
@@ -52,12 +52,20 @@ interface Reminder {
   priority?: string;
 }
 
-interface Expense {
-  id: string;
-  category: string;
-  description: string;
-  amount: number;
-  date: string;
+interface SpendingPower {
+  weekLabel: string;
+  weekStart: string;
+  weekEnd: string;
+  codRevenue: number;
+  projectedDeposit: number;
+  founderCut: number;
+  founderCutPct: number;
+  inventoryNeeds: number;
+  baselinesDue: number;
+  weekExpenses: number;
+  spendingPower: number;
+  breakdown: Array<{ label: string; amount: number; type: 'income' | 'deduction' | 'result' }>;
+  enabledItems: Record<string, boolean>;
 }
 
 interface FinanceSummary {
@@ -71,52 +79,40 @@ interface FinanceSummary {
   dailyEntries: FinanceDailyEntry[];
   dailyBaselines: Baseline[];
   monthlyBaselines: Baseline[];
-  recentExpenses: Expense[];
-}
-
-interface SpendingPower {
-  weekLabel: string;
-  weekStart: string;
-  weekEnd: string;
-  codRevenue: number;
-  projectedDeposit: number;
-  founderCut: number;
-  inventoryNeeds: number;
-  baselinesDue: number;
-  weekExpenses: number;
-  spendingPower: number;
-  breakdown: Array<{ label: string; amount: number; type: 'income' | 'deduction' | 'result' }>;
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function FinancePage() {
-  const { user } = useAuth();
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [codWeeks, setCodWeeks] = useState<CODWeek[]>([]);
   const [spending, setSpending] = useState<SpendingPower | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [baselines, setBaselines] = useState<Baseline[]>([]);
+  const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [summaryRes, codRes, spendRes, remindersRes, baselinesRes] = await Promise.all([
+      const [summaryRes, codRes, spendRes, remindersRes, baselinesRes, ratesRes] = await Promise.all([
         fetch('/api/finance'),
         fetch('/api/finance?action=cod-projections'),
         fetch('/api/finance?action=spending-power'),
         fetch('/api/finance?action=reminders'),
         fetch('/api/finance?action=baselines'),
+        fetch('/api/finance?action=delivery-rates'),
       ]);
-      const [summaryData, codData, spendData, remindersData, baselinesData] = await Promise.all([
-        summaryRes.json(), codRes.json(), spendRes.json(), remindersRes.json(), baselinesRes.json(),
+      const [summaryData, codData, spendData, remindersData, baselinesData, ratesData] = await Promise.all([
+        summaryRes.json(), codRes.json(), spendRes.json(), remindersRes.json(), baselinesRes.json(), ratesRes.json(),
       ]);
       setSummary(summaryData);
       setCodWeeks(codData.weeks ?? []);
       setSpending(spendData);
       setReminders(remindersData.reminders ?? []);
       setBaselines([...(baselinesData.daily ?? []), ...(baselinesData.monthly ?? [])]);
+      setDeliveryRates(ratesData.rates ?? {});
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   }, []);
@@ -132,13 +128,10 @@ export default function FinancePage() {
     }).catch(() => {});
   };
 
-  const summaryExpenses = summary?.recentExpenses;
-
   const { upcomingPayments, currentDay } = useMemo(() => {
     const today = new Date();
     const day = today.getDate();
     const monthly = baselines.filter((b) => b.type === 'monthly');
-
     return {
       currentDay: day,
       upcomingPayments: monthly
@@ -162,19 +155,29 @@ export default function FinancePage() {
     totalSales: 0, totalGrossProfit: 0, totalAdSpend: 0, totalNetProfit: 0,
     totalExpenses: 0,
     dailyBaselineTotal: 0, monthlyBaselineTotal: 0,
-    dailyEntries: [], dailyBaselines: [], monthlyBaselines: [], recentExpenses: [],
+    dailyEntries: [], dailyBaselines: [], monthlyBaselines: [],
   };
 
-  // Current week's COD data (first week from projections)
   const currentWeek = codWeeks[0];
   const totalCODProjected = codWeeks.reduce((s, w) => s + w.projectedAmount, 0);
 
-  // Past 7 days for the mini bar chart
+  // Past 7 days bar chart — show projected bank deposit per day
   const last7Entries = (d.dailyEntries ?? [])
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(-7);
 
-  const maxDailyRevenue = Math.max(...last7Entries.map((e) => e.totalSales), 1);
+  // Compute projected deposit per day
+  const last7Deposits = last7Entries.map((entry) => {
+    const codByBrand = entry.codSalesByBrand ?? {};
+    let deposit = 0;
+    for (const [brand, amount] of Object.entries(codByBrand)) {
+      const rate = deliveryRates[brand] ?? 65;
+      deposit += Math.round(Number(amount) * (rate / 100));
+    }
+    return { date: entry.date, deposit };
+  });
+
+  const maxDeposit = Math.max(...last7Deposits.map((e) => e.deposit), 1);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -207,7 +210,7 @@ export default function FinancePage() {
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90"
           >
             <Plus className="h-3.5 w-3.5" />
-            Enter Data
+            Daily P&L
           </Link>
           <button
             onClick={() => { setRefreshing(true); fetchAll(); }}
@@ -257,54 +260,28 @@ export default function FinancePage() {
                 </div>
               </div>
 
-              {/* Two columns: COD Revenue + Brand Breakdown | Mini chart */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left: Revenue + Brands */}
-                <div className="space-y-4">
-                  <div className="rounded-xl bg-black/20 border border-white/[0.06] p-4">
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-2">COD Revenue</p>
-                    <p className="text-2xl font-semibold text-foreground tabular-nums">{formatINR(currentWeek.codRevenue)}</p>
-                  </div>
-
-                  {/* Brand breakdown */}
-                  {Object.keys(currentWeek.brandBreakdown).length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Per Brand</p>
-                      {Object.entries(currentWeek.brandBreakdown).map(([brand, amount]) => {
-                        const pct = currentWeek.codRevenue > 0 ? Math.round((amount / currentWeek.codRevenue) * 100) : 0;
-                        return (
-                          <div key={brand} className="flex items-center gap-3">
-                            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
-                            <span className="text-[12px] font-medium text-foreground flex-1 truncate">{brand}</span>
-                            <span className="text-[11px] text-muted-foreground tabular-nums">{pct}%</span>
-                            <span className="text-[12px] font-semibold text-foreground tabular-nums">{formatINR(amount)}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Right: 7-day mini chart */}
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-3">Last 7 Days — Daily Revenue</p>
-                  <div className="flex items-end gap-1.5 h-32">
-                    {last7Entries.length > 0 ? last7Entries.map((entry) => {
-                      const height = Math.max((entry.totalSales / maxDailyRevenue) * 100, 4);
+              {/* 7-day projected deposits chart */}
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-3">Last 7 Days — Projected Bank Deposits</p>
+                <div className="h-36">
+                  <div className="flex items-end gap-2 h-full">
+                    {last7Deposits.length > 0 ? last7Deposits.map((entry) => {
+                      const barHeight = Math.max(Math.round((entry.deposit / maxDeposit) * 100), 4);
                       const dayLabel = entry.date.slice(-2);
                       return (
-                        <div key={entry.date} className="flex-1 flex flex-col items-center gap-1.5">
-                          <motion.div
-                            initial={{ height: 0 }}
-                            animate={{ height: `${height}%` }}
-                            transition={{ duration: 0.6, ease: 'easeOut' }}
-                            className="w-full rounded-t-md bg-emerald-500/30 border border-emerald-500/20 hover:bg-emerald-500/40 transition-colors relative group cursor-default"
-                          >
+                        <div key={entry.date} className="flex-1 h-full flex flex-col justify-end items-center">
+                          <div className="relative w-full group cursor-default" style={{ height: `${barHeight}%`, minHeight: '4px' }}>
                             <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block whitespace-nowrap rounded-md bg-popover border border-border px-2 py-1 text-[10px] font-medium text-foreground shadow-lg z-10">
-                              {formatINR(entry.totalSales)}
+                              {formatINR(entry.deposit)}
                             </div>
-                          </motion.div>
-                          <span className="text-[9px] text-muted-foreground/50 tabular-nums">{dayLabel}</span>
+                            <motion.div
+                              initial={{ height: 0 }}
+                              animate={{ height: '100%' }}
+                              transition={{ duration: 0.6, ease: 'easeOut' }}
+                              className="w-full h-full rounded-t-md bg-emerald-500/30 border border-emerald-500/20 hover:bg-emerald-500/40 transition-colors"
+                            />
+                          </div>
+                          <span className="mt-1.5 text-[9px] text-muted-foreground/50 tabular-nums">{dayLabel}</span>
                         </div>
                       );
                     }) : (
@@ -314,22 +291,6 @@ export default function FinancePage() {
                 </div>
               </div>
             </div>
-
-            {/* Upcoming weeks strip */}
-            {codWeeks.length > 1 && (
-              <div className="border-t border-emerald-500/10 bg-black/10">
-                <div className="flex divide-x divide-emerald-500/10">
-                  {codWeeks.slice(1).map((week) => (
-                    <div key={week.weekLabel + week.startDate} className="flex-1 px-4 py-3">
-                      <p className="text-[10px] text-muted-foreground/60 mb-0.5">{week.weekLabel}</p>
-                      <p className="text-[13px] font-semibold text-foreground tabular-nums">
-                        {week.projectedAmount > 0 ? formatINR(week.projectedAmount) : '—'}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
@@ -339,11 +300,11 @@ export default function FinancePage() {
         )}
       </motion.div>
 
-      {/* ═══ Spending Power Waterfall ═══ */}
+      {/* ═══ Spending Power — Compact Card ═══ */}
       {spending && spending.projectedDeposit > 0 && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
           <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="px-6 py-4 border-b border-border">
+            <div className="px-6 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="h-8 w-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
@@ -351,65 +312,32 @@ export default function FinancePage() {
                   </div>
                   <div>
                     <h2 className="text-sm font-semibold text-foreground">Spending Power</h2>
-                    <p className="text-[11px] text-muted-foreground">What you can actually spend this week after all obligations</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {spending.weekStart} → {spending.weekEnd}
+                    </p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Available</p>
-                  <p className={`text-2xl font-bold tabular-nums ${spending.spendingPower > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    <AnimatedNumber value={spending.spendingPower} formatter={formatINR} />
-                  </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setBreakdownOpen(true)}
+                    className="rounded-lg border border-border px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border/80 transition"
+                  >
+                    View Breakdown
+                  </button>
+                  <div className="text-right">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Available</p>
+                    <p className={`text-2xl font-bold tabular-nums ${spending.spendingPower > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <AnimatedNumber value={spending.spendingPower} formatter={formatINR} />
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            {/* Waterfall */}
-            <div className="p-4 space-y-0">
-              {spending.breakdown.map((item, i) => {
-                const isIncome = item.type === 'income';
-                const isResult = item.type === 'result';
-                const isDeduction = item.type === 'deduction';
-
-                return (
-                  <motion.div
-                    key={item.label}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    className={`flex items-center gap-3 px-4 py-3 ${
-                      isResult
-                        ? 'rounded-xl border border-emerald-500/20 bg-emerald-500/5 mt-2'
-                        : i > 0 ? 'border-t border-border/30' : ''
-                    }`}
-                  >
-                    <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
-                      isIncome ? 'bg-emerald-500/10 border border-emerald-500/20'
-                        : isResult ? 'bg-emerald-500/15 border border-emerald-500/30'
-                        : 'bg-red-500/8 border border-red-500/15'
-                    }`}>
-                      {isIncome ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> :
-                       isResult ? <Wallet className="h-3.5 w-3.5 text-emerald-400" /> :
-                       <ArrowDown className="h-3.5 w-3.5 text-red-400" />}
-                    </div>
-                    <span className={`text-[13px] flex-1 ${isResult ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
-                      {item.label}
-                    </span>
-                    <span className={`text-[14px] font-semibold tabular-nums ${
-                      isIncome ? 'text-emerald-400'
-                        : isResult ? (item.amount > 0 ? 'text-emerald-400' : 'text-red-400')
-                        : 'text-red-400'
-                    }`}>
-                      {isDeduction ? '−' : ''}{formatINR(Math.abs(item.amount))}
-                    </span>
-                  </motion.div>
-                );
-              })}
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* ═══ Expenditure Snapshot ═══ */}
+      {/* ═══ Upcoming Payments ═══ */}
       {upcomingPayments.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="space-y-3">
           <div className="flex items-center justify-between">
@@ -452,7 +380,178 @@ export default function FinancePage() {
         </motion.div>
       )}
 
+      {/* ═══ Spending Power Breakdown Modal ═══ */}
+      <AnimatePresence>
+        {breakdownOpen && spending && (
+          <SpendingBreakdownModal
+            spending={spending}
+            onClose={() => setBreakdownOpen(false)}
+            onRefresh={fetchAll}
+          />
+        )}
+      </AnimatePresence>
     </PageTransition>
+  );
+}
+
+// ── Spending Breakdown Modal ─────────────────────────────────────────────────
+
+function SpendingBreakdownModal({ spending, onClose, onRefresh }: { spending: SpendingPower; onClose: () => void; onRefresh: () => void }) {
+  const [founderPct, setFounderPct] = useState(spending.founderCutPct ?? 50);
+  const [enabled, setEnabled] = useState<Record<string, boolean>>(spending.enabledItems ?? { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const saveConfig = async () => {
+    setSaving(true);
+    try {
+      await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save-spending-config', founderCutPct: founderPct, enabledItems: enabled }),
+      });
+      setSaved(true);
+      onRefresh();
+      setTimeout(() => setSaved(false), 2000);
+    } catch { /* ignore */ }
+    finally { setSaving(false); }
+  };
+
+  const toggleItem = (key: string) => {
+    setEnabled((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-start justify-center pt-[8vh] md:pt-[10vh]">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, y: -12, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -12, scale: 0.95 }}
+        transition={{ duration: 0.2 }}
+        className="relative z-10 w-[92vw] max-w-[520px] rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl mx-4 max-h-[80vh] overflow-y-auto"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border/50 px-5 py-4 sticky top-0 bg-card/95 backdrop-blur-xl z-10">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+              <TrendingDown className="h-4 w-4 text-violet-400" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Spending Power Breakdown</h2>
+              <p className="text-[11px] text-muted-foreground">{spending.weekStart} → {spending.weekEnd}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-xl border border-border/60 bg-background/60 p-2 text-muted-foreground transition hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Waterfall */}
+        <div className="p-4 space-y-0">
+          {spending.breakdown.map((item, i) => {
+            const isIncome = item.type === 'income';
+            const isResult = item.type === 'result';
+            const isDeduction = item.type === 'deduction';
+
+            return (
+              <motion.div
+                key={item.label}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className={`flex items-center gap-3 px-4 py-3 ${
+                  isResult
+                    ? 'rounded-xl border border-emerald-500/20 bg-emerald-500/5 mt-2'
+                    : i > 0 ? 'border-t border-border/30' : ''
+                }`}
+              >
+                <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
+                  isIncome ? 'bg-emerald-500/10 border border-emerald-500/20'
+                    : isResult ? 'bg-emerald-500/15 border border-emerald-500/30'
+                    : 'bg-red-500/8 border border-red-500/15'
+                }`}>
+                  {isIncome ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> :
+                   isResult ? <Wallet className="h-3.5 w-3.5 text-emerald-400" /> :
+                   <ArrowDown className="h-3.5 w-3.5 text-red-400" />}
+                </div>
+                <span className={`text-[13px] flex-1 ${isResult ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
+                  {item.label}
+                </span>
+                <span className={`text-[14px] font-semibold tabular-nums ${
+                  isIncome ? 'text-emerald-400'
+                    : isResult ? (item.amount > 0 ? 'text-emerald-400' : 'text-red-400')
+                    : 'text-red-400'
+                }`}>
+                  {isDeduction ? '−' : ''}{formatINR(Math.abs(item.amount))}
+                </span>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Settings */}
+        <div className="border-t border-border/50 px-5 py-4 space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Customize Deductions</p>
+          </div>
+
+          {/* Founder cut */}
+          <div className="flex items-center justify-between rounded-lg border border-border/30 px-3 py-2.5">
+            <div className="flex items-center gap-2.5">
+              <button onClick={() => toggleItem('founderCut')} className="text-muted-foreground hover:text-foreground transition">
+                {enabled.founderCut !== false ? <ToggleRight className="h-5 w-5 text-primary" /> : <ToggleLeft className="h-5 w-5" />}
+              </button>
+              <span className="text-[12px] font-medium text-foreground">Founder Cut</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={founderPct}
+                onChange={(e) => setFounderPct(Number(e.target.value) || 0)}
+                disabled={enabled.founderCut === false}
+                className="w-14 bg-transparent text-right text-[13px] font-semibold text-foreground tabular-nums outline-none border-b border-border/30 focus:border-primary/50 disabled:opacity-40 transition"
+              />
+              <span className="text-[11px] text-muted-foreground">%</span>
+            </div>
+          </div>
+
+          {/* Toggle items */}
+          {[
+            { key: 'inventoryNeeds', label: 'Inventory Restock' },
+            { key: 'baselines', label: 'Baselines Due' },
+            { key: 'expenses', label: 'Week Expenses' },
+          ].map(({ key, label }) => (
+            <div key={key} className="flex items-center justify-between rounded-lg border border-border/30 px-3 py-2.5">
+              <div className="flex items-center gap-2.5">
+                <button onClick={() => toggleItem(key)} className="text-muted-foreground hover:text-foreground transition">
+                  {enabled[key] !== false ? <ToggleRight className="h-5 w-5 text-primary" /> : <ToggleLeft className="h-5 w-5" />}
+                </button>
+                <span className="text-[12px] font-medium text-foreground">{label}</span>
+              </div>
+            </div>
+          ))}
+
+          <button
+            onClick={saveConfig}
+            disabled={saving}
+            className="w-full rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-primary-foreground hover:bg-primary/90 transition disabled:opacity-40 flex items-center justify-center gap-1.5"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saved ? <Check className="h-3.5 w-3.5" /> : null}
+            {saved ? 'Saved!' : 'Save Configuration'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
   );
 }
 
