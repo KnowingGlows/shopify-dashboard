@@ -165,6 +165,25 @@ export default function FinancePage() {
     return map;
   }, [expenses, baselines]);
 
+  // Build outflow chart data — next 14 days from today (must be before loading return)
+  const outflowDays = useMemo(() => {
+    const days: Array<{ date: string; total: number; expenses: number; baselines: number }> = [];
+    const start = new Date(todayStr + 'T00:00:00');
+    for (let i = 0; i < 14; i++) {
+      const dt = new Date(start);
+      dt.setDate(start.getDate() + i);
+      const dateStr = dt.toISOString().split('T')[0];
+      const data = dailyOutflows[dateStr];
+      days.push({
+        date: dateStr,
+        total: (data?.expenses ?? 0) + (data?.baselines ?? 0),
+        expenses: data?.expenses ?? 0,
+        baselines: data?.baselines ?? 0,
+      });
+    }
+    return days;
+  }, [todayStr, dailyOutflows]);
+
   if (loading) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -203,28 +222,8 @@ export default function FinancePage() {
   });
 
   const maxDeposit = Math.max(...last7Deposits.map((e) => e.deposit), 1);
-
-  // Build outflow chart data — next 14 days from today
-  const outflowDays = useMemo(() => {
-    const days: Array<{ date: string; total: number; expenses: number; baselines: number }> = [];
-    const start = new Date(todayStr + 'T00:00:00');
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0];
-      const data = dailyOutflows[dateStr];
-      days.push({
-        date: dateStr,
-        total: (data?.expenses ?? 0) + (data?.baselines ?? 0),
-        expenses: data?.expenses ?? 0,
-        baselines: data?.baselines ?? 0,
-      });
-    }
-    return days;
-  }, [todayStr, dailyOutflows]);
-
-  const maxOutflow = Math.max(...outflowDays.map((d) => d.total), 1);
-  const totalOutflow14d = outflowDays.reduce((s, d) => s + d.total, 0);
+  const maxOutflow = Math.max(...outflowDays.map((od) => od.total), 1);
+  const totalOutflow14d = outflowDays.reduce((s, od) => s + od.total, 0);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
