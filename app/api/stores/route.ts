@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getRegisteredStores, registerStore, updateStoreDisplayName } from '@/lib/store-registry';
+import { getRegisteredStores, registerStore, updateStoreDisplayName, unregisterStore } from '@/lib/store-registry';
 
 export async function GET() {
   const stores = await getRegisteredStores();
@@ -37,6 +37,19 @@ export async function POST(request: Request) {
       {
         error: error instanceof Error ? error.message : 'Failed to register store.',
       },
+      { status: 400 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json();
+    await unregisterStore(body.handle ?? '');
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to delete store.' },
       { status: 400 }
     );
   }
