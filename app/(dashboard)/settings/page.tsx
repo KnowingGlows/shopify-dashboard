@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   KeyRound, RefreshCw, Settings, Store,
-  Check, Loader2, AlertCircle, Pencil, Trash2,
+  Check, Loader2, AlertCircle, Pencil, Trash2, ChevronDown, Eye, EyeOff, Plus,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 
@@ -12,6 +12,8 @@ interface StoreInfo {
   handle: string;
   domain: string;
   displayName: string | null;
+  clientId: string;
+  clientSecret: string;
   lastTokenRefresh: string | null;
   tokenExpiresAt: string | null;
 }
@@ -30,6 +32,8 @@ export default function SettingsPage() {
   const [savingName, setSavingName] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deletingStore, setDeletingStore] = useState<string | null>(null);
+  const [expandedStore, setExpandedStore] = useState<string | null>(null);
+  const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
 
   const loadStores = async () => {
     try {
@@ -125,8 +129,8 @@ export default function SettingsPage() {
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <KeyRound className="h-3.5 w-3.5 text-primary" />
           <div>
-            <h2 className="text-sm font-medium text-foreground">Shopify Access Tokens</h2>
-            <p className="text-[10px] text-muted-foreground">Enter credentials to refresh the token (auto-refreshes every 23h)</p>
+            <h2 className="text-sm font-medium text-foreground">Add / Refresh Store</h2>
+            <p className="text-[10px] text-muted-foreground">Add a new store or refresh credentials for an existing one</p>
           </div>
         </div>
 
@@ -185,9 +189,9 @@ export default function SettingsPage() {
             {storeStatus.type === 'saving' ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5" />
             )}
-            Refresh Access Token
+            Add / Refresh Store
           </button>
 
           <AnimatePresence>
@@ -240,7 +244,16 @@ export default function SettingsPage() {
                       <p className="text-[14px] font-semibold text-foreground">{store.displayName || store.handle}</p>
                       <p className="text-[11px] text-muted-foreground">{store.domain}</p>
                     </div>
-                    <div className={`h-2 w-2 rounded-full ${store.tokenExpiresAt && new Date(store.tokenExpiresAt) > new Date() ? 'bg-emerald-400' : 'bg-amber-400'}`} title={store.tokenExpiresAt && new Date(store.tokenExpiresAt) > new Date() ? 'Token active' : 'Token may be expired'} />
+                    <div className="flex items-center gap-2">
+                      <div className={`h-2 w-2 rounded-full ${store.tokenExpiresAt && new Date(store.tokenExpiresAt) > new Date() ? 'bg-emerald-400' : 'bg-amber-400'}`} title={store.tokenExpiresAt && new Date(store.tokenExpiresAt) > new Date() ? 'Token active' : 'Token may be expired'} />
+                      <button
+                        onClick={() => setExpandedStore(expandedStore === store.handle ? null : store.handle)}
+                        className="flex items-center gap-1 rounded-lg border border-border/50 bg-background/50 px-2.5 py-1 text-[11px] text-muted-foreground transition hover:bg-accent"
+                      >
+                        Details
+                        <ChevronDown className={`h-3 w-3 transition-transform ${expandedStore === store.handle ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Edit name */}
@@ -275,6 +288,44 @@ export default function SettingsPage() {
                       <p className="text-[11px] text-foreground tabular-nums">{formatTimestamp(store.tokenExpiresAt)}</p>
                     </div>
                   </div>
+
+                  {/* Expandable credentials */}
+                  <AnimatePresence>
+                    {expandedStore === store.handle && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="border-t border-border/50 pt-3 space-y-2">
+                          <div>
+                            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Store URL</p>
+                            <p className="text-[11px] text-foreground font-mono bg-background/50 rounded px-2 py-1.5 border border-border/50">https://{store.domain}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Client ID</p>
+                            <p className="text-[11px] text-foreground font-mono bg-background/50 rounded px-2 py-1.5 border border-border/50 break-all">{store.clientId || '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Client Secret</p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-[11px] text-foreground font-mono bg-background/50 rounded px-2 py-1.5 border border-border/50 break-all flex-1">
+                                {showSecret[store.handle] ? store.clientSecret : '•'.repeat(Math.min(store.clientSecret?.length ?? 0, 32))}
+                              </p>
+                              <button
+                                onClick={() => setShowSecret((prev) => ({ ...prev, [store.handle]: !prev[store.handle] }))}
+                                className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-muted-foreground hover:bg-accent transition"
+                              >
+                                {showSecret[store.handle] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Delete */}
                   {confirmDelete === store.handle ? (

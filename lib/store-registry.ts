@@ -216,6 +216,8 @@ export const getRegisteredStores = async () => {
     handle: store.handle,
     domain: store.domain,
     displayName: store.displayName ?? null,
+    clientId: store.clientId,
+    clientSecret: store.clientSecret,
     lastTokenRefresh: store.tokenFetchedAt
       ? new Date(store.tokenFetchedAt).toISOString()
       : null,
