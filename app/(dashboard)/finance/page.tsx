@@ -74,7 +74,6 @@ interface SpendingPower {
   spendingPower: number;
   breakdown: Array<{ label: string; amount: number; type: 'income' | 'deduction' | 'result' }>;
   enabledItems: Record<string, boolean>;
-  dailyOutflows?: Array<{ date: string; expenses: number; baselines: number }>;
 }
 
 interface FinanceSummary {
@@ -405,8 +404,6 @@ export default function FinancePage() {
 
       {/* ═══ Spending Power — Hero Card ═══ */}
       {spending && spending.projectedDeposit > 0 && (() => {
-        const outflows = spending.dailyOutflows ?? [];
-        const maxOutflow = Math.max(...outflows.map((d) => d.expenses + d.baselines), 1);
         return (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
           <div className="rounded-2xl border border-violet-500/15 bg-gradient-to-br from-violet-500/[0.04] via-card to-card overflow-hidden">
@@ -428,52 +425,6 @@ export default function FinancePage() {
                   </p>
                 </div>
               </div>
-
-              {/* 7-day outflow chart */}
-              {outflows.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-3">Weekly Outflows — Expenses & Baselines</p>
-                  <div className="h-36">
-                    <div className="flex items-end gap-2 h-full">
-                      {outflows.map((day) => {
-                        const total = day.expenses + day.baselines;
-                        const barHeight = total > 0 ? Math.max(Math.round((total / maxOutflow) * 100), 4) : 0;
-                        const expPct = total > 0 ? (day.expenses / total) * 100 : 0;
-                        const dayLabel = day.date.slice(-2);
-                        return (
-                          <div key={day.date} className="flex-1 h-full flex flex-col justify-end items-center">
-                            {total > 0 ? (
-                              <div className="relative w-full group cursor-default" style={{ height: `${barHeight}%`, minHeight: '4px' }}>
-                                <div className="absolute -top-9 left-1/2 -translate-x-1/2 hidden group-hover:block whitespace-nowrap rounded-md bg-popover border border-border px-2 py-1 text-[10px] font-medium text-foreground shadow-lg z-10">
-                                  {day.expenses > 0 && <span className="text-red-400">{formatINR(day.expenses)} exp</span>}
-                                  {day.expenses > 0 && day.baselines > 0 && <span className="text-muted-foreground"> + </span>}
-                                  {day.baselines > 0 && <span className="text-amber-400">{formatINR(day.baselines)} base</span>}
-                                </div>
-                                <motion.div
-                                  initial={{ height: 0 }}
-                                  animate={{ height: '100%' }}
-                                  transition={{ duration: 0.6, ease: 'easeOut' }}
-                                  className="w-full h-full rounded-t-md overflow-hidden flex flex-col justify-end"
-                                >
-                                  {day.baselines > 0 && (
-                                    <div className="w-full bg-amber-500/30 border-x border-t border-amber-500/20" style={{ height: `${100 - expPct}%`, minHeight: day.baselines > 0 ? '2px' : 0 }} />
-                                  )}
-                                  {day.expenses > 0 && (
-                                    <div className="w-full bg-red-500/30 border-x border-b border-red-500/20" style={{ height: `${expPct}%`, minHeight: day.expenses > 0 ? '2px' : 0 }} />
-                                  )}
-                                </motion.div>
-                              </div>
-                            ) : (
-                              <div className="w-full h-[2px] rounded bg-border/20" />
-                            )}
-                            <span className="mt-1.5 text-[9px] text-muted-foreground/50 tabular-nums">{dayLabel}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Legend + progress bar */}
               <div className="flex items-center gap-4 mt-4 mb-3">
