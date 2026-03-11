@@ -110,32 +110,23 @@ export default function FinancePage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      let summaryUrl = '/api/finance';
+      // Single combined API call instead of 7 parallel calls (saves ~80% Firestore reads)
+      let url = '/api/finance?action=combined';
       if (dateRange === 'custom' && customStart && customEnd) {
-        summaryUrl = `/api/finance?start=${customStart}&end=${customEnd}`;
+        url += `&start=${customStart}&end=${customEnd}`;
       } else {
         const days = dateRange === '7d' ? 7 : dateRange === '90d' ? 90 : 30;
-        summaryUrl = `/api/finance?days=${days}`;
+        url += `&days=${days}`;
       }
-      const [summaryRes, codRes, spendRes, remindersRes, baselinesRes, ratesRes, expensesRes] = await Promise.all([
-        fetch(summaryUrl),
-        fetch('/api/finance?action=cod-projections'),
-        fetch('/api/finance?action=spending-power'),
-        fetch('/api/finance?action=reminders'),
-        fetch('/api/finance?action=baselines'),
-        fetch('/api/finance?action=delivery-rates'),
-        fetch('/api/finance?action=expenses'),
-      ]);
-      const [summaryData, codData, spendData, remindersData, baselinesData, ratesData, expensesData] = await Promise.all([
-        summaryRes.json(), codRes.json(), spendRes.json(), remindersRes.json(), baselinesRes.json(), ratesRes.json(), expensesRes.json(),
-      ]);
-      setSummary(summaryData);
-      setCodWeeks(codData.weeks ?? []);
-      setSpending(spendData);
-      setReminders(remindersData.reminders ?? []);
-      setBaselines([...(baselinesData.daily ?? []), ...(baselinesData.monthly ?? [])]);
-      setDeliveryRates(ratesData.rates ?? {});
-      setExpenses(expensesData.expenses ?? []);
+      const res = await fetch(url);
+      const data = await res.json();
+      setSummary(data.summary);
+      setCodWeeks(data.codWeeks ?? []);
+      setSpending(data.spending);
+      setReminders(data.reminders ?? []);
+      setBaselines([...(data.baselines?.daily ?? []), ...(data.baselines?.monthly ?? [])]);
+      setDeliveryRates(data.deliveryRates ?? {});
+      setExpenses(data.expenses ?? []);
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps

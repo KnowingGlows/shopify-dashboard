@@ -129,6 +129,31 @@ async function fetchSalesForDate(dateStr: string): Promise<SalesForDateResult> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = () => (isFirebaseAvailable() ? getFirestore() : null);
 
+// ── In-memory settings cache (reduces reads for rarely-changing data) ────────
+interface CachedValue<T> { data: T; ts: number }
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const settingsCache: Record<string, CachedValue<unknown>> = {};
+
+async function getCachedSetting<T>(firestore: FirebaseFirestore.Firestore, docId: string, fallback: T): Promise<T> {
+  const key = `settings_${docId}`;
+  const cached = settingsCache[key];
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data as T;
+
+  try {
+    const doc = await firestore.collection(COLLECTIONS.SETTINGS).doc(docId).get();
+    const data = doc.exists ? (doc.data() as T) : fallback;
+    settingsCache[key] = { data, ts: Date.now() };
+    return data;
+  } catch {
+    return fallback;
+  }
+}
+
+function invalidateSettingsCache(docId?: string) {
+  if (docId) delete settingsCache[`settings_${docId}`];
+  else Object.keys(settingsCache).forEach((k) => delete settingsCache[k]);
+}
+
 // ── GET /api/finance ─────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
@@ -137,6 +162,8 @@ export async function GET(request: Request) {
     const action = searchParams.get('action');
 
     switch (action) {
+      case 'combined':
+        return getCombinedFinanceData(searchParams);
       case 'daily':
         return getDailyEntries(searchParams);
       case 'baselines':
@@ -450,6 +477,7 @@ async function saveDeliveryRates(body: Record<string, unknown>) {
   const rates = (body.rates as Record<string, number>) ?? {};
   if (!firestore) return NextResponse.json({ success: true });
   await firestore.collection(COLLECTIONS.SETTINGS).doc('delivery_rates').set({ rates, updatedAt: new Date().toISOString() });
+  invalidateSettingsCache('delivery_rates');
   return NextResponse.json({ success: true });
 }
 
@@ -647,6 +675,7 @@ async function saveSpendingConfig(body: Record<string, unknown>) {
     updatedAt: new Date().toISOString(),
   };
   await firestore.collection(COLLECTIONS.SETTINGS).doc('spending_config').set(config, { merge: true });
+  invalidateSettingsCache('spending_config');
   return NextResponse.json({ success: true });
 }
 
@@ -821,6 +850,252 @@ async function getSpendingPower(params: URLSearchParams) {
     breakdown,
     enabledItems,
     dailyOutflows,
+  });
+}
+
+// ── Combined endpoint: single call replaces 7 parallel calls ─────────────────
+// Reads each collection ONCE instead of 3-6 times across separate endpoints.
+// Collections read: finance_daily (1), finance_baselines (1), finance_expenses (1),
+// inventory (1), settings/delivery_rates (cached), settings/spending_config (cached)
+// = ~4-6 reads total vs ~20+ reads before
+
+async function getCombinedFinanceData(params: URLSearchParams) {
+  const firestore = db();
+  const days = Number(params.get('days')) || 30;
+  const endDate = params.get('end') ?? getISTDate();
+  const startDate = params.get('start') ?? getISTDate(new Date(Date.now() - days * 86400000));
+  const today = getISTDate();
+  const todayDate = new Date(today + 'T00:00:00+05:30');
+  const yesterday = getISTDate(new Date(Date.now() - 86400000));
+
+  if (!firestore) {
+    return NextResponse.json({
+      summary: { totalSales: 0, totalGrossProfit: 0, totalAdSpend: 0, totalNetProfit: 0, totalExpenses: 0, dailyBaselineTotal: 0, monthlyBaselineTotal: 0, dailyEntries: [], dailyBaselines: [], monthlyBaselines: [] },
+      codWeeks: [],
+      spending: { projectedDeposit: 0, spendingPower: 0, breakdown: [], enabledItems: {} },
+      reminders: [],
+      baselines: { daily: [], monthly: [] },
+      expenses: [],
+      deliveryRates: {},
+    });
+  }
+
+  // ── STEP 1: Fetch all needed data in parallel (ONE read per collection) ──
+  // For finance_daily, we need a wider range: summary needs startDate→endDate,
+  // but COD projections need entries from ~35 days ago (4 weeks + 7 day delay).
+  const codWideStart = getISTDate(new Date(todayDate.getTime() - 35 * 86400000));
+  const effectiveStart = codWideStart < startDate ? codWideStart : startDate;
+
+  const [dailySnap, baselinesSnap, expensesSnap, inventorySnap, deliveryRatesData, spendingConfigData] = await Promise.all([
+    firestore.collection(COLLECTIONS.FINANCE_DAILY).where('date', '>=', effectiveStart).where('date', '<=', endDate).orderBy('date', 'desc').get(),
+    firestore.collection(COLLECTIONS.FINANCE_BASELINES).get(),
+    firestore.collection(COLLECTIONS.FINANCE_EXPENSES).orderBy('createdAt', 'desc').get(),
+    firestore.collection(COLLECTIONS.INVENTORY).get(),
+    getCachedSetting<{ rates?: Record<string, number> }>(firestore, 'delivery_rates', { rates: {} }),
+    getCachedSetting<{ founderCutPct?: number; enabledItems?: Record<string, boolean> }>(firestore, 'spending_config', { founderCutPct: 50, enabledItems: { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true } }),
+  ]);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allDailyEntries = dailySnap.docs.map((doc: any) => doc.data());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allBaselines = baselinesSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allExpenses = expensesSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allInventory = inventorySnap.docs.map((doc: any) => doc.data());
+  const brandRates: Record<string, number> = deliveryRatesData.rates ?? {};
+  const founderCutPct = spendingConfigData.founderCutPct ?? 50;
+  const enabledItems = spendingConfigData.enabledItems ?? { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true };
+  const defaultRate = 65;
+
+  // ── STEP 2: Compute summary (filter to requested date range) ──
+  const summaryEntries = allDailyEntries.filter((e) => e.date >= startDate && e.date <= endDate);
+  const totalSales = summaryEntries.reduce((s, e) => s + (e.totalSales ?? 0), 0);
+  const totalGrossProfit = summaryEntries.reduce((s, e) => s + (e.grossProfit ?? 0), 0);
+  const totalAdSpend = summaryEntries.reduce((s, e) => s + (e.adSpend ?? 0), 0);
+  const totalNetProfit = summaryEntries.reduce((s, e) => s + (e.netProfit ?? 0), 0);
+  const totalExpenses = allExpenses.reduce((s, e) => s + (e.amount ?? 0), 0);
+
+  // Auto-advance monthly baselines
+  const currentMonth = today.slice(0, 7);
+  for (const bl of allBaselines) {
+    if (bl.type !== 'monthly' || !bl.dueDate) continue;
+    const blMonth = bl.dueDate.slice(0, 7);
+    if (blMonth < currentMonth) {
+      const day = bl.dueDate.slice(8, 10);
+      bl.dueDate = `${currentMonth}-${day}`;
+      bl.isPaid = false;
+      delete bl.paidDate;
+      firestore.collection(COLLECTIONS.FINANCE_BASELINES).doc(bl.id).update({ dueDate: bl.dueDate, isPaid: false, paidDate: null }).catch(() => {});
+    }
+  }
+
+  const dailyBaselines = allBaselines.filter((b) => b.type === 'daily');
+  const monthlyBaselines = allBaselines.filter((b) => b.type === 'monthly');
+  const dailyBaselineTotal = dailyBaselines.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+  const monthlyBaselineTotal = monthlyBaselines.reduce((s, b) => s + (Number(b.amount) || 0), 0);
+
+  // ── STEP 3: COD projections (4 weeks, using same allDailyEntries) ──
+  const COD_DELAY_DAYS = 7;
+  const codWeeks: Array<{ weekLabel: string; startDate: string; endDate: string; projectedAmount: number; codRevenue: number; brandBreakdown: Record<string, number> }> = [];
+
+  for (let w = 0; w < 4; w++) {
+    const weekStart = new Date(today + 'T00:00:00+05:30');
+    weekStart.setDate(weekStart.getDate() + w * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    const salesStart = new Date(weekStart);
+    salesStart.setDate(salesStart.getDate() - COD_DELAY_DAYS);
+    const salesEnd = new Date(weekEnd);
+    salesEnd.setDate(salesEnd.getDate() - COD_DELAY_DAYS);
+
+    const salesStartStr = getISTDate(salesStart);
+    const salesEndStr = getISTDate(salesEnd);
+
+    let codRevenue = 0;
+    const brandBreakdown: Record<string, number> = {};
+
+    // Filter from in-memory data instead of querying Firestore again
+    for (const entry of allDailyEntries) {
+      if (entry.date >= salesStartStr && entry.date <= salesEndStr) {
+        const codByBrand = entry.codSalesByBrand ?? {};
+        for (const [brand, amount] of Object.entries(codByBrand)) {
+          const val = Number(amount) || 0;
+          brandBreakdown[brand] = (brandBreakdown[brand] ?? 0) + val;
+          codRevenue += val;
+        }
+      }
+    }
+
+    let projectedAmount = 0;
+    for (const [brand, amount] of Object.entries(brandBreakdown)) {
+      const rate = brandRates[brand] ?? defaultRate;
+      projectedAmount += Math.round(amount * (rate / 100));
+    }
+
+    codWeeks.push({
+      weekLabel: getWeekLabel(weekStart),
+      startDate: getISTDate(weekStart),
+      endDate: getISTDate(weekEnd),
+      projectedAmount,
+      codRevenue,
+      brandBreakdown,
+    });
+  }
+
+  // ── STEP 4: Spending power (using same in-memory data) ──
+  const weekStart = new Date(todayDate);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  const weekStartStr = getISTDate(weekStart);
+  const weekEndStr = getISTDate(weekEnd);
+
+  // COD for this week's spending power
+  const spSalesStart = new Date(weekStart);
+  spSalesStart.setDate(spSalesStart.getDate() - COD_DELAY_DAYS);
+  const spSalesEnd = new Date(weekEnd);
+  spSalesEnd.setDate(spSalesEnd.getDate() - COD_DELAY_DAYS);
+  const spSalesStartStr = getISTDate(spSalesStart);
+  const spSalesEndStr = getISTDate(spSalesEnd);
+
+  let spCodRevenue = 0;
+  let projectedDeposit = 0;
+  const spBrandBreakdown: Record<string, number> = {};
+
+  for (const entry of allDailyEntries) {
+    if (entry.date >= spSalesStartStr && entry.date <= spSalesEndStr) {
+      const codByBrand = entry.codSalesByBrand ?? {};
+      for (const [brand, amount] of Object.entries(codByBrand)) {
+        const val = Number(amount) || 0;
+        spBrandBreakdown[brand] = (spBrandBreakdown[brand] ?? 0) + val;
+        spCodRevenue += val;
+      }
+    }
+  }
+  for (const [brand, amount] of Object.entries(spBrandBreakdown)) {
+    const rate = brandRates[brand] ?? defaultRate;
+    projectedDeposit += Math.round(amount * (rate / 100));
+  }
+
+  const founderCut = enabledItems.founderCut !== false ? Math.round(projectedDeposit * (founderCutPct / 100)) : 0;
+  let remaining = projectedDeposit - founderCut;
+
+  // Inventory needs
+  const spBrandNames = Object.keys(spBrandBreakdown);
+  let inventoryNeeds = 0;
+  if (enabledItems.inventoryNeeds !== false) {
+    for (const item of allInventory) {
+      const daysRemaining = item.daysRemaining ?? 999;
+      if (daysRemaining < 14 && spBrandNames.some((b) => (item.store ?? '').toLowerCase().includes(b.toLowerCase()))) {
+        inventoryNeeds += (item.costPerUnit ?? 0) * (item.reorderQty ?? item.currentStock ?? 0);
+      }
+    }
+    remaining -= inventoryNeeds;
+  }
+
+  // Baselines due this week
+  let baselinesDue = 0;
+  const baselineItems: Array<{ label: string; amount: number; dueDate: string }> = [];
+  if (enabledItems.baselines !== false) {
+    for (const b of allBaselines) {
+      if (b.type !== 'monthly' || b.isPaid) continue;
+      if (b.dueDate && b.dueDate >= weekStartStr && b.dueDate <= weekEndStr) {
+        baselinesDue += b.amount ?? 0;
+        baselineItems.push({ label: b.label, amount: b.amount, dueDate: b.dueDate });
+      }
+    }
+    remaining -= baselinesDue;
+  }
+
+  // Expenses this week
+  let weekExpenses = 0;
+  if (enabledItems.expenses !== false) {
+    for (const e of allExpenses) {
+      if (e.date >= weekStartStr && e.date <= weekEndStr) {
+        weekExpenses += e.amount ?? 0;
+      }
+    }
+    remaining -= weekExpenses;
+  }
+
+  const breakdown = [
+    { label: 'Projected Bank Deposit', amount: projectedDeposit, type: 'income' as const },
+    ...(enabledItems.founderCut !== false && founderCut > 0 ? [{ label: `Founder Cut (${founderCutPct}%)`, amount: -founderCut, type: 'deduction' as const }] : []),
+    ...(enabledItems.inventoryNeeds !== false && inventoryNeeds > 0 ? [{ label: 'Inventory Restock', amount: -inventoryNeeds, type: 'deduction' as const }] : []),
+    ...(enabledItems.baselines !== false ? baselineItems.map((b) => ({ label: b.label, amount: -b.amount, type: 'deduction' as const })) : []),
+    ...(enabledItems.expenses !== false && weekExpenses > 0 ? [{ label: 'Other Expenses', amount: -weekExpenses, type: 'deduction' as const }] : []),
+    { label: 'Available to Spend', amount: Math.max(remaining, 0), type: 'result' as const },
+  ];
+
+  // ── STEP 5: Reminders ──
+  const reminders: Array<{ type: string; message: string; date: string; priority?: string }> = [];
+  const yesterdayEntry = allDailyEntries.find((e) => e.date === yesterday);
+  if (!yesterdayEntry || !yesterdayEntry.adSpend) {
+    reminders.push({ type: 'cmo_daily', message: `Enter yesterday's (${yesterday}) ad spend and ROAS`, date: yesterday, priority: 'high' });
+  }
+
+  // ── Return everything ──
+  return NextResponse.json({
+    summary: {
+      totalSales, totalGrossProfit, totalAdSpend, totalNetProfit, totalExpenses,
+      dailyBaselineTotal, monthlyBaselineTotal,
+      dailyEntries: summaryEntries, dailyBaselines, monthlyBaselines,
+    },
+    codWeeks,
+    spending: {
+      weekLabel: getWeekLabel(weekStart),
+      weekStart: weekStartStr, weekEnd: weekEndStr,
+      codRevenue: spCodRevenue, projectedDeposit,
+      founderCut, founderCutPct, inventoryNeeds,
+      baselinesDue, weekExpenses,
+      spendingPower: Math.max(remaining, 0),
+      breakdown, enabledItems,
+    },
+    reminders,
+    baselines: { daily: dailyBaselines, monthly: monthlyBaselines },
+    expenses: allExpenses,
+    deliveryRates: brandRates,
   });
 }
 
