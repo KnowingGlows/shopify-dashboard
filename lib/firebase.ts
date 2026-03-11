@@ -67,4 +67,5 @@ export const COLLECTIONS = {
   SETTINGS: 'app_settings',
   TASKS: 'tasks',
   NOTIFICATIONS: 'notifications',
+  ADS_PRODUCTS: 'ads_products',
 } as const;

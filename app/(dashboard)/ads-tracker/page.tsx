@@ -23,8 +23,14 @@ interface ProductSummary {
   lastUpdated: string;
 }
 
-function groupByProduct(entries: AdsTrackerEntry[]): ProductSummary[] {
+function groupByProduct(entries: AdsTrackerEntry[], registeredProducts: string[]): ProductSummary[] {
   const groups: Record<string, AdsTrackerEntry[]> = {};
+
+  // Initialize groups for all registered products (even those with 0 entries)
+  for (const name of registeredProducts) {
+    groups[name] = [];
+  }
+
   for (const e of entries) {
     const key = e.productName || 'Unnamed';
     if (!groups[key]) groups[key] = [];
@@ -48,6 +54,7 @@ function groupByProduct(entries: AdsTrackerEntry[]): ProductSummary[] {
 
 export default function OpsAdsPage() {
   const [entries, setEntries] = useState<AdsTrackerEntry[]>([]);
+  const [registeredProducts, setRegisteredProducts] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -58,6 +65,7 @@ export default function OpsAdsPage() {
       const res = await fetch('/api/ads-tracker');
       const data = await res.json();
       setEntries(data.entries ?? []);
+      setRegisteredProducts(data.products ?? []);
     } catch { setEntries([]); }
     finally { setLoading(false); }
   }, []);
@@ -74,8 +82,8 @@ export default function OpsAdsPage() {
         body: JSON.stringify({ productName: formProduct.trim() }),
       });
       const data = await res.json();
-      if (data.entry) {
-        setEntries((prev) => [data.entry, ...prev]);
+      if (data.success) {
+        setRegisteredProducts((prev) => [...new Set([...prev, formProduct.trim()])]);
         setFormProduct('');
         setShowForm(false);
       }
@@ -83,7 +91,7 @@ export default function OpsAdsPage() {
     finally { setAdding(false); }
   };
 
-  const products = useMemo(() => groupByProduct(entries), [entries]);
+  const products = useMemo(() => groupByProduct(entries, registeredProducts), [entries, registeredProducts]);
 
   // Global stats
   const { totalProducts, totalBatches, totalSpend, globalHitRate } = useMemo(() => {

@@ -6,22 +6,22 @@ import { AdsTrackerEntry } from '@/types/shopify';
 const inMemoryStore: AdsTrackerEntry[] = [];
 
 // GET /api/ads-tracker
-// Returns all ads tracker entries
+// Returns all ads tracker entries + registered product names
 export async function GET() {
   try {
     if (!isFirebaseAvailable()) {
-      return NextResponse.json({ entries: inMemoryStore });
+      return NextResponse.json({ entries: inMemoryStore, products: [] });
     }
 
     const db = getFirestore();
     if (!db) {
-      return NextResponse.json({ entries: inMemoryStore });
+      return NextResponse.json({ entries: inMemoryStore, products: [] });
     }
 
-    const snapshot = await db
-      .collection(COLLECTIONS.ADS_TRACKER)
-      .orderBy('createdAt', 'desc')
-      .get();
+    const [snapshot, productsSnap] = await Promise.all([
+      db.collection(COLLECTIONS.ADS_TRACKER).orderBy('createdAt', 'desc').get(),
+      db.collection(COLLECTIONS.ADS_PRODUCTS).get(),
+    ]);
 
     const entries: AdsTrackerEntry[] = snapshot.docs.map((doc) => {
       const data = doc.data();
@@ -39,7 +39,9 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ entries });
+    const products: string[] = productsSnap.docs.map((doc) => doc.data().name ?? doc.id);
+
+    return NextResponse.json({ entries, products });
   } catch (error) {
     console.error('Error fetching ads tracker entries:', error);
     return NextResponse.json(
@@ -50,15 +52,30 @@ export async function GET() {
 }
 
 // POST /api/ads-tracker
-// Body: { productName, creativeFolderLink, batchName, creativeType, dailyAdSpend, weeklyRoas, creativeBatchResult }
-// Creates a new ads tracker entry
+// Body: { productName } to register product, or { productName, batchName, ... } to create batch entry
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const now = new Date().toISOString();
+    const productName = (body.productName ?? '').trim();
+
+    // If only productName is provided (no batch fields), register the product
+    const isProductOnly = !body.batchName && !body.creativeType && !body.creativeFolderLink && !body.dailyAdSpend && !body.weeklyRoas && !body.creativeBatchResult;
+
+    if (isProductOnly && productName) {
+      if (isFirebaseAvailable()) {
+        const db = getFirestore();
+        if (db) {
+          await db.collection(COLLECTIONS.ADS_PRODUCTS).doc(productName).set({ name: productName, createdAt: now });
+        }
+      }
+      return NextResponse.json({ success: true, product: productName });
+    }
+
+    // Otherwise create a batch entry
     const entry: AdsTrackerEntry = {
       id: crypto.randomUUID(),
-      productName: body.productName ?? '',
+      productName,
       creativeFolderLink: body.creativeFolderLink ?? '',
       batchName: body.batchName ?? '',
       creativeType: body.creativeType ?? '',
@@ -80,7 +97,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, entry });
     }
 
-    await db.collection(COLLECTIONS.ADS_TRACKER).doc(entry.id).set(entry);
+    // Also register the product if not already registered
+    await Promise.all([
+      db.collection(COLLECTIONS.ADS_TRACKER).doc(entry.id).set(entry),
+      db.collection(COLLECTIONS.ADS_PRODUCTS).doc(productName).set({ name: productName, createdAt: now }, { merge: true }),
+    ]);
 
     return NextResponse.json({ success: true, entry });
   } catch (error) {
@@ -161,7 +182,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Entry id or productName is required.' }, { status: 400 });
     }
 
-    // Delete all entries for a product
+    // Delete all entries for a product + remove from ads_products
     if (productName) {
       if (!isFirebaseAvailable()) {
         const before = inMemoryStore.length;
@@ -177,6 +198,8 @@ export async function DELETE(request: Request) {
       const snapshot = await db.collection(COLLECTIONS.ADS_TRACKER).where('productName', '==', productName).get();
       const batch = db.batch();
       snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+      // Also remove from ads_products registry
+      batch.delete(db.collection(COLLECTIONS.ADS_PRODUCTS).doc(productName));
       await batch.commit();
 
       return NextResponse.json({ success: true, deleted: snapshot.size });

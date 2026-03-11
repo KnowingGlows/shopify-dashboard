@@ -763,8 +763,9 @@ async function getSpendingPower(params: URLSearchParams) {
     remaining -= baselinesDue;
   }
 
-  // Expenses this week
+  // Expenses this week (with daily breakdown)
   let weekExpenses = 0;
+  const expensesByDay: Record<string, number> = {};
   if (enabledItems.expenses !== false) {
     try {
       const expSnap = await firestore.collection(COLLECTIONS.FINANCE_EXPENSES).get();
@@ -772,7 +773,9 @@ async function getSpendingPower(params: URLSearchParams) {
       expSnap.docs.forEach((doc: any) => {
         const e = doc.data();
         if (e.date >= weekStartStr && e.date <= weekEndStr) {
-          weekExpenses += e.amount ?? 0;
+          const amt = e.amount ?? 0;
+          weekExpenses += amt;
+          expensesByDay[e.date] = (expensesByDay[e.date] ?? 0) + amt;
         }
       });
     } catch { /* ignore */ }
@@ -788,6 +791,23 @@ async function getSpendingPower(params: URLSearchParams) {
     { label: 'Available to Spend', amount: Math.max(remaining, 0), type: 'result' as const },
   ];
 
+  // Build daily outflow map for the 7-day week (Mon-Sun) using cached data
+  const dailyOutflows: Array<{ date: string; expenses: number; baselines: number }> = [];
+  for (let d = 0; d < 7; d++) {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + d);
+    const dayStr = getISTDate(day);
+    let dayBaselines = 0;
+
+    if (enabledItems.baselines !== false) {
+      for (const b of baselineItems) {
+        if (b.dueDate === dayStr) dayBaselines += b.amount;
+      }
+    }
+
+    dailyOutflows.push({ date: dayStr, expenses: expensesByDay[dayStr] ?? 0, baselines: dayBaselines });
+  }
+
   return NextResponse.json({
     weekLabel: getWeekLabel(weekStart),
     weekStart: weekStartStr,
@@ -802,6 +822,7 @@ async function getSpendingPower(params: URLSearchParams) {
     spendingPower: Math.max(remaining, 0),
     breakdown,
     enabledItems,
+    dailyOutflows,
   });
 }
 
