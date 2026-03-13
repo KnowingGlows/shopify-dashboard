@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   Loader2, Save, ArrowLeft, Calculator, Megaphone,
-  Receipt, BanknoteIcon, Truck,
+  Receipt, BanknoteIcon, Truck, CreditCard,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -66,6 +66,7 @@ export default function FinanceEntryPage() {
   const [salesLoading, setSalesLoading] = useState(false);
   const [savingDaily, setSavingDaily] = useState(false);
   const [dailySaveStatus, setDailySaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [prepaidSettlement, setPrepaidSettlement] = useState<string>('');
 
   // Per-brand data
   const [brands, setBrands] = useState<string[]>([]);
@@ -161,6 +162,7 @@ export default function FinanceEntryPage() {
           action: 'save-daily',
           date: dailyDate,
           brandData,
+          prepaidSettlement: Number(prepaidSettlement) || 0,
           enteredBy: user?.email ?? '',
         }),
       });
@@ -361,6 +363,36 @@ export default function FinanceEntryPage() {
           </div>
         </motion.div>
       )}
+
+      {/* ═══ Prepaid Settlement ═══ */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="rounded-xl border border-violet-500/20 bg-gradient-to-br from-violet-500/5 to-transparent overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-violet-500/15">
+          <CreditCard className="h-4 w-4 text-violet-400" />
+          <h2 className="text-sm font-semibold text-foreground">Prepaid Settlement</h2>
+          <span className="ml-auto text-[10px] text-muted-foreground/60">Money already received in bank today</span>
+        </div>
+        <div className="p-4">
+          <div className="flex items-end gap-4">
+            <div className="flex flex-col gap-1.5 flex-1 max-w-xs">
+              <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Total Settlement Received (₹)</label>
+              <input
+                type="number"
+                value={prepaidSettlement}
+                onChange={(e) => setPrepaidSettlement(e.target.value)}
+                placeholder="0"
+                className="form-input"
+              />
+            </div>
+            {Number(prepaidSettlement) > 0 && (
+              <div className="flex items-center gap-1.5 pb-2">
+                <span className="text-[10px] text-muted-foreground">Adds</span>
+                <span className="text-[14px] font-bold text-violet-400 font-mono">{formatINR(Number(prepaidSettlement))}</span>
+                <span className="text-[10px] text-muted-foreground">to spending power</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
 
       {/* Link to expenditure */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>

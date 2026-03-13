@@ -28,6 +28,7 @@ interface FinanceDailyEntry {
   shippingCost: number;
   netProfit: number;
   codSalesByBrand: Record<string, number>;
+  prepaidSettlement?: number; // total prepaid settlement received this day
   brandData?: Record<string, BrandDailyData>; // per-brand breakdown
   enteredBy: string;
   updatedAt: string;
@@ -309,6 +310,8 @@ async function saveDailyEntry(body: Record<string, unknown>) {
   const actualAdCost = Math.round(adSpend * 1.14);
   const netProfit = grossProfit - actualAdCost;
 
+  const prepaidSettlement = Number(body.prepaidSettlement) || 0;
+
   const entry: FinanceDailyEntry = {
     date,
     totalSales,
@@ -321,6 +324,7 @@ async function saveDailyEntry(body: Record<string, unknown>) {
     shippingCost: 0,
     netProfit,
     codSalesByBrand,
+    prepaidSettlement,
     enteredBy: (body.enteredBy as string) ?? '',
     updatedAt: new Date().toISOString(),
   };
@@ -747,9 +751,25 @@ async function getSpendingPower(params: URLSearchParams) {
     projectedDeposit += Math.round(amount * (rate / 100));
   }
 
+  // Prepaid settlements this week
+  let weekPrepaidSp = 0;
+  if (firestore) {
+    try {
+      const prepaidSnap = await firestore.collection(COLLECTIONS.FINANCE_DAILY)
+        .where('date', '>=', weekStartStr)
+        .where('date', '<=', weekEndStr)
+        .get();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prepaidSnap.docs.forEach((doc: any) => {
+        weekPrepaidSp += Number(doc.data().prepaidSettlement) || 0;
+      });
+    } catch { /* ignore */ }
+  }
+
+  const totalCashInSp = projectedDeposit + weekPrepaidSp;
   // Founder cut
-  const founderCut = enabledItems.founderCut !== false ? Math.round(projectedDeposit * (founderCutPct / 100)) : 0;
-  let remaining = projectedDeposit - founderCut;
+  const founderCut = enabledItems.founderCut !== false ? Math.round(totalCashInSp * (founderCutPct / 100)) : 0;
+  let remaining = totalCashInSp - founderCut;
 
   // Inventory needs: items with daysRemaining < 14 for brands with COD data
   const brandNames = Object.keys(brandBreakdown);
@@ -810,7 +830,8 @@ async function getSpendingPower(params: URLSearchParams) {
   }
 
   const breakdown = [
-    { label: 'Projected Bank Deposit', amount: projectedDeposit, type: 'income' as const },
+    { label: 'COD Projected Deposit', amount: projectedDeposit, type: 'income' as const },
+    ...(weekPrepaidSp > 0 ? [{ label: 'Prepaid Settlements', amount: weekPrepaidSp, type: 'income' as const }] : []),
     ...(enabledItems.founderCut !== false && founderCut > 0 ? [{ label: `Founder Cut (${founderCutPct}%)`, amount: -founderCut, type: 'deduction' as const }] : []),
     ...(enabledItems.inventoryNeeds !== false && inventoryNeeds > 0 ? [{ label: 'Inventory Restock', amount: -inventoryNeeds, type: 'deduction' as const }] : []),
     ...(enabledItems.baselines !== false ? baselineItems.map((b) => ({ label: b.label, amount: -b.amount, type: 'deduction' as const })) : []),
@@ -1018,8 +1039,17 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     projectedDeposit += Math.round(amount * (rate / 100));
   }
 
-  const founderCut = enabledItems.founderCut !== false ? Math.round(projectedDeposit * (founderCutPct / 100)) : 0;
-  let remaining = projectedDeposit - founderCut;
+  // Prepaid settlements received this week (actual cash in bank)
+  let weekPrepaid = 0;
+  for (const entry of allDailyEntries) {
+    if (entry.date >= weekStartStr && entry.date <= weekEndStr) {
+      weekPrepaid += Number(entry.prepaidSettlement) || 0;
+    }
+  }
+
+  const totalCashIn = projectedDeposit + weekPrepaid;
+  const founderCut = enabledItems.founderCut !== false ? Math.round(totalCashIn * (founderCutPct / 100)) : 0;
+  let remaining = totalCashIn - founderCut;
 
   // Inventory needs
   const spBrandNames = Object.keys(spBrandBreakdown);
@@ -1060,7 +1090,8 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   }
 
   const breakdown = [
-    { label: 'Projected Bank Deposit', amount: projectedDeposit, type: 'income' as const },
+    { label: 'COD Projected Deposit', amount: projectedDeposit, type: 'income' as const },
+    ...(weekPrepaid > 0 ? [{ label: 'Prepaid Settlements', amount: weekPrepaid, type: 'income' as const }] : []),
     ...(enabledItems.founderCut !== false && founderCut > 0 ? [{ label: `Founder Cut (${founderCutPct}%)`, amount: -founderCut, type: 'deduction' as const }] : []),
     ...(enabledItems.inventoryNeeds !== false && inventoryNeeds > 0 ? [{ label: 'Inventory Restock', amount: -inventoryNeeds, type: 'deduction' as const }] : []),
     ...(enabledItems.baselines !== false ? baselineItems.map((b) => ({ label: b.label, amount: -b.amount, type: 'deduction' as const })) : []),
@@ -1087,6 +1118,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
       weekLabel: getWeekLabel(weekStart),
       weekStart: weekStartStr, weekEnd: weekEndStr,
       codRevenue: spCodRevenue, projectedDeposit,
+      weekPrepaid, totalCashIn,
       founderCut, founderCutPct, inventoryNeeds,
       baselinesDue, weekExpenses,
       spendingPower: Math.max(remaining, 0),
