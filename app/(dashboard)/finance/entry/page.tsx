@@ -369,7 +369,6 @@ export default function FinanceEntryPage() {
         <div className="flex items-center gap-2 px-4 py-3 border-b border-violet-500/15">
           <CreditCard className="h-4 w-4 text-violet-400" />
           <h2 className="text-sm font-semibold text-foreground">Prepaid Settlement</h2>
-          <span className="ml-auto text-[10px] text-muted-foreground/60">Money already received in bank today</span>
         </div>
         <div className="p-4">
           <div className="flex items-end gap-4">

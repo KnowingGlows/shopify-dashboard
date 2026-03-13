@@ -90,6 +90,22 @@ interface FinanceSummary {
   monthlyBaselines: Baseline[];
 }
 
+// ── COD settlement date logic ────────────────────────────────────────────────
+// Friday collections → Monday deposit, Sat+Sun → Tuesday deposit (combined)
+function getBankDepositDate(collectionDateStr: string): string {
+  const d = new Date(collectionDateStr + 'T00:00:00');
+  const day = d.getDay(); // 0=Sun,1=Mon,...,5=Fri,6=Sat
+  if (day === 5) d.setDate(d.getDate() + 3); // Fri → Mon
+  else if (day === 6) d.setDate(d.getDate() + 3); // Sat → Tue
+  else if (day === 0) d.setDate(d.getDate() + 2); // Sun → Tue
+  return d.toISOString().split('T')[0];
+}
+
+function fmtMonthDay(dateStr: string): string {
+  const [, m, day] = dateStr.split('-');
+  return `${m}/${day}`;
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function FinancePage() {
@@ -180,7 +196,7 @@ export default function FinancePage() {
       const data = dailyOutflows[dateStr];
       days.push({
         date: dateStr,
-        label: dateStr.slice(-2),
+        label: fmtMonthDay(dateStr),
         // total due = expenses + unpaid baselines only (paid ones don't need paying)
         total: (data?.expenses ?? 0) + (data?.unpaidBaselines ?? 0),
         expenses: data?.expenses ?? 0,
@@ -212,23 +228,29 @@ export default function FinancePage() {
   const currentWeek = codWeeks[0];
   const totalCODProjected = codWeeks.reduce((s, w) => s + w.projectedAmount, 0);
 
-  // Past 7 days bar chart — show projected bank deposit per day
-  const last7Entries = (d.dailyEntries ?? [])
+  // Rolling 14-day inflow — map collection dates to bank deposit dates (Fri→Mon, Sat+Sun→Tue)
+  const last14Entries = (d.dailyEntries ?? [])
     .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-7);
+    .slice(-14);
 
-  // Compute projected deposit per day
-  const last7Deposits = last7Entries.map((entry) => {
+  const depositByBankDate: Record<string, number> = {};
+  for (const entry of last14Entries) {
+    const bankDate = getBankDepositDate(entry.date);
     const codByBrand = entry.codSalesByBrand ?? {};
     let deposit = 0;
     for (const [brand, amount] of Object.entries(codByBrand)) {
       const rate = deliveryRates[brand] ?? 65;
       deposit += Math.round(Number(amount) * (rate / 100));
     }
-    return { date: entry.date, deposit };
-  });
+    depositByBankDate[bankDate] = (depositByBankDate[bankDate] ?? 0) + deposit;
+  }
+  const last14Deposits = Object.entries(depositByBankDate)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, deposit]) => ({ date, deposit, label: fmtMonthDay(date) }));
 
-  const maxDeposit = Math.max(...last7Deposits.map((e) => e.deposit), 1);
+  const inflow14Start = last14Deposits[0]?.date ?? '';
+  const inflow14End = last14Deposits[last14Deposits.length - 1]?.date ?? '';
+
   const totalOutflow14d = outflowDays.reduce((s, od) => s + od.total, 0);
 
   return (
@@ -337,7 +359,7 @@ export default function FinancePage() {
         );
       })()}
 
-      {/* ═══ COD Cash-In — Hero Card ═══ */}
+      {/* ═══ Total Cash-In — Hero Card ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         {currentWeek && currentWeek.codRevenue > 0 ? (
           <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card overflow-hidden">
@@ -347,10 +369,10 @@ export default function FinancePage() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <BanknoteIcon className="h-5 w-5 text-emerald-400" />
-                    <h2 className="text-base font-semibold text-foreground">COD Cash-In</h2>
+                    <h2 className="text-base font-semibold text-foreground">Total Cash-In</h2>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {currentWeek.startDate} <ArrowRight className="inline h-2.5 w-2.5" /> {currentWeek.endDate}
+                    {inflow14Start ? <>{fmtMonthDay(inflow14Start)} <ArrowRight className="inline h-2.5 w-2.5" /> {fmtMonthDay(inflow14End)}</> : 'Last 14 days'}
                   </p>
                 </div>
                 <div className="text-right">
@@ -361,24 +383,38 @@ export default function FinancePage() {
                 </div>
               </div>
 
-              {/* 7-day projected deposits chart */}
+              {/* 14-day rolling deposits chart — collection dates mapped to bank deposit dates */}
               <div>
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-3">Last 7 Days — Projected Bank Deposits</p>
-                {last7Deposits.length > 0 ? (
-                  <div className="h-36">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-3">14 Days — Bank Deposit Dates (Fri→Mon · Sat+Sun→Tue)</p>
+                {last14Deposits.length > 0 ? (
+                  <div className="h-40">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={last7Deposits.map((e) => ({ ...e, label: e.date.slice(-2) }))} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                      <AreaChart data={last14Deposits} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                         <defs>
                           <linearGradient id="depositGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0.03} />
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
                           </linearGradient>
                         </defs>
-                        <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground) / 0.5)' }} axisLine={false} tickLine={false} />
+                        <XAxis
+                          dataKey="label"
+                          tick={({ x, y, payload }) => (
+                            <text
+                              x={x as number} y={(y as number) + 10}
+                              textAnchor="middle"
+                              fontSize={9}
+                              fill="hsl(var(--muted-foreground) / 0.55)"
+                            >
+                              {payload.value}
+                            </text>
+                          )}
+                          axisLine={false}
+                          tickLine={false}
+                        />
                         <Tooltip
                           content={({ active, payload }) => active && payload?.length ? (
                             <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
-                              {formatINR(payload[0].value as number)}
+                              <span className="text-muted-foreground text-[10px] mr-1.5">Bank deposit</span>{formatINR(payload[0].value as number)}
                             </div>
                           ) : null}
                         />
@@ -387,7 +423,7 @@ export default function FinancePage() {
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <div className="h-36 flex items-center justify-center text-[11px] text-muted-foreground/40">No data yet</div>
+                  <div className="h-40 flex items-center justify-center text-[11px] text-muted-foreground/40">No data yet</div>
                 )}
               </div>
             </div>
@@ -536,9 +572,9 @@ export default function FinancePage() {
                           <text
                             x={x as number} y={(y as number) + 10}
                             textAnchor="middle"
-                            fontSize={8}
-                            fill={payload.value === todayStr.slice(-2) ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground) / 0.4)'}
-                            fontWeight={payload.value === todayStr.slice(-2) ? 700 : 400}
+                            fontSize={9}
+                            fill={payload.value === fmtMonthDay(todayStr) ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground) / 0.55)'}
+                            fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 400}
                           >
                             {payload.value}
                           </text>
