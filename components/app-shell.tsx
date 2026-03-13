@@ -15,6 +15,7 @@ import { OrbytLogo } from './orbyt-logo';
 import { useAuth } from './auth-provider';
 import { PendingUsersNotification } from './pending-users';
 import { NotificationCenter } from './notifications';
+import { TeamChat } from './team-chat';
 import { RestrictedPage } from './restricted-page';
 
 type NavItem = {
@@ -125,6 +126,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
           <p className="text-sm font-semibold text-foreground">Orbit</p>
         </motion.div>
         <div className="flex items-center gap-1">
+          <TeamChat />
           <NotificationCenter />
           <PendingUsersNotification />
           {showClose && (
@@ -235,7 +237,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Menu className="h-5 w-5" />
             </button>
             <span className="text-xs font-medium text-muted-foreground">{activeItem.label}</span>
-            <NotificationCenter />
+            <div className="flex items-center gap-1">
+              <TeamChat />
+              <NotificationCenter />
+            </div>
           </div>
           <AnimatePresence mode="wait">
             <motion.div
