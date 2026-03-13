@@ -228,28 +228,36 @@ export default function FinancePage() {
   const currentWeek = codWeeks[0];
   const totalCODProjected = codWeeks.reduce((s, w) => s + w.projectedAmount, 0);
 
-  // Rolling 14-day inflow — map collection dates to bank deposit dates (Fri→Mon, Sat+Sun→Tue)
-  const last14Entries = (d.dailyEntries ?? [])
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-14);
-
-  const depositByBankDate: Record<string, number> = {};
-  for (const entry of last14Entries) {
-    const bankDate = getBankDepositDate(entry.date);
+  // Rolling 14-day inflow — fixed 14-point grid (one per day), labeled with bank deposit date
+  // Sat+Sun amounts are shown on their own day but labeled as Tue so the chart stays evenly spaced
+  const depositByCollectionDate: Record<string, number> = {};
+  for (const entry of (d.dailyEntries ?? [])) {
     const codByBrand = entry.codSalesByBrand ?? {};
     let deposit = 0;
     for (const [brand, amount] of Object.entries(codByBrand)) {
       const rate = deliveryRates[brand] ?? 65;
       deposit += Math.round(Number(amount) * (rate / 100));
     }
-    depositByBankDate[bankDate] = (depositByBankDate[bankDate] ?? 0) + deposit;
+    if (deposit > 0) depositByCollectionDate[entry.date] = deposit;
   }
-  const last14Deposits = Object.entries(depositByBankDate)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, deposit]) => ({ date, deposit, label: fmtMonthDay(date) }));
 
-  const inflow14Start = last14Deposits[0]?.date ?? '';
-  const inflow14End = last14Deposits[last14Deposits.length - 1]?.date ?? '';
+  // Build fixed 14-point grid anchored to today
+  const inflowGridStart = new Date(todayStr + 'T00:00:00');
+  inflowGridStart.setDate(inflowGridStart.getDate() - 13);
+  const last14Deposits = Array.from({ length: 14 }, (_, i) => {
+    const dt = new Date(inflowGridStart);
+    dt.setDate(inflowGridStart.getDate() + i);
+    const collectionDate = dt.toISOString().split('T')[0];
+    const bankDate = getBankDepositDate(collectionDate);
+    return {
+      date: collectionDate,
+      deposit: depositByCollectionDate[collectionDate] ?? 0,
+      label: fmtMonthDay(bankDate),
+    };
+  });
+
+  const inflow14Start = last14Deposits[0]?.label ?? '';
+  const inflow14End = last14Deposits[last14Deposits.length - 1]?.label ?? '';
 
   const totalOutflow14d = outflowDays.reduce((s, od) => s + od.total, 0);
 
@@ -372,7 +380,7 @@ export default function FinancePage() {
                     <h2 className="text-base font-semibold text-foreground">Total Cash-In</h2>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {inflow14Start ? <>{fmtMonthDay(inflow14Start)} <ArrowRight className="inline h-2.5 w-2.5" /> {fmtMonthDay(inflow14End)}</> : 'Last 14 days'}
+                    {inflow14Start ? <>{inflow14Start} <ArrowRight className="inline h-2.5 w-2.5" /> {inflow14End}</> : 'Last 14 days'}
                   </p>
                 </div>
                 <div className="text-right">
@@ -387,9 +395,9 @@ export default function FinancePage() {
               <div>
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-3">14 Days — Bank Deposit Dates (Fri→Mon · Sat+Sun→Tue)</p>
                 {last14Deposits.length > 0 ? (
-                  <div className="h-40">
+                  <div className="h-48">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={last14Deposits} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                      <AreaChart data={last14Deposits} margin={{ top: 4, right: 4, left: 4, bottom: 20 }}>
                         <defs>
                           <linearGradient id="depositGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
@@ -400,7 +408,7 @@ export default function FinancePage() {
                           dataKey="label"
                           tick={({ x, y, payload }) => (
                             <text
-                              x={x as number} y={(y as number) + 10}
+                              x={x as number} y={(y as number) + 14}
                               textAnchor="middle"
                               fontSize={9}
                               fill="hsl(var(--muted-foreground) / 0.55)"
@@ -549,9 +557,9 @@ export default function FinancePage() {
                     Baselines →
                   </Link>
                 </div>
-                <div className="h-40">
+                <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={outflowDays} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                    <AreaChart data={outflowDays} margin={{ top: 4, right: 4, left: 4, bottom: 20 }}>
                       <defs>
                         <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
@@ -570,7 +578,7 @@ export default function FinancePage() {
                         dataKey="label"
                         tick={({ x, y, payload }) => (
                           <text
-                            x={x as number} y={(y as number) + 10}
+                            x={x as number} y={(y as number) + 14}
                             textAnchor="middle"
                             fontSize={9}
                             fill={payload.value === fmtMonthDay(todayStr) ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground) / 0.55)'}
