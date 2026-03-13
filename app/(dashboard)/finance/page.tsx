@@ -411,7 +411,7 @@ export default function FinancePage() {
                               x={x as number} y={(y as number) + 14}
                               textAnchor="middle"
                               fontSize={9}
-                              fill="hsl(var(--muted-foreground) / 0.55)"
+                              fill="#6b7280"
                             >
                               {payload.value}
                             </text>
@@ -581,7 +581,7 @@ export default function FinancePage() {
                             x={x as number} y={(y as number) + 14}
                             textAnchor="middle"
                             fontSize={9}
-                            fill={payload.value === fmtMonthDay(todayStr) ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground) / 0.55)'}
+                            fill={payload.value === fmtMonthDay(todayStr) ? '#a78bfa' : '#6b7280'}
                             fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 400}
                           >
                             {payload.value}
