@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
+import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -146,18 +147,23 @@ export default function FinancePage() {
   const todayStr = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()), []);
 
   // Build daily outflow map (expenses + baselines by date)
+  // Shows ALL baselines (paid and unpaid) in chart, differentiated visually
   const dailyOutflows = useMemo(() => {
-    const map: Record<string, { expenses: number; baselines: number; items: string[] }> = {};
+    const map: Record<string, { expenses: number; unpaidBaselines: number; paidBaselines: number; items: string[] }> = {};
     for (const exp of expenses) {
-      if (!map[exp.date]) map[exp.date] = { expenses: 0, baselines: 0, items: [] };
+      if (!map[exp.date]) map[exp.date] = { expenses: 0, unpaidBaselines: 0, paidBaselines: 0, items: [] };
       map[exp.date].expenses += exp.amount;
       map[exp.date].items.push(exp.description || exp.category);
     }
     for (const b of baselines) {
-      if (b.type === 'monthly' && b.dueDate && !b.isPaid) {
-        if (!map[b.dueDate]) map[b.dueDate] = { expenses: 0, baselines: 0, items: [] };
-        map[b.dueDate].baselines += b.amount;
-        map[b.dueDate].items.push(b.label);
+      if (b.type === 'monthly' && b.dueDate) {
+        if (!map[b.dueDate]) map[b.dueDate] = { expenses: 0, unpaidBaselines: 0, paidBaselines: 0, items: [] };
+        if (b.isPaid) {
+          map[b.dueDate].paidBaselines += b.amount;
+        } else {
+          map[b.dueDate].unpaidBaselines += b.amount;
+        }
+        map[b.dueDate].items.push(b.label + (b.isPaid ? ' ✓' : ''));
       }
     }
     return map;
@@ -165,7 +171,7 @@ export default function FinancePage() {
 
   // Build outflow chart data — next 14 days from today (must be before loading return)
   const outflowDays = useMemo(() => {
-    const days: Array<{ date: string; total: number; expenses: number; baselines: number }> = [];
+    const days: Array<{ date: string; label: string; total: number; expenses: number; unpaidBaselines: number; paidBaselines: number }> = [];
     const start = new Date(todayStr + 'T00:00:00');
     for (let i = 0; i < 14; i++) {
       const dt = new Date(start);
@@ -174,9 +180,12 @@ export default function FinancePage() {
       const data = dailyOutflows[dateStr];
       days.push({
         date: dateStr,
-        total: (data?.expenses ?? 0) + (data?.baselines ?? 0),
+        label: dateStr.slice(-2),
+        // total due = expenses + unpaid baselines only (paid ones don't need paying)
+        total: (data?.expenses ?? 0) + (data?.unpaidBaselines ?? 0),
         expenses: data?.expenses ?? 0,
-        baselines: data?.baselines ?? 0,
+        unpaidBaselines: data?.unpaidBaselines ?? 0,
+        paidBaselines: data?.paidBaselines ?? 0,
       });
     }
     return days;
@@ -220,7 +229,6 @@ export default function FinancePage() {
   });
 
   const maxDeposit = Math.max(...last7Deposits.map((e) => e.deposit), 1);
-  const maxOutflow = Math.max(...outflowDays.map((od) => od.total), 1);
   const totalOutflow14d = outflowDays.reduce((s, od) => s + od.total, 0);
 
   return (
@@ -356,32 +364,31 @@ export default function FinancePage() {
               {/* 7-day projected deposits chart */}
               <div>
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-3">Last 7 Days — Projected Bank Deposits</p>
-                <div className="h-36">
-                  <div className="flex items-end gap-2 h-full">
-                    {last7Deposits.length > 0 ? last7Deposits.map((entry) => {
-                      const barHeight = Math.max(Math.round((entry.deposit / maxDeposit) * 100), 4);
-                      const dayLabel = entry.date.slice(-2);
-                      return (
-                        <div key={entry.date} className="flex-1 h-full flex flex-col justify-end items-center">
-                          <div className="relative w-full group cursor-default" style={{ height: `${barHeight}%`, minHeight: '4px' }}>
-                            <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block whitespace-nowrap rounded-md bg-popover border border-border px-2 py-1 text-[10px] font-medium text-foreground shadow-lg z-10">
-                              {formatINR(entry.deposit)}
+                {last7Deposits.length > 0 ? (
+                  <div className="h-36">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={last7Deposits.map((e) => ({ ...e, label: e.date.slice(-2) }))} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="depositGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0.03} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground) / 0.5)' }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          content={({ active, payload }) => active && payload?.length ? (
+                            <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
+                              {formatINR(payload[0].value as number)}
                             </div>
-                            <motion.div
-                              initial={{ height: 0 }}
-                              animate={{ height: '100%' }}
-                              transition={{ duration: 0.6, ease: 'easeOut' }}
-                              className="w-full h-full rounded-t-md bg-emerald-500/30 border border-emerald-500/20 hover:bg-emerald-500/40 transition-colors"
-                            />
-                          </div>
-                          <span className="mt-1.5 text-[9px] text-muted-foreground/50 tabular-nums">{dayLabel}</span>
-                        </div>
-                      );
-                    }) : (
-                      <div className="flex-1 flex items-center justify-center text-[11px] text-muted-foreground/40">No data yet</div>
-                    )}
+                          ) : null}
+                        />
+                        <Area type="monotone" dataKey="deposit" stroke="#10b981" strokeWidth={1.5} fill="url(#depositGrad)" dot={false} activeDot={{ r: 3, fill: '#10b981' }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
-                </div>
+                ) : (
+                  <div className="h-36 flex items-center justify-center text-[11px] text-muted-foreground/40">No data yet</div>
+                )}
               </div>
             </div>
           </div>
@@ -490,11 +497,15 @@ export default function FinancePage() {
                     <span className="text-[9px] text-muted-foreground/60">Expenses</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <div className="h-2 w-2 rounded-sm bg-amber-500/40" />
-                    <span className="text-[9px] text-muted-foreground/60">Baselines</span>
+                    <div className="h-2 w-2 rounded-sm bg-amber-500/50" />
+                    <span className="text-[9px] text-muted-foreground/60">Baselines (unpaid)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-2 w-2 rounded-sm bg-amber-500/20 border border-amber-500/30" />
+                    <span className="text-[9px] text-muted-foreground/60">Baselines (paid ✓)</span>
                   </div>
                 </div>
-                <div className="flex gap-2 mt-2">
+                <div className="flex gap-2 mt-2 mb-4">
                   <Link href="/finance/expenditure" className="inline-flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[10px] font-medium text-red-400 transition hover:bg-red-500/10 hover:border-red-500/30">
                     Expenditure →
                   </Link>
@@ -502,43 +513,60 @@ export default function FinancePage() {
                     Baselines →
                   </Link>
                 </div>
-                <div className="h-32">
-                  <div className="flex items-end gap-1 h-full">
-                    {outflowDays.map((day) => {
-                      const barHeight = day.total > 0 ? Math.max(Math.round((day.total / maxOutflow) * 100), 6) : 0;
-                      const expPct = day.total > 0 ? (day.expenses / day.total) * 100 : 0;
-                      const dayNum = day.date.slice(-2);
-                      const isToday = day.date === todayStr;
-                      return (
-                        <div key={day.date} className="flex-1 h-full flex flex-col justify-end items-center">
-                          {barHeight > 0 && (
-                            <div className="relative w-full group cursor-default" style={{ height: `${barHeight}%`, minHeight: '6px' }}>
-                              <div className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block whitespace-nowrap rounded-md bg-popover border border-border px-2 py-1 text-[10px] font-medium text-foreground shadow-lg z-10">
-                                {day.expenses > 0 && day.baselines > 0
-                                  ? `${formatINR(day.expenses)} exp + ${formatINR(day.baselines)} base`
-                                  : formatINR(day.total)
-                                }
-                              </div>
-                              <motion.div
-                                initial={{ height: 0 }}
-                                animate={{ height: '100%' }}
-                                transition={{ duration: 0.6, ease: 'easeOut' }}
-                                className="w-full h-full rounded-t-md overflow-hidden flex flex-col"
-                              >
-                                {day.expenses > 0 && (
-                                  <div className="bg-red-500/30 border-x border-t border-red-500/20 hover:bg-red-500/40 transition-colors" style={{ flex: expPct }} />
-                                )}
-                                {day.baselines > 0 && (
-                                  <div className="bg-amber-500/30 border-x border-amber-500/20 hover:bg-amber-500/40 transition-colors" style={{ flex: 100 - expPct }} />
-                                )}
-                              </motion.div>
+                <div className="h-40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={outflowDays} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+                        </linearGradient>
+                        <linearGradient id="unpaidBaseGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.03} />
+                        </linearGradient>
+                        <linearGradient id="paidBaseGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15} />
+                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.01} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="label"
+                        tick={({ x, y, payload }) => (
+                          <text
+                            x={x as number} y={(y as number) + 10}
+                            textAnchor="middle"
+                            fontSize={8}
+                            fill={payload.value === todayStr.slice(-2) ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground) / 0.4)'}
+                            fontWeight={payload.value === todayStr.slice(-2) ? 700 : 400}
+                          >
+                            {payload.value}
+                          </text>
+                        )}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          const exp = (payload.find((p) => p.dataKey === 'expenses')?.value as number) ?? 0;
+                          const unpaid = (payload.find((p) => p.dataKey === 'unpaidBaselines')?.value as number) ?? 0;
+                          const paid = (payload.find((p) => p.dataKey === 'paidBaselines')?.value as number) ?? 0;
+                          if (exp + unpaid + paid === 0) return null;
+                          return (
+                            <div className="rounded-md border border-border bg-popover px-2.5 py-2 text-[10px] shadow-lg space-y-0.5">
+                              {exp > 0 && <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-red-400 inline-block" /><span className="text-muted-foreground">Expenses</span><span className="font-semibold text-foreground ml-auto pl-3">{formatINR(exp)}</span></div>}
+                              {unpaid > 0 && <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-amber-400 inline-block" /><span className="text-muted-foreground">Due</span><span className="font-semibold text-foreground ml-auto pl-3">{formatINR(unpaid)}</span></div>}
+                              {paid > 0 && <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-amber-400/40 inline-block" /><span className="text-muted-foreground">Paid ✓</span><span className="font-semibold text-foreground ml-auto pl-3">{formatINR(paid)}</span></div>}
                             </div>
-                          )}
-                          <span className={`mt-1.5 text-[8px] tabular-nums ${isToday ? 'text-primary font-bold' : 'text-muted-foreground/40'}`}>{dayNum}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          );
+                        }}
+                      />
+                      <Area type="monotone" dataKey="paidBaselines" stroke="#f59e0b" strokeWidth={1} strokeDasharray="3 3" fill="url(#paidBaseGrad)" dot={false} stackId="stack" />
+                      <Area type="monotone" dataKey="unpaidBaselines" stroke="#f59e0b" strokeWidth={1.5} fill="url(#unpaidBaseGrad)" dot={false} stackId="stack" />
+                      <Area type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={1.5} fill="url(#expGrad)" dot={false} stackId="stack" />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             </div>
