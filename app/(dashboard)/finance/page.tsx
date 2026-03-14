@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
-  RefreshCw, Loader2, DollarSign, Wallet, Plus,
+  RefreshCw, Loader2, DollarSign, Plus,
   Calendar, TrendingUp, TrendingDown,
   ArrowDown, BanknoteIcon,
 } from 'lucide-react';
@@ -72,8 +72,11 @@ export default function ActualFinancePage() {
   const [dateRange, setDateRange] = useState<'14d' | '30d' | '7d' | '90d'>('14d');
 
   const yesterdayStr = useMemo(() => {
-    const d = new Date(Date.now() - 86400000);
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+    // Get today in IST, then subtract one day (avoids timezone edge cases)
+    const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+    const d = new Date(todayIST + 'T00:00:00');
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
   }, []);
 
   const fetchAll = useCallback(async () => {
@@ -198,7 +201,6 @@ export default function ActualFinancePage() {
   // Totals
   const totalMoneyIn = chartData.reduce((s, d) => s + d.moneyIn, 0);
   const totalMoneyOut = chartData.reduce((s, d) => s + d.moneyOut, 0);
-  const netProfit = totalMoneyIn - totalMoneyOut;
   const cashReserve = chartData.length > 0 ? chartData[chartData.length - 1].cashReserve : 0;
 
   if (loading) {
@@ -260,15 +262,12 @@ export default function ActualFinancePage() {
       {(() => {
         const rangeLabel = dateRange === '7d' ? '7d' : dateRange === '14d' ? '14d' : dateRange === '90d' ? '90d' : '30d';
         return (
-          <StaggerContainer className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StaggerContainer className="grid grid-cols-3 gap-3">
             <StaggerItem>
               <MetricCard label={`Money In (${rangeLabel})`} value={totalMoneyIn} icon={<TrendingUp className="h-4 w-4 text-emerald-400" />} color="text-emerald-400" />
             </StaggerItem>
             <StaggerItem>
               <MetricCard label={`Money Out (${rangeLabel})`} value={totalMoneyOut} icon={<ArrowDown className="h-4 w-4 text-red-400" />} color="text-red-400" />
-            </StaggerItem>
-            <StaggerItem>
-              <MetricCard label={`Net Profit (${rangeLabel})`} value={netProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
             </StaggerItem>
             <StaggerItem>
               <MetricCard label="Cash Reserve" value={cashReserve} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color={cashReserve >= 0 ? 'text-emerald-400' : 'text-red-400'} />
@@ -370,7 +369,7 @@ export default function ActualFinancePage() {
                   <Link href="/finance/expenditure" className="rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1 text-[9px] font-medium text-red-400 transition hover:bg-red-500/10">
                     Expenditure
                   </Link>
-                  <Link href="/finance/recurring" className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1 text-[9px] font-medium text-amber-400 transition hover:bg-amber-500/10">
+                  <Link href="/finance/expenditure" className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1 text-[9px] font-medium text-amber-400 transition hover:bg-amber-500/10">
                     Recurring
                   </Link>
                 </div>

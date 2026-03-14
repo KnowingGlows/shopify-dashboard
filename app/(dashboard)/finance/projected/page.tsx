@@ -205,7 +205,7 @@ export default function ProjectedFinancePage() {
   const currentWeek = codWeeks[0];
   const totalCODProjected = codWeeks.reduce((s, w) => s + w.projectedAmount, 0);
 
-  // Forward-looking inflow — COD deposits + missed income
+  // Forward-looking inflow — COD deposits only (prepaid/income handled in Actual Finance)
   const inflowByDate: Record<string, number> = {};
   for (const entry of (d.dailyEntries ?? [])) {
     const codByBrand = entry.codSalesByBrand ?? {};
@@ -216,23 +216,12 @@ export default function ProjectedFinancePage() {
     }
     if (deposit > 0) inflowByDate[entry.date] = (inflowByDate[entry.date] ?? 0) + deposit;
   }
-  for (const inc of income) {
-    const incDate = inc.date ?? '';
-    if (inc.endDate) {
-      const start = new Date(incDate + 'T00:00:00');
-      const end = new Date(inc.endDate + 'T00:00:00');
-      const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
-      const dailyAmount = Math.round(inc.amount / rangeDays);
-      for (let j = 0; j < rangeDays; j++) {
-        const dt = new Date(start);
-        dt.setDate(start.getDate() + j);
-        const ds = dt.toISOString().split('T')[0];
-        inflowByDate[ds] = (inflowByDate[ds] ?? 0) + dailyAmount;
-      }
-    } else {
-      inflowByDate[incDate] = (inflowByDate[incDate] ?? 0) + inc.amount;
-    }
-  }
+
+  // Total COD collected (raw COD revenue before delivery rate)
+  const totalCODCollected = (d.dailyEntries ?? []).reduce((s, e) => {
+    const cod = e.codSalesByBrand ?? {};
+    return s + Object.values(cod).reduce((a, v) => a + Number(v), 0);
+  }, 0);
 
   // Build inflow chart — today FORWARD for chartDays
   const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
@@ -248,19 +237,6 @@ export default function ProjectedFinancePage() {
 
   const totalOutflow = outflowDays.reduce((s, od) => s + od.total, 0);
   const totalInflow = inflowChartData.reduce((s, d) => s + d.deposit, 0);
-
-  // Income in chart range
-  const chartEndDate = (() => {
-    const dt = new Date(todayStr + 'T00:00:00');
-    dt.setDate(dt.getDate() + chartDays - 1);
-    return dt.toISOString().split('T')[0];
-  })();
-  const totalIncomeInRange = income.reduce((s, inc) => {
-    const incDate = inc.date ?? '';
-    const incEnd = inc.endDate ?? incDate;
-    if (incDate <= chartEndDate && incEnd >= todayStr) return s + inc.amount;
-    return s;
-  }, 0);
 
   // P&L Net Profit = grossProfit - (adSpend * 1.14) — the formula-based approach
   const pnlNetProfit = d.totalGrossProfit - Math.round(d.totalAdSpend * 1.14);
@@ -321,7 +297,7 @@ export default function ProjectedFinancePage() {
               <MetricCard label={`P&L Net Profit (${rangeLabel})`} value={pnlNetProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={pnlNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
             </StaggerItem>
             <StaggerItem>
-              <MetricCard label={`Total Sales (${rangeLabel})`} value={d.totalSales} icon={<DollarSign className="h-4 w-4 text-emerald-400" />} color="text-foreground" />
+              <MetricCard label={`COD Collected (${rangeLabel})`} value={totalCODCollected} icon={<DollarSign className="h-4 w-4 text-emerald-400" />} color="text-foreground" />
             </StaggerItem>
           </StaggerContainer>
         );
@@ -481,20 +457,12 @@ export default function ProjectedFinancePage() {
                     <ArrowDown className="h-5 w-5 text-red-400" />
                     <h2 className="text-base font-semibold text-foreground">Projected Cash Outflow</h2>
                   </div>
-                  {totalIncomeInRange > 0 && (
-                    <p className="text-[10px] text-emerald-400/70 mt-0.5">
-                      +{formatINR(totalIncomeInRange)} income offset
-                    </p>
-                  )}
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Net Due</p>
-                  <p className={`text-3xl font-bold tabular-nums ${totalOutflow - totalIncomeInRange > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                    <AnimatedNumber value={Math.max(0, totalOutflow - totalIncomeInRange)} formatter={formatINR} />
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Due</p>
+                  <p className="text-3xl font-bold tabular-nums text-red-400">
+                    <AnimatedNumber value={totalOutflow} formatter={formatINR} />
                   </p>
-                  {totalIncomeInRange > 0 && (
-                    <p className="text-[10px] text-muted-foreground/50 mt-0.5 line-through">{formatINR(totalOutflow)}</p>
-                  )}
                 </div>
               </div>
 

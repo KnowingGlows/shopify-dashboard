@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   ArrowLeft, Plus, Trash2, ExternalLink, Loader2, Check, AlertCircle,
-  X, Megaphone, ChevronDown, Target,
+  X, Megaphone, ChevronDown, Target, Clock, Flame, Calendar,
 } from 'lucide-react';
 import { AdsTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
@@ -26,12 +26,22 @@ const TYPE_CONFIG: Record<string, { color: string; bg: string }> = {
   Story: { color: 'text-pink-400', bg: 'bg-pink-500/10 border-pink-500/30' },
 };
 
-const RESULT_CONFIG: Record<string, { color: string; bg: string }> = {
-  Winner: { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' },
-  Loser: { color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30' },
-  Testing: { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' },
-  Scaled: { color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30' },
+const RESULT_CONFIG: Record<string, { color: string; bg: string; icon: string }> = {
+  Winner: { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', icon: '🏆' },
+  Loser: { color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30', icon: '✕' },
+  Testing: { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', icon: '⏳' },
+  Scaled: { color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30', icon: '🚀' },
 };
+
+function getBatchTimeline(createdAt: string) {
+  const now = Date.now();
+  const created = new Date(createdAt).getTime();
+  const daysSince = Math.floor((now - created) / 86400000);
+  const progress = Math.min(daysSince / 7, 1);
+  const isComplete = daysSince >= 7;
+  const nextBatchDate = new Date(created + 7 * 86400000);
+  return { daysSince, progress, isComplete, nextBatchDate };
+}
 
 export default function ProductAdsPage() {
   const params = useParams();
@@ -67,6 +77,18 @@ export default function ProductAdsPage() {
   }, [productName]);
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
+  // Cmd+N shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        setShowForm(true);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const resetForm = () => {
     setFormBatch(''); setFormFolder(''); setFormType('');
@@ -123,8 +145,7 @@ export default function ProductAdsPage() {
     try {
       const res = await fetch('/api/ads-tracker', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       if (!res.ok) throw new Error();
-      const remaining = entries.filter((e) => e.id !== id);
-      setEntries(remaining);
+      setEntries((prev) => prev.filter((e) => e.id !== id));
     } catch { /* silently fail */ }
     finally { setDeletingIds((prev) => { const n = new Set(prev); n.delete(id); return n; }); }
   };
@@ -158,31 +179,38 @@ export default function ProductAdsPage() {
   const decided = winners + losers;
   const hitRate = decided > 0 ? Math.round((winners / decided) * 100) : 0;
 
+  // Next batch timeline from latest entry
+  const latestTimeline = useMemo(() => {
+    if (entries.length === 0) return null;
+    const sorted = [...entries].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return getBatchTimeline(sorted[0].createdAt);
+  }, [entries]);
+
   return (
-    <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
+    <PageTransition className="mx-auto max-w-7xl p-5 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <Link href="/ads-tracker" className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
+          <Link href="/ads-tracker" className="rounded-lg p-2 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-all">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
-            <h1 className="text-lg font-semibold text-foreground">{productName}</h1>
-            <p className="text-[11px] text-muted-foreground">{entries.length} batch{entries.length !== 1 ? 'es' : ''} · Ad performance tracking</p>
+            <h1 className="text-xl font-bold text-foreground">{productName}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{entries.length} batch{entries.length !== 1 ? 'es' : ''} · Ad performance</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={deleteProduct}
             disabled={deletingProduct}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[12px] font-medium text-red-400 transition hover:bg-red-500/10 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs font-medium text-red-400 transition hover:bg-red-500/10 disabled:opacity-50 active:scale-[0.97]"
           >
             {deletingProduct ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            Delete Product
+            Delete
           </button>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 active:scale-[0.97] shadow-lg shadow-primary/20"
           >
             {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
             {showForm ? 'Cancel' : 'New Batch'}
@@ -190,53 +218,97 @@ export default function ProductAdsPage() {
         </div>
       </div>
 
-      {/* Performance Stats */}
-      {entries.length > 0 && (
-        <StaggerContainer className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <StaggerItem>
-            <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Total Spend</p>
-              <p className="text-lg font-semibold text-amber-400 tabular-nums">{formatINR(totalSpend)}</p>
-            </div>
-          </StaggerItem>
-          <StaggerItem>
-            <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Avg ROAS</p>
-              <p className={`text-lg font-semibold tabular-nums ${avgRoas >= 2 ? 'text-emerald-400' : avgRoas >= 1 ? 'text-amber-400' : avgRoas > 0 ? 'text-red-400' : 'text-muted-foreground'}`}>
-                {avgRoas > 0 ? `${avgRoas.toFixed(2)}x` : '—'}
-              </p>
-            </div>
-          </StaggerItem>
-          <StaggerItem>
-            <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Hit Rate</p>
-              <div className="flex items-center gap-1.5">
-                <Target className="h-3.5 w-3.5 text-primary" />
-                <p className={`text-lg font-semibold ${hitRate >= 30 ? 'text-emerald-400' : hitRate > 0 ? 'text-amber-400' : 'text-muted-foreground'}`}>
-                  {decided > 0 ? `${hitRate}%` : '—'}
+      {/* Next Batch Timeline Card */}
+      {latestTimeline && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`rounded-xl border p-4 ${
+            latestTimeline.isComplete
+              ? 'border-amber-500/30 bg-gradient-to-r from-amber-500/5 to-transparent'
+              : 'border-border bg-card/80'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              {latestTimeline.isComplete ? (
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15">
+                  <Flame className="h-4 w-4 text-amber-400" />
+                </div>
+              ) : (
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                  <Clock className="h-4 w-4 text-primary" />
+                </div>
+              )}
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {latestTimeline.isComplete ? 'Next batch is due' : 'Testing in progress'}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Latest batch launched {latestTimeline.daysSince === 0 ? 'today' : latestTimeline.daysSince === 1 ? 'yesterday' : `${latestTimeline.daysSince} days ago`}
                 </p>
               </div>
             </div>
-          </StaggerItem>
-          <StaggerItem>
-            <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Results</p>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {winners > 0 && <span className="text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">{winners}W</span>}
-                {losers > 0 && <span className="text-[11px] font-medium text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">{losers}L</span>}
-                {testing > 0 && <span className="text-[11px] font-medium text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">{testing}T</span>}
-                {scaled > 0 && <span className="text-[11px] font-medium text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">{scaled}S</span>}
-                {decided === 0 && testing === 0 && scaled === 0 && <span className="text-muted-foreground text-[13px]">—</span>}
+            <div className="text-right">
+              {latestTimeline.isComplete ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-amber-400">
+                    {latestTimeline.daysSince - 7}d overdue
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Calendar className="h-3 w-3" />
+                  <span className="text-[11px]">
+                    Due {latestTimeline.nextBatchDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 7-day progress */}
+          <div className="flex items-center gap-1.5">
+            {Array.from({ length: 7 }, (_, i) => {
+              const filled = i < latestTimeline.daysSince;
+              const isCurrent = i === Math.min(latestTimeline.daysSince, 6);
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    className={`h-2 w-full rounded-full transition-all ${
+                      filled
+                        ? latestTimeline.isComplete ? 'bg-amber-400' : 'bg-primary'
+                        : isCurrent ? 'bg-primary/40' : 'bg-border/50'
+                    }`}
+                  />
+                  <span className="text-[8px] text-muted-foreground/50">D{i + 1}</span>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Performance Stats */}
+      {entries.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[
+            { label: 'Total Spend', value: formatINR(totalSpend), color: 'text-amber-400' },
+            { label: 'Avg ROAS', value: avgRoas > 0 ? `${avgRoas.toFixed(2)}x` : '—', color: avgRoas >= 2 ? 'text-emerald-400' : avgRoas >= 1 ? 'text-amber-400' : avgRoas > 0 ? 'text-red-400' : 'text-muted-foreground' },
+            { label: 'Hit Rate', value: decided > 0 ? `${hitRate}%` : '—', color: hitRate >= 30 ? 'text-emerald-400' : hitRate > 0 ? 'text-amber-400' : 'text-muted-foreground', icon: true },
+            { label: 'Winners', value: winners, color: 'text-emerald-400' },
+            { label: 'Losers', value: losers, color: losers > 0 ? 'text-red-400' : 'text-muted-foreground' },
+            { label: 'Testing', value: testing + scaled, color: (testing + scaled) > 0 ? 'text-amber-400' : 'text-muted-foreground' },
+          ].map((stat, i) => (
+            <div key={i} className="rounded-xl border border-border bg-card/80 px-4 py-3">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-1">{stat.label}</p>
+              <div className="flex items-center gap-1.5">
+                {stat.icon && decided > 0 && <Target className="h-3.5 w-3.5 text-primary/60" />}
+                <p className={`text-lg font-bold tabular-nums ${stat.color}`}>{stat.value}</p>
               </div>
             </div>
-          </StaggerItem>
-          <StaggerItem>
-            <div className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Batches</p>
-              <p className="text-lg font-semibold text-foreground">{entries.length}</p>
-            </div>
-          </StaggerItem>
-        </StaggerContainer>
+          ))}
+        </div>
       )}
 
       {/* Add Batch Form */}
@@ -248,7 +320,10 @@ export default function ProductAdsPage() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
                   <Megaphone className="h-4 w-4" />
                 </div>
-                <h2 className="text-sm font-semibold text-foreground">New Batch</h2>
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">New Batch</h2>
+                  <p className="text-[10px] text-muted-foreground">Launch a new creative batch for {productName}</p>
+                </div>
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <FormField label="Batch Name">
@@ -275,7 +350,7 @@ export default function ProductAdsPage() {
                 </FormField>
               </div>
               <div className="mt-4 flex items-center gap-3">
-                <button onClick={addBatch} disabled={adding} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-[13px] font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50">
+                <button onClick={addBatch} disabled={adding} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-[13px] font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50 active:scale-[0.97]">
                   {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                   Add Batch
                 </button>
@@ -293,58 +368,129 @@ export default function ProductAdsPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-xl border border-dashed border-border bg-card/50 py-16 text-center">
           <Megaphone className="mx-auto h-8 w-8 text-muted-foreground/30 mb-3" />
           <p className="text-sm text-muted-foreground">No batches yet</p>
-          <p className="text-[11px] text-muted-foreground/60 mt-1">Click &quot;New Batch&quot; to launch your first ad batch</p>
+          <p className="text-[11px] text-muted-foreground/60 mt-1">Press ⌘N to launch your first batch</p>
         </motion.div>
       ) : (
-        <StaggerContainer className="space-y-2">
+        <StaggerContainer className="space-y-3">
           {entries.map((entry, i) => {
             const typeCfg = TYPE_CONFIG[entry.creativeType];
             const resultCfg = RESULT_CONFIG[entry.creativeBatchResult];
             const isEditing = editingId === entry.id;
+            const timeline = getBatchTimeline(entry.createdAt);
 
             return (
               <StaggerItem key={entry.id}>
-                <motion.div layout className={`group rounded-xl border border-border bg-card transition-all hover:border-border/80 ${isEditing ? 'ring-1 ring-primary/20' : ''}`}>
-                  <div className="flex items-center gap-3 px-4 py-3">
+                <motion.div
+                  layout
+                  className={`group rounded-xl border bg-card transition-all ${
+                    isEditing ? 'border-primary/30 ring-1 ring-primary/10' : 'border-border hover:border-border/80'
+                  }`}
+                >
+                  {/* Main row */}
+                  <div className="flex items-center gap-3 px-4 py-3.5">
                     {/* Batch number */}
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-[11px] font-bold text-primary shrink-0">
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-xl text-[11px] font-bold shrink-0 ${
+                      entry.creativeBatchResult === 'Winner' ? 'bg-emerald-500/15 text-emerald-400' :
+                      entry.creativeBatchResult === 'Loser' ? 'bg-red-500/10 text-red-400' :
+                      entry.creativeBatchResult === 'Testing' ? 'bg-amber-500/10 text-amber-400' :
+                      'bg-primary/10 text-primary'
+                    }`}>
                       {entries.length - i}
                     </div>
 
                     <div className="flex-1 min-w-0">
                       {isEditing ? (
-                        <input type="text" value={entry.batchName} onChange={(e) => updateLocalField(entry.id, 'batchName', e.target.value)} onBlur={(e) => handleBlur(entry.id, 'batchName', e.target.value)} className="w-full bg-transparent text-[14px] font-medium text-foreground outline-none" autoFocus />
+                        <input type="text" value={entry.batchName} onChange={(e) => updateLocalField(entry.id, 'batchName', e.target.value)} onBlur={(e) => handleBlur(entry.id, 'batchName', e.target.value)} className="w-full bg-transparent text-sm font-semibold text-foreground outline-none" autoFocus />
                       ) : (
-                        <p className="text-[14px] font-medium text-foreground truncate">{entry.batchName || <span className="text-muted-foreground/40 italic">Untitled batch</span>}</p>
+                        <p className="text-sm font-semibold text-foreground truncate">{entry.batchName || <span className="text-muted-foreground/40 italic">Untitled batch</span>}</p>
                       )}
-                      <p className="text-[10px] text-muted-foreground/50">{new Date(entry.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-muted-foreground/50">
+                          {new Date(entry.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                        {/* Inline mini timeline */}
+                        <div className="flex items-center gap-0.5">
+                          {Array.from({ length: 7 }, (_, d) => (
+                            <div
+                              key={d}
+                              className={`h-1 w-2.5 rounded-full ${
+                                d < timeline.daysSince
+                                  ? timeline.isComplete ? 'bg-amber-400/70' : 'bg-primary/60'
+                                  : 'bg-border/40'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[9px] text-muted-foreground/40">
+                          {timeline.daysSince === 0 ? 'Today' : `D${Math.min(timeline.daysSince, 7)}${timeline.isComplete ? '+' : ''}`}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                       {entry.creativeType && typeCfg && (
-                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${typeCfg.bg} ${typeCfg.color}`}>{entry.creativeType}</span>
+                        <span className={`inline-flex items-center rounded-lg border px-2.5 py-0.5 text-[10px] font-semibold ${typeCfg.bg} ${typeCfg.color}`}>{entry.creativeType}</span>
                       )}
-                      {entry.dailyAdSpend > 0 && <span className="text-[12px] font-medium text-amber-400 tabular-nums">{formatINR(entry.dailyAdSpend)}/d</span>}
+                      {entry.dailyAdSpend > 0 && <span className="text-xs font-medium text-amber-400 tabular-nums">{formatINR(entry.dailyAdSpend)}/d</span>}
                       {entry.weeklyRoas > 0 && (
-                        <span className={`text-[12px] font-semibold tabular-nums ${entry.weeklyRoas >= 2 ? 'text-emerald-400' : entry.weeklyRoas >= 1 ? 'text-amber-400' : 'text-red-400'}`}>{entry.weeklyRoas.toFixed(2)}x</span>
+                        <span className={`text-xs font-bold tabular-nums ${entry.weeklyRoas >= 2 ? 'text-emerald-400' : entry.weeklyRoas >= 1 ? 'text-amber-400' : 'text-red-400'}`}>{entry.weeklyRoas.toFixed(2)}x</span>
                       )}
                       {entry.creativeBatchResult && resultCfg && (
-                        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${resultCfg.bg} ${resultCfg.color}`}>{entry.creativeBatchResult}</span>
+                        <span className={`inline-flex items-center rounded-lg border px-2.5 py-0.5 text-[10px] font-semibold ${resultCfg.bg} ${resultCfg.color}`}>{entry.creativeBatchResult}</span>
                       )}
                       <span className="w-4">{getStatusIcon(entry.id)}</span>
                       {entry.creativeFolderLink && (
                         <a href={entry.creativeFolderLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-primary transition"><ExternalLink className="h-3.5 w-3.5" /></a>
                       )}
-                      <button onClick={() => setEditingId(isEditing ? null : entry.id)} className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition">
+                      <button onClick={() => setEditingId(isEditing ? null : entry.id)} className="rounded-lg p-1.5 text-muted-foreground/40 hover:text-foreground hover:bg-accent/30 transition">
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
                       </button>
                     </div>
                   </div>
 
+                  {/* Expanded edit panel */}
                   <AnimatePresence>
                     {isEditing && (
                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                        <div className="border-t border-border px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        {/* Timeline detail */}
+                        <div className="border-t border-border/50 px-4 py-3 bg-accent/5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-3.5 w-3.5 text-muted-foreground/50" />
+                              <span className="text-[11px] text-muted-foreground">
+                                Launched {timeline.daysSince === 0 ? 'today' : timeline.daysSince === 1 ? 'yesterday' : `${timeline.daysSince} days ago`}
+                              </span>
+                            </div>
+                            {timeline.isComplete ? (
+                              <span className="text-[11px] font-semibold text-amber-400 flex items-center gap-1">
+                                <Flame className="h-3 w-3" />
+                                7-day cycle complete · next batch due
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground/60 flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                Due {timeline.nextBatchDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                <span className="text-muted-foreground/40">({7 - timeline.daysSince}d left)</span>
+                              </span>
+                            )}
+                          </div>
+                          {/* Progress bar */}
+                          <div className="flex items-center gap-1 mt-2">
+                            {Array.from({ length: 7 }, (_, d) => (
+                              <div key={d} className="flex-1 flex flex-col items-center gap-0.5">
+                                <div className={`h-1.5 w-full rounded-full ${
+                                  d < timeline.daysSince
+                                    ? timeline.isComplete ? 'bg-amber-400' : 'bg-primary'
+                                    : 'bg-border/40'
+                                }`} />
+                                <span className="text-[8px] text-muted-foreground/40">D{d + 1}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Edit fields */}
+                        <div className="border-t border-border/50 px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                           <FormField label="Creative Folder">
                             <LinkChip value={entry.creativeFolderLink} onChange={(val) => updateLocalField(entry.id, 'creativeFolderLink', val)} onBlur={(val) => handleBlur(entry.id, 'creativeFolderLink', val)} placeholder="https://..." />
                           </FormField>
@@ -353,7 +499,7 @@ export default function ProductAdsPage() {
                               {CREATIVE_TYPES.map((t) => <option key={t} value={t} className="bg-card text-foreground">{t || 'Select...'}</option>)}
                             </select>
                           </FormField>
-                          <FormField label="Daily Spend">
+                          <FormField label="Daily Spend (INR)">
                             <input type="number" value={entry.dailyAdSpend || ''} onChange={(e) => updateLocalField(entry.id, 'dailyAdSpend', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={(e) => handleBlur(entry.id, 'dailyAdSpend', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0" className="form-input" />
                           </FormField>
                           <FormField label="Weekly ROAS">
@@ -365,9 +511,10 @@ export default function ProductAdsPage() {
                             </select>
                           </FormField>
                         </div>
-                        <div className="border-t border-border px-4 py-2 flex justify-end">
-                          <button onClick={() => deleteEntry(entry.id)} disabled={deletingIds.has(entry.id)} className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
-                            {deletingIds.has(entry.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}Delete Batch
+                        <div className="border-t border-border/50 px-4 py-2 flex justify-end">
+                          <button onClick={() => deleteEntry(entry.id)} disabled={deletingIds.has(entry.id)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium text-muted-foreground/60 transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
+                            {deletingIds.has(entry.id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                            Delete Batch
                           </button>
                         </div>
                       </motion.div>
@@ -378,6 +525,13 @@ export default function ProductAdsPage() {
             );
           })}
         </StaggerContainer>
+      )}
+
+      {/* Footer */}
+      {!loading && entries.length > 0 && (
+        <p className="text-center text-[10px] text-muted-foreground/40">
+          {entries.length} batch{entries.length !== 1 ? 'es' : ''} · ⌘N to add new
+        </p>
       )}
     </PageTransition>
   );

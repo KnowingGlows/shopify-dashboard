@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trash2, ExternalLink, Loader2, Check, AlertCircle,
   Plus, X, Package, ChevronDown, ChevronLeft, ChevronRight,
+  Target, Trophy, TrendingUp, Calendar,
 } from 'lucide-react';
 import { ProductTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
@@ -154,12 +155,28 @@ export default function ProductTrackerPage() {
   const droppedCount = entries.filter((e) => e.productStage === 'Dropped').length;
   const hitRate = droppedCount === 0 && winnersCount === 0 ? 0 : droppedCount === 0 ? 100 : Math.round((winnersCount / (winnersCount + droppedCount)) * 100);
 
-  // Pagination
+  // Products tested this month
+  const testedThisMonth = useMemo(() => {
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return entries.filter((e) => (e.createdAt ?? '').startsWith(monthStr)).length;
+  }, [entries]);
+
+  // Total spent
+  const totalSpent = useMemo(() => entries.reduce((s, e) => s + (e.totalSpent || 0), 0), [entries]);
+
+  // Winners toggle
+  const [showWinners, setShowWinners] = useState(false);
+  const winnerEntries = entries.filter((e) => e.productStage === 'Winner - Moved To OPS');
+  const activeEntries = entries.filter((e) => e.productStage !== 'Winner - Moved To OPS');
+
+  // Pagination (on active entries, not winners)
   const ITEMS_PER_PAGE = 10;
   const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(entries.length / ITEMS_PER_PAGE));
+  const displayEntries = showWinners ? winnerEntries : activeEntries;
+  const totalPages = Math.max(1, Math.ceil(displayEntries.length / ITEMS_PER_PAGE));
   const safePage = Math.min(page, totalPages);
-  const paginatedEntries = entries.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
+  const paginatedEntries = displayEntries.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -178,22 +195,74 @@ export default function ProductTrackerPage() {
         </button>
       </div>
 
-      {/* Stage pills + Hit Rate */}
+      {/* Metric Cards */}
+      <StaggerContainer className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StaggerItem>
+          <div className="card-hover-glow rounded-xl border border-border bg-card px-4 py-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Hit Rate</p>
+              <Target className="h-3.5 w-3.5 text-primary/60" />
+            </div>
+            <p className={`text-xl font-bold ${hitRate >= 30 ? 'text-emerald-400' : hitRate > 0 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+              {hitRate > 0 ? `${hitRate}%` : '—'}
+            </p>
+            <p className="text-[9px] text-muted-foreground/40 mt-0.5">{winnersCount}W / {droppedCount}D</p>
+          </div>
+        </StaggerItem>
+        <StaggerItem>
+          <div className="card-hover-glow rounded-xl border border-border bg-card px-4 py-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">This Month</p>
+              <Calendar className="h-3.5 w-3.5 text-blue-400/60" />
+            </div>
+            <p className="text-xl font-bold text-foreground">{testedThisMonth}</p>
+            <p className="text-[9px] text-muted-foreground/40 mt-0.5">products tested</p>
+          </div>
+        </StaggerItem>
+        <StaggerItem>
+          <div className="card-hover-glow rounded-xl border border-border bg-card px-4 py-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Total Products</p>
+              <Package className="h-3.5 w-3.5 text-violet-400/60" />
+            </div>
+            <p className="text-xl font-bold text-foreground">{entries.length}</p>
+            <p className="text-[9px] text-muted-foreground/40 mt-0.5">{activeEntries.length} active</p>
+          </div>
+        </StaggerItem>
+        <StaggerItem>
+          <div className="card-hover-glow rounded-xl border border-border bg-card px-4 py-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">Total Spent</p>
+              <TrendingUp className="h-3.5 w-3.5 text-amber-400/60" />
+            </div>
+            <p className="text-xl font-bold text-amber-400">{formatINR(totalSpent)}</p>
+            <p className="text-[9px] text-muted-foreground/40 mt-0.5">across all products</p>
+          </div>
+        </StaggerItem>
+      </StaggerContainer>
+
+      {/* Stage pills + Winners toggle */}
       <div className="flex flex-wrap items-center gap-2">
-        {stageStats.map(({ stage, count, config }) => (
+        {stageStats.filter((s) => s.stage !== 'Winner - Moved To OPS').map(({ stage, count, config }) => (
           <div key={stage} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${config.bg}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
             <span className={config.color}>{stage}</span>
             <span className="text-muted-foreground">{count}</span>
           </div>
         ))}
-        {(winnersCount > 0 || droppedCount > 0) && (
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-medium">
-            <span className="text-primary">Hit Rate</span>
-            <span className="font-semibold text-primary">{hitRate}%</span>
-            <span className="text-muted-foreground/60 text-[10px]">({winnersCount}W / {droppedCount}D)</span>
-          </div>
-        )}
+        <div className="ml-auto">
+          <button
+            onClick={() => { setShowWinners(!showWinners); setPage(1); }}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
+              showWinners
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                : 'border-border text-muted-foreground hover:text-foreground hover:border-border/80'
+            }`}
+          >
+            <Trophy className="h-3 w-3" />
+            {showWinners ? 'Show Active' : `Winners (${winnersCount})`}
+          </button>
+        </div>
       </div>
 
       {/* Add Form Panel */}
@@ -440,7 +509,7 @@ export default function ProductTrackerPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-[11px] text-muted-foreground">
-            Showing {(safePage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(safePage * ITEMS_PER_PAGE, entries.length)} of {entries.length}
+            Showing {(safePage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(safePage * ITEMS_PER_PAGE, displayEntries.length)} of {displayEntries.length}
           </p>
           <div className="flex items-center gap-1">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1} className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition disabled:opacity-30">

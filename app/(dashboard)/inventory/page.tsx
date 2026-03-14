@@ -21,7 +21,7 @@ interface DispatchLog {
   createdAt: string;
 }
 
-const STORE_OPTIONS = ['', 'Kairova', 'Mavric'];
+const DEFAULT_STORE_OPTIONS = ['', 'Kairova', 'Mavric'];
 const SOURCING_OPTIONS = ['', 'india', 'china'];
 const STATUS_OPTIONS = ['', 'In Stock', 'Low Stock', 'Out of Stock', 'Ordered', 'Discontinued'];
 
@@ -89,6 +89,22 @@ export default function InventoryPage() {
   const [formStatus, setFormStatus] = useState('');
   const [formStore, setFormStore] = useState('');
   const [formSourcing, setFormSourcing] = useState('');
+  const [storeOptions, setStoreOptions] = useState<string[]>(DEFAULT_STORE_OPTIONS);
+
+  // Fetch stores dynamically
+  useEffect(() => {
+    fetch('/api/stores')
+      .then((r) => r.json())
+      .then((data) => {
+        const stores: string[] = (data.stores ?? []).map((s: { name: string }) => s.name).filter(Boolean);
+        if (stores.length > 0) {
+          // Merge with defaults, deduplicate
+          const all = ['', ...new Set([...stores, ...DEFAULT_STORE_OPTIONS.filter(Boolean)])];
+          setStoreOptions(all);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -392,7 +408,7 @@ export default function InventoryPage() {
                 </FormField>
                 <FormField label="Store" required>
                   <select value={formStore} onChange={(e) => setFormStore(e.target.value)} className="form-input">
-                    {STORE_OPTIONS.map((s) => <option key={s} value={s}>{s || 'Select store...'}</option>)}
+                    {storeOptions.map((s) => <option key={s} value={s}>{s || 'Select store...'}</option>)}
                   </select>
                 </FormField>
                 <FormField label="Sourcing Origin">
@@ -564,7 +580,7 @@ export default function InventoryPage() {
                             </FormField>
                             <FormField label="Store">
                               <select value={entry.store} onChange={(e) => { updateField(entry.id, 'store', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className="form-input text-[12px]">
-                                {STORE_OPTIONS.map((s) => <option key={s} value={s}>{s || 'Select...'}</option>)}
+                                {storeOptions.map((s) => <option key={s} value={s}>{s || 'Select...'}</option>)}
                               </select>
                             </FormField>
                             <FormField label="Sourcing">

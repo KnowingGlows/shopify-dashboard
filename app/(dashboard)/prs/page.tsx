@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, Loader2, ExternalLink, Check,
@@ -49,7 +49,32 @@ export default function PRSPage() {
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
+  // Cmd+N shortcut to open add form
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        setShowForm(true);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   const resetForm = () => { setFormName(''); setFormAdLink(''); setFormWebLink(''); setFormStatus(''); };
+
+  // Search/filter
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const filteredEntries = useMemo(() => {
+    let list = entries;
+    if (statusFilter) list = list.filter((e) => e.status === statusFilter);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((e) => e.productName.toLowerCase().includes(q));
+    }
+    return list;
+  }, [entries, statusFilter, searchQuery]);
 
   const addEntry = async () => {
     if (!formName.trim()) return;
@@ -95,20 +120,46 @@ export default function PRSPage() {
           <h1 className="text-lg font-semibold text-foreground">Product Research</h1>
           <p className="text-[11px] text-muted-foreground">Discover and validate products</p>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90">
-          {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-          {showForm ? 'Cancel' : 'Add Product'}
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/40" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search..."
+              className="h-9 w-40 rounded-lg border border-border bg-card pl-8 pr-3 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none transition"
+            />
+          </div>
+          <button onClick={() => setShowForm(!showForm)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90">
+            {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            {showForm ? 'Cancel' : 'Add'}
+          </button>
+          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded-md border border-border bg-card/80 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground/50">
+            ⌘N
+          </kbd>
+        </div>
       </div>
 
-      {/* Status pills */}
+      {/* Status pills — clickable filters */}
       <div className="flex flex-wrap gap-2">
+        {statusFilter && (
+          <button onClick={() => setStatusFilter('')} className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[10px] font-medium text-muted-foreground hover:text-foreground transition">
+            <X className="h-2.5 w-2.5" /> Clear
+          </button>
+        )}
         {statusStats.filter((s) => s.count > 0).map(({ status, count, config }) => (
-          <div key={status} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${config.bg}`}>
+          <button
+            key={status}
+            onClick={() => setStatusFilter(statusFilter === status ? '' : status)}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition ${
+              statusFilter === status ? config.bg + ' ring-1 ring-primary/30' : statusFilter ? 'border-border/30 opacity-50 hover:opacity-100' : config.bg
+            }`}
+          >
             <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
             <span className={config.color}>{status}</span>
             <span className="text-muted-foreground">{count}</span>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -159,7 +210,7 @@ export default function PRSPage() {
         </motion.div>
       ) : (
         <StaggerContainer className="space-y-2">
-          {entries.map((entry) => {
+          {filteredEntries.map((entry) => {
             const cfg = STATUS_CONFIG[entry.status];
             const isEditing = editingId === entry.id;
 
@@ -220,7 +271,9 @@ export default function PRSPage() {
         </StaggerContainer>
       )}
 
-      <p className="text-[11px] text-muted-foreground">{entries.length} product{entries.length !== 1 ? 's' : ''} · Click a row to edit · Auto-saves</p>
+      <p className="text-[11px] text-muted-foreground">
+        {filteredEntries.length} of {entries.length} product{entries.length !== 1 ? 's' : ''} · Click a row to edit · Auto-saves · <kbd className="rounded border border-border px-1 py-0.5 text-[8px]">⌘N</kbd> to add
+      </p>
     </PageTransition>
   );
 }

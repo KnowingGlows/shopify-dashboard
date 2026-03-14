@@ -4,45 +4,40 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
-  Loader2, Save, ArrowLeft, Plus, X,
-  BanknoteIcon, CreditCard, TrendingUp, Receipt,
+  Loader2, Save, ArrowLeft, Calendar,
+  BanknoteIcon, CreditCard, TrendingUp, Receipt, Repeat,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
-import { formatINR } from '@/lib/currency-converter';
 
-// ── Types & Helpers ──────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getYesterday(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(Date.now() - 86400000));
-}
-
-function getToday(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const d = new Date(todayIST + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
 }
 
 const INCOME_CATEGORIES = [
-  { value: 'cod-deposit', label: 'COD Deposit Received', icon: '💰' },
-  { value: 'prepaid-settlement', label: 'Prepaid Settlement', icon: '💳' },
-  { value: 'affiliate', label: 'Affiliate Income', icon: '🤝' },
-  { value: 'refund-received', label: 'Refund Received', icon: '↩️' },
-  { value: 'cashback', label: 'Cashback / Reward', icon: '🎁' },
-  { value: 'loan-received', label: 'Loan / Credit', icon: '🏦' },
-  { value: 'investment', label: 'Investment Inflow', icon: '📈' },
-  { value: 'marketplace', label: 'Marketplace Payout', icon: '🛒' },
-  { value: 'reimbursement', label: 'Reimbursement', icon: '📋' },
-  { value: 'other-income', label: 'Other', icon: '•' },
+  { value: 'cod-deposit', label: 'COD Deposit', icon: BanknoteIcon, color: 'emerald' },
+  { value: 'prepaid-settlement', label: 'Prepaid Settlement', icon: CreditCard, color: 'blue' },
+  { value: 'affiliate', label: 'Affiliate', icon: TrendingUp, color: 'violet' },
+  { value: 'refund-received', label: 'Refund', icon: Receipt, color: 'amber' },
+  { value: 'loan-received', label: 'Loan / Credit', icon: BanknoteIcon, color: 'cyan' },
+  { value: 'marketplace', label: 'Marketplace', icon: CreditCard, color: 'pink' },
+  { value: 'other-income', label: 'Other', icon: Receipt, color: 'zinc' },
 ];
 
 const EXPENSE_CATEGORIES = [
-  { value: 'inventory', label: 'Inventory / COGS', icon: '📦' },
-  { value: 'supplier', label: 'Supplier Payment', icon: '🏭' },
-  { value: 'shipping', label: 'Shipping / Logistics', icon: '🚚' },
-  { value: 'marketing', label: 'Marketing / Ads', icon: '📣' },
-  { value: 'returns', label: 'Returns / RTO', icon: '↩️' },
-  { value: 'tools', label: 'Tools / Software', icon: '🔧' },
-  { value: 'freelance', label: 'Freelance / Services', icon: '👤' },
-  { value: 'other', label: 'Other', icon: '•' },
+  { value: 'inventory', label: 'Inventory / COGS', icon: Receipt, color: 'orange' },
+  { value: 'supplier', label: 'Supplier Payment', icon: BanknoteIcon, color: 'rose' },
+  { value: 'shipping', label: 'Shipping', icon: Receipt, color: 'sky' },
+  { value: 'marketing', label: 'Marketing / Ads', icon: TrendingUp, color: 'violet' },
+  { value: 'returns', label: 'Returns / RTO', icon: Receipt, color: 'red' },
+  { value: 'tools', label: 'Tools / Software', icon: CreditCard, color: 'cyan' },
+  { value: 'freelance', label: 'Freelance', icon: BanknoteIcon, color: 'blue' },
+  { value: 'other', label: 'Other', icon: Receipt, color: 'zinc' },
 ];
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -52,7 +47,7 @@ export default function ActualEntryPage() {
   const [activeTab, setActiveTab] = useState<'income' | 'expense'>('income');
   const [date, setDate] = useState(getYesterday());
 
-  // Income form state
+  // Income form
   const [incomeCategory, setIncomeCategory] = useState('cod-deposit');
   const [incomeDescription, setIncomeDescription] = useState('');
   const [incomeAmount, setIncomeAmount] = useState('');
@@ -61,7 +56,7 @@ export default function ActualEntryPage() {
   const [savingIncome, setSavingIncome] = useState(false);
   const [incomeStatus, setIncomeStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
-  // Expense form state
+  // Expense form
   const [expenseCategory, setExpenseCategory] = useState('inventory');
   const [expenseDescription, setExpenseDescription] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
@@ -127,277 +122,290 @@ export default function ActualEntryPage() {
     finally { setSavingExpense(false); }
   };
 
+  const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
   return (
-    <PageTransition className="mx-auto max-w-3xl p-5 space-y-5">
+    <PageTransition className="mx-auto max-w-2xl px-4 py-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/finance" className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
+      <div className="flex items-center gap-4">
+        <Link href="/finance" className="rounded-xl p-2 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
           <ArrowLeft className="h-4 w-4" />
         </Link>
-        <div className="flex-1">
-          <h1 className="text-lg font-semibold text-foreground">Daily Entry</h1>
-          <p className="text-[11px] text-muted-foreground">Record actual money in and money out</p>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-base font-semibold text-foreground">Daily Entry</h1>
+          <p className="text-[11px] text-muted-foreground/60">Record actual money in &amp; out</p>
         </div>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="form-input text-[12px] py-1.5"
-        />
+        <div className="flex items-center gap-2 rounded-xl border border-border/50 bg-card/80 px-3 py-2">
+          <Calendar className="h-3.5 w-3.5 text-muted-foreground/50" />
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="bg-transparent text-[12px] font-medium text-foreground outline-none [color-scheme:dark]"
+          />
+        </div>
+      </div>
+
+      {/* Date chip */}
+      <div className="flex items-center gap-2">
+        <span className="rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-[11px] font-medium text-primary">
+          {dateLabel}
+        </span>
       </div>
 
       {/* Tab Switch */}
-      <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1">
+      <div className="relative flex items-center rounded-2xl border border-border/50 bg-card/50 p-1 backdrop-blur-sm">
+        <motion.div
+          className={`absolute inset-y-1 rounded-xl transition-colors ${activeTab === 'income' ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'}`}
+          animate={{ left: activeTab === 'income' ? '4px' : '50%', right: activeTab === 'income' ? '50%' : '4px' }}
+          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        />
         <button
           onClick={() => setActiveTab('income')}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-4 py-2.5 text-[12px] font-medium transition ${
-            activeTab === 'income'
-              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-              : 'text-muted-foreground hover:text-foreground'
+          className={`relative z-10 flex-1 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[13px] font-semibold transition ${
+            activeTab === 'income' ? 'text-emerald-400' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          <TrendingUp className="h-3.5 w-3.5" />
+          <TrendingUp className="h-4 w-4" />
           Money In
         </button>
         <button
           onClick={() => setActiveTab('expense')}
-          className={`flex-1 flex items-center justify-center gap-1.5 rounded-md px-4 py-2.5 text-[12px] font-medium transition ${
-            activeTab === 'expense'
-              ? 'bg-red-500/15 text-red-400 border border-red-500/30'
-              : 'text-muted-foreground hover:text-foreground'
+          className={`relative z-10 flex-1 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[13px] font-semibold transition ${
+            activeTab === 'expense' ? 'text-red-400' : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          <Receipt className="h-3.5 w-3.5" />
+          <Receipt className="h-4 w-4" />
           Money Out
         </button>
       </div>
 
-      {/* ═══ Money In Form ═══ */}
+      {/* Forms */}
       <AnimatePresence mode="wait">
-        {activeTab === 'income' && (
+        {activeTab === 'income' ? (
           <motion.div
             key="income"
-            initial={{ opacity: 0, x: -12 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 12 }}
-            className="rounded-xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-transparent overflow-hidden"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="space-y-5"
           >
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-500/15">
-              <BanknoteIcon className="h-4 w-4 text-emerald-400" />
-              <h2 className="text-sm font-semibold text-foreground">Record Income</h2>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* Category */}
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">Source</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {INCOME_CATEGORIES.map((cat) => (
+            {/* Category Grid */}
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-3">Income Source</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {INCOME_CATEGORIES.map((cat) => {
+                  const Icon = cat.icon;
+                  const isActive = incomeCategory === cat.value;
+                  return (
                     <button
                       key={cat.value}
                       onClick={() => setIncomeCategory(cat.value)}
-                      className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition border ${
-                        incomeCategory === cat.value
-                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                          : 'text-muted-foreground border-border hover:border-border/80 hover:text-foreground'
+                      className={`group relative flex flex-col items-center gap-1.5 rounded-xl px-3 py-3 text-center transition-all border ${
+                        isActive
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-sm shadow-emerald-500/10'
+                          : 'border-border/40 text-muted-foreground hover:border-border hover:text-foreground hover:bg-accent/5'
                       }`}
                     >
-                      <span className="mr-1">{cat.icon}</span>{cat.label}
+                      <Icon className={`h-4 w-4 transition ${isActive ? 'text-emerald-400' : 'text-muted-foreground/50 group-hover:text-foreground'}`} />
+                      <span className="text-[10px] font-medium leading-tight">{cat.label}</span>
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
+            </div>
 
-              {/* Description */}
+            {/* Amount & Description */}
+            <div className="rounded-2xl border border-border/40 bg-card/60 p-4 space-y-4 backdrop-blur-sm">
               <div>
-                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">Description</label>
-                <input
-                  type="text"
-                  value={incomeDescription}
-                  onChange={(e) => setIncomeDescription(e.target.value)}
-                  placeholder="e.g. Kairova COD deposit for March week 1"
-                  className="w-full rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/40 focus:border-emerald-500/50 focus:outline-none transition"
-                />
-              </div>
-
-              {/* Amount */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">Amount (₹)</label>
+                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Amount</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[14px] font-semibold text-emerald-400/60">₹</span>
                   <input
                     type="number"
                     value={incomeAmount}
                     onChange={(e) => setIncomeAmount(e.target.value)}
                     placeholder="0"
-                    className="w-full rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground tabular-nums placeholder:text-muted-foreground/40 focus:border-emerald-500/50 focus:outline-none transition"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">Date</label>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-emerald-500/50 focus:outline-none transition"
+                    className="w-full rounded-xl border border-border/40 bg-background/40 pl-9 pr-4 py-3 text-[18px] font-semibold text-foreground tabular-nums placeholder:text-muted-foreground/20 focus:border-emerald-500/40 focus:outline-none transition"
                   />
                 </div>
               </div>
 
-              {/* Date range toggle */}
               <div>
-                <button
-                  onClick={() => setIsRange(!isRange)}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition border ${
-                    isRange ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'text-muted-foreground border-border hover:text-foreground'
-                  }`}
-                >
-                  <CreditCard className="h-3.5 w-3.5" />
-                  Date range income
-                </button>
-                <AnimatePresence>
-                  {isRange && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-                      <div className="mt-3">
-                        <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">End Date</label>
-                        <input
-                          type="date"
-                          value={incomeEndDate}
-                          onChange={(e) => setIncomeEndDate(e.target.value)}
-                          min={date}
-                          className="w-full max-w-[200px] rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-emerald-500/50 focus:outline-none transition"
-                        />
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Description (optional)</label>
+                <input
+                  type="text"
+                  value={incomeDescription}
+                  onChange={(e) => setIncomeDescription(e.target.value)}
+                  placeholder="e.g. Kairova COD deposit for March week 1"
+                  className="w-full rounded-xl border border-border/40 bg-background/40 px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none transition"
+                />
               </div>
+            </div>
 
-              {/* Save */}
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={handleSaveIncome}
-                  disabled={savingIncome || !incomeAmount}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-emerald-500 transition disabled:opacity-40"
-                >
-                  {savingIncome ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  Save Income
-                </button>
-                <AnimatePresence>
-                  {incomeStatus === 'saved' && (
-                    <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-emerald-400">Saved</motion.span>
-                  )}
-                  {incomeStatus === 'error' && (
-                    <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-red-400">Failed</motion.span>
-                  )}
-                </AnimatePresence>
-              </div>
+            {/* Options */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsRange(!isRange)}
+                className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-[11px] font-medium transition border ${
+                  isRange ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'text-muted-foreground/60 border-border/40 hover:text-foreground hover:border-border'
+                }`}
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                Date range
+              </button>
+            </div>
+            <AnimatePresence>
+              {isRange && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                  <div className="flex items-center gap-3 rounded-xl border border-border/40 bg-card/60 p-3">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground/40" />
+                    <span className="text-[11px] text-muted-foreground/60">End date</span>
+                    <input
+                      type="date"
+                      value={incomeEndDate}
+                      onChange={(e) => setIncomeEndDate(e.target.value)}
+                      min={date}
+                      className="bg-transparent text-[12px] font-medium text-foreground outline-none [color-scheme:dark]"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Save */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSaveIncome}
+                disabled={savingIncome || !incomeAmount}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-[13px] font-semibold text-white shadow-lg shadow-emerald-600/20 transition-all hover:bg-emerald-500 hover:shadow-emerald-500/30 active:scale-[0.97] disabled:opacity-40 disabled:shadow-none"
+              >
+                {savingIncome ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Income
+              </button>
+              <AnimatePresence>
+                {incomeStatus === 'saved' && (
+                  <motion.span initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="text-[12px] font-medium text-emerald-400">Saved successfully</motion.span>
+                )}
+                {incomeStatus === 'error' && (
+                  <motion.span initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="text-[12px] font-medium text-red-400">Failed to save</motion.span>
+                )}
+              </AnimatePresence>
             </div>
           </motion.div>
-        )}
-
-        {/* ═══ Money Out Form ═══ */}
-        {activeTab === 'expense' && (
+        ) : (
           <motion.div
             key="expense"
-            initial={{ opacity: 0, x: 12 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -12 }}
-            className="rounded-xl border border-red-500/20 bg-gradient-to-br from-red-500/5 to-transparent overflow-hidden"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            className="space-y-5"
           >
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-red-500/15">
-              <Receipt className="h-4 w-4 text-red-400" />
-              <h2 className="text-sm font-semibold text-foreground">Record Expense</h2>
-            </div>
-            <div className="p-4 space-y-4">
-              {/* Category */}
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">Category</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {EXPENSE_CATEGORIES.map((cat) => (
+            {/* Category Grid */}
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-3">Expense Category</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {EXPENSE_CATEGORIES.map((cat) => {
+                  const Icon = cat.icon;
+                  const isActive = expenseCategory === cat.value;
+                  return (
                     <button
                       key={cat.value}
                       onClick={() => setExpenseCategory(cat.value)}
-                      className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition border ${
-                        expenseCategory === cat.value
-                          ? 'bg-red-500/15 text-red-400 border-red-500/30'
-                          : 'text-muted-foreground border-border hover:border-border/80 hover:text-foreground'
+                      className={`group relative flex flex-col items-center gap-1.5 rounded-xl px-3 py-3 text-center transition-all border ${
+                        isActive
+                          ? 'bg-red-500/10 border-red-500/30 text-red-400 shadow-sm shadow-red-500/10'
+                          : 'border-border/40 text-muted-foreground hover:border-border hover:text-foreground hover:bg-accent/5'
                       }`}
                     >
-                      <span className="mr-1">{cat.icon}</span>{cat.label}
+                      <Icon className={`h-4 w-4 transition ${isActive ? 'text-red-400' : 'text-muted-foreground/50 group-hover:text-foreground'}`} />
+                      <span className="text-[10px] font-medium leading-tight">{cat.label}</span>
                     </button>
-                  ))}
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Amount & Description */}
+            <div className="rounded-2xl border border-border/40 bg-card/60 p-4 space-y-4 backdrop-blur-sm">
+              <div>
+                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Amount</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[14px] font-semibold text-red-400/60">₹</span>
+                  <input
+                    type="number"
+                    value={expenseAmount}
+                    onChange={(e) => setExpenseAmount(e.target.value)}
+                    placeholder="0"
+                    className="w-full rounded-xl border border-border/40 bg-background/40 pl-9 pr-4 py-3 text-[18px] font-semibold text-foreground tabular-nums placeholder:text-muted-foreground/20 focus:border-red-500/40 focus:outline-none transition"
+                  />
                 </div>
               </div>
 
-              {/* Description */}
               <div>
-                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">Description</label>
+                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Description (optional)</label>
                 <input
                   type="text"
                   value={expenseDescription}
                   onChange={(e) => setExpenseDescription(e.target.value)}
                   placeholder="e.g. Supplier payment for new stock"
-                  className="w-full rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/40 focus:border-red-500/50 focus:outline-none transition"
+                  className="w-full rounded-xl border border-border/40 bg-background/40 px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:border-red-500/40 focus:outline-none transition"
                 />
               </div>
+            </div>
 
-              {/* Amount */}
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">Amount (₹)</label>
-                <input
-                  type="number"
-                  value={expenseAmount}
-                  onChange={(e) => setExpenseAmount(e.target.value)}
-                  placeholder="0"
-                  className="w-full max-w-xs rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground tabular-nums placeholder:text-muted-foreground/40 focus:border-red-500/50 focus:outline-none transition"
-                />
-              </div>
-
-              {/* Recurring toggle */}
-              <div>
-                <button
-                  onClick={() => setExpenseRecurring(!expenseRecurring)}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition border ${
-                    expenseRecurring
-                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                      : 'text-muted-foreground border-border hover:text-foreground'
-                  }`}
+            {/* Options */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setExpenseRecurring(!expenseRecurring)}
+                className={`flex items-center gap-2 rounded-xl px-3.5 py-2 text-[11px] font-medium transition border ${
+                  expenseRecurring
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                    : 'text-muted-foreground/60 border-border/40 hover:text-foreground hover:border-border'
+                }`}
+              >
+                <Repeat className="h-3.5 w-3.5" />
+                Recurring monthly
+              </button>
+            </div>
+            <AnimatePresence>
+              {expenseRecurring && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
                 >
-                  <Receipt className="h-3.5 w-3.5" />
-                  Recurring monthly
-                </button>
-                <AnimatePresence>
-                  {expenseRecurring && (
-                    <motion.p
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="mt-2 text-[10px] text-amber-400/70"
-                    >
-                      This expense will repeat on the {new Date(date + 'T00:00:00').getDate()}{['st','nd','rd'][new Date(date + 'T00:00:00').getDate() % 10 - 1] ?? 'th'} of every month.
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </div>
+                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3.5 py-2.5">
+                    <Repeat className="h-3.5 w-3.5 text-amber-400/60" />
+                    <p className="text-[11px] text-amber-400/70">
+                      Repeats on the {new Date(date + 'T00:00:00').getDate()}{['st','nd','rd'][(new Date(date + 'T00:00:00').getDate() % 10) - 1] ?? 'th'} of every month
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-              {/* Save */}
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={handleSaveExpense}
-                  disabled={savingExpense || !expenseAmount}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-red-500 transition disabled:opacity-40"
-                >
-                  {savingExpense ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                  Save Expense
-                </button>
-                <AnimatePresence>
-                  {expenseStatus === 'saved' && (
-                    <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-emerald-400">Saved</motion.span>
-                  )}
-                  {expenseStatus === 'error' && (
-                    <motion.span initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-red-400">Failed</motion.span>
-                  )}
-                </AnimatePresence>
-              </div>
+            {/* Save */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSaveExpense}
+                disabled={savingExpense || !expenseAmount}
+                className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-6 py-3 text-[13px] font-semibold text-white shadow-lg shadow-red-600/20 transition-all hover:bg-red-500 hover:shadow-red-500/30 active:scale-[0.97] disabled:opacity-40 disabled:shadow-none"
+              >
+                {savingExpense ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Expense
+              </button>
+              <AnimatePresence>
+                {expenseStatus === 'saved' && (
+                  <motion.span initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="text-[12px] font-medium text-emerald-400">Saved successfully</motion.span>
+                )}
+                {expenseStatus === 'error' && (
+                  <motion.span initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="text-[12px] font-medium text-red-400">Failed to save</motion.span>
+                )}
+              </AnimatePresence>
             </div>
           </motion.div>
         )}
