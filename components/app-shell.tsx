@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Box, CheckSquare, ClipboardList, DollarSign, Home, LogOut,
-  Menu, Megaphone, Package, Search, Settings, Truck, Users, X,
+  Menu, Megaphone, Package, Search, Settings, Truck, Users, Wallet, X,
   PenLine, Calculator, List, Landmark, Receipt, TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -45,6 +45,7 @@ const navItems: NavItem[] = [
   { href: '/tasks', label: 'Tasks', icon: CheckSquare, section: 'ops' },
   { href: '/inventory', label: 'Inventory', icon: Box, section: 'ops' },
   { href: '/logs', label: 'Daily Logs', icon: ClipboardList, section: 'ops' },
+  { href: '/transactions', label: 'Transactions', icon: Wallet, section: 'finance' },
   { href: '/settings', label: 'Settings', icon: Settings, section: 'system' },
   { href: '/users', label: 'Users', icon: Users, adminOnly: true, section: 'system' },
 ];

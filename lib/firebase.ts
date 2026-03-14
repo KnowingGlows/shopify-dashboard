@@ -71,4 +71,5 @@ export const COLLECTIONS = {
   NOTIFICATIONS: 'notifications',
   ADS_PRODUCTS: 'ads_products',
   CHAT_MESSAGES: 'chat_messages',
+  BANK_TRANSACTIONS: 'bank_transactions',
 } as const;
