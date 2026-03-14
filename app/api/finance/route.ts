@@ -465,7 +465,7 @@ async function addExpense(body: Record<string, unknown>) {
 async function saveIncome(body: Record<string, unknown>) {
   const firestore = db();
   const now = new Date().toISOString();
-  const income = {
+  const income: Record<string, unknown> = {
     id: crypto.randomUUID(),
     category: (body.category as string) ?? '',
     description: (body.description as string) ?? '',
@@ -474,6 +474,7 @@ async function saveIncome(body: Record<string, unknown>) {
     enteredBy: (body.enteredBy as string) ?? '',
     createdAt: now,
   };
+  if (body.endDate) income.endDate = body.endDate as string;
 
   if (!income.category || !income.amount) {
     return NextResponse.json({ error: 'Category and amount are required.' }, { status: 400 });
@@ -483,7 +484,7 @@ async function saveIncome(body: Record<string, unknown>) {
     return NextResponse.json({ success: true, income });
   }
 
-  await firestore.collection(COLLECTIONS.FINANCE_INCOME).doc(income.id).set(income);
+  await firestore.collection(COLLECTIONS.FINANCE_INCOME).doc(income.id as string).set(income);
   return NextResponse.json({ success: true, income });
 }
 

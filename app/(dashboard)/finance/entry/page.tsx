@@ -482,18 +482,20 @@ function StatusBadge({ status }: { status: 'idle' | 'saved' | 'error' }) {
 
 function MissedIncomeModal({ onClose, onAdd }: {
   onClose: () => void;
-  onAdd: (data: { category: string; description: string; amount: number; date: string }) => void;
+  onAdd: (data: { category: string; description: string; amount: number; date: string; endDate?: string }) => void;
 }) {
   const [category, setCategory] = useState('prepaid-settlement');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(getToday());
+  const [endDate, setEndDate] = useState('');
+  const [isRange, setIsRange] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     if (!amount || !category) return;
     setSaving(true);
-    onAdd({ category, description, amount: Number(amount), date });
+    onAdd({ category, description, amount: Number(amount), date, endDate: isRange && endDate ? endDate : undefined });
   };
 
   return (
@@ -582,6 +584,42 @@ function MissedIncomeModal({ onClose, onAdd }: {
                 className="w-full rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-emerald-500/50 focus:outline-none transition"
               />
             </div>
+          </div>
+
+          {/* Date range toggle */}
+          <div>
+            <button
+              onClick={() => setIsRange(!isRange)}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition border ${
+                isRange
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : 'text-muted-foreground border-border hover:text-foreground'
+              }`}
+            >
+              <CreditCard className="h-3.5 w-3.5" />
+              Date range income
+            </button>
+            <AnimatePresence>
+              {isRange && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-3">
+                    <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">End Date</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      min={date}
+                      className="w-full max-w-[200px] rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-emerald-500/50 focus:outline-none transition"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 

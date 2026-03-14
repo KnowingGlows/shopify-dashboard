@@ -255,22 +255,14 @@ export default function FinancePage() {
     if (deposit > 0) depositByCollectionDate[entry.date] = deposit;
   }
 
-  // Build inflow chart data — group deposits by BANK DEPOSIT date
-  // Fri COD → Mon, Sat+Sun COD → Tue (combined total)
-  const depositByBankDate: Record<string, number> = {};
-  for (const [collectionDate, deposit] of Object.entries(depositByCollectionDate)) {
-    const bankDate = getBankDepositDate(collectionDate);
-    depositByBankDate[bankDate] = (depositByBankDate[bankDate] ?? 0) + deposit;
-  }
-
-  // Build fixed grid — past chartDays up to today (what already came in / is coming today)
+  // Build inflow chart — collection dates, last chartDays ending at today
   const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
     const dt = new Date(todayStr + 'T00:00:00');
     dt.setDate(dt.getDate() - (chartDays - 1) + i);
     const dateStr = dt.toISOString().split('T')[0];
     return {
       date: dateStr,
-      deposit: depositByBankDate[dateStr] ?? 0,
+      deposit: depositByCollectionDate[dateStr] ?? 0,
       label: fmtMonthDay(dateStr),
     };
   });
