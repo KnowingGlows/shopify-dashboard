@@ -935,10 +935,11 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const codWideStart = getISTDate(new Date(todayDate.getTime() - 35 * 86400000));
   const effectiveStart = codWideStart < startDate ? codWideStart : startDate;
 
-  const [dailySnap, baselinesSnap, expensesSnap, inventorySnap, deliveryRatesData, spendingConfigData] = await Promise.all([
+  const [dailySnap, baselinesSnap, expensesSnap, incomeSnap, inventorySnap, deliveryRatesData, spendingConfigData] = await Promise.all([
     firestore.collection(COLLECTIONS.FINANCE_DAILY).where('date', '>=', effectiveStart).where('date', '<=', endDate).orderBy('date', 'desc').get(),
     firestore.collection(COLLECTIONS.FINANCE_BASELINES).get(),
     firestore.collection(COLLECTIONS.FINANCE_EXPENSES).orderBy('createdAt', 'desc').get(),
+    firestore.collection(COLLECTIONS.FINANCE_INCOME).get(),
     firestore.collection(COLLECTIONS.INVENTORY).get(),
     getCachedSetting<{ rates?: Record<string, number> }>(firestore, 'delivery_rates', { rates: {} }),
     getCachedSetting<{ founderCutPct?: number; enabledItems?: Record<string, boolean> }>(firestore, 'spending_config', { founderCutPct: 50, enabledItems: { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true } }),
@@ -950,6 +951,8 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const allBaselines = baselinesSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allExpenses = expensesSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allIncome = incomeSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allInventory = inventorySnap.docs.map((doc: any) => doc.data());
   const brandRates: Record<string, number> = deliveryRatesData.rates ?? {};
@@ -1076,7 +1079,18 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     }
   }
 
-  const totalCashIn = projectedDeposit + weekPrepaid;
+  // Missed income this week (from finance_income collection)
+  let weekIncome = 0;
+  for (const inc of allIncome) {
+    const incDate = inc.date ?? '';
+    const incEnd = inc.endDate ?? incDate;
+    // Include if the income date range overlaps with the spending power week
+    if (incDate <= weekEndStr && incEnd >= weekStartStr) {
+      weekIncome += Number(inc.amount) || 0;
+    }
+  }
+
+  const totalCashIn = projectedDeposit + weekPrepaid + weekIncome;
   const founderCut = enabledItems.founderCut !== false ? Math.round(totalCashIn * (founderCutPct / 100)) : 0;
   let remaining = totalCashIn - founderCut;
 
@@ -1121,6 +1135,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const breakdown = [
     { label: 'COD Projected Deposit', amount: projectedDeposit, type: 'income' as const },
     ...(weekPrepaid > 0 ? [{ label: 'Prepaid Settlements', amount: weekPrepaid, type: 'income' as const }] : []),
+    ...(weekIncome > 0 ? [{ label: 'Other Income', amount: weekIncome, type: 'income' as const }] : []),
     ...(enabledItems.founderCut !== false && founderCut > 0 ? [{ label: `Founder Cut (${founderCutPct}%)`, amount: -founderCut, type: 'deduction' as const }] : []),
     ...(enabledItems.inventoryNeeds !== false && inventoryNeeds > 0 ? [{ label: 'Inventory Restock', amount: -inventoryNeeds, type: 'deduction' as const }] : []),
     ...(enabledItems.baselines !== false ? baselineItems.map((b) => ({ label: b.label, amount: -b.amount, type: 'deduction' as const })) : []),
@@ -1156,6 +1171,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     reminders,
     baselines: { daily: dailyBaselines, monthly: monthlyBaselines },
     expenses: allExpenses,
+    income: allIncome,
     deliveryRates: brandRates,
   });
 }

@@ -83,18 +83,22 @@ export default function ExpenditurePage() {
   const [codByDate, setCodByDate] = useState<Record<string, number>>({});
   // Net profit per day from finance daily entries
   const [profitByDate, setProfitByDate] = useState<Record<string, number>>({});
+  // Missed income entries
+  const [incomeEntries, setIncomeEntries] = useState<Array<{ amount: number; date: string; endDate?: string }>>([]);
 
   const fetchExpenses = useCallback(async () => {
     try {
-      const [expRes, summaryRes, ratesRes] = await Promise.all([
+      const [expRes, summaryRes, ratesRes, incomeRes] = await Promise.all([
         fetch('/api/finance?action=expenses'),
         fetch('/api/finance'),
         fetch('/api/finance?action=delivery-rates'),
+        fetch('/api/finance?action=combined&days=90'),
       ]);
-      const [expData, summaryData, ratesData] = await Promise.all([
-        expRes.json(), summaryRes.json(), ratesRes.json(),
+      const [expData, summaryData, ratesData, combinedData] = await Promise.all([
+        expRes.json(), summaryRes.json(), ratesRes.json(), incomeRes.json(),
       ]);
       setExpenses(expData.expenses ?? []);
+      setIncomeEntries(combinedData.income ?? []);
 
       // Compute projected COD deposits per day (sales date + 7 days = deposit date)
       const rates: Record<string, number> = ratesData.rates ?? {};
@@ -236,14 +240,33 @@ export default function ExpenditurePage() {
   const topCategories = Object.entries(categoryBreakdown).sort((a, b) => b[1] - a[1]);
   const usedCategories = [...new Set(expenses.map((e) => e.category))];
 
-  // Monthly inflow total
+  // Monthly inflow total (COD deposits + missed income)
   const monthCodInflow = useMemo(() => {
     let total = 0;
     for (const [date, amount] of Object.entries(codByDate)) {
       if (date.startsWith(calMonthStr)) total += amount;
     }
+    // Add missed income for this month
+    for (const inc of incomeEntries) {
+      const incDate = inc.date ?? '';
+      if (inc.endDate) {
+        // Spread across date range, count days in this month
+        const start = new Date(inc.date + 'T00:00:00');
+        const end = new Date(inc.endDate + 'T00:00:00');
+        const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+        const dailyAmount = Math.round(inc.amount / rangeDays);
+        for (let j = 0; j < rangeDays; j++) {
+          const dt = new Date(start);
+          dt.setDate(start.getDate() + j);
+          const ds = dt.toISOString().split('T')[0];
+          if (ds.startsWith(calMonthStr)) total += dailyAmount;
+        }
+      } else if (incDate.startsWith(calMonthStr)) {
+        total += inc.amount;
+      }
+    }
     return total;
-  }, [codByDate, calMonthStr]);
+  }, [codByDate, incomeEntries, calMonthStr]);
 
   // Monthly net profit total
   const monthNetProfit = useMemo(() => {

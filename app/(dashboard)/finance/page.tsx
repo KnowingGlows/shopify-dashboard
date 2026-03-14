@@ -45,6 +45,15 @@ interface Expense {
   date: string;
 }
 
+interface IncomeEntry {
+  id: string;
+  category: string;
+  description: string;
+  amount: number;
+  date: string;
+  endDate?: string;
+}
+
 interface CODWeek {
   weekLabel: string;
   startDate: string;
@@ -116,6 +125,7 @@ export default function FinancePage() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [baselines, setBaselines] = useState<Baseline[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [income, setIncome] = useState<IncomeEntry[]>([]);
   const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -145,6 +155,7 @@ export default function FinancePage() {
       setBaselines([...(data.baselines?.daily ?? []), ...(data.baselines?.monthly ?? [])]);
       setDeliveryRates(data.deliveryRates ?? {});
       setExpenses(data.expenses ?? []);
+      setIncome(data.income ?? []);
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -242,9 +253,8 @@ export default function FinancePage() {
   const currentWeek = codWeeks[0];
   const totalCODProjected = codWeeks.reduce((s, w) => s + w.projectedAmount, 0);
 
-  // Rolling 14-day inflow — fixed 14-point grid (one per day), labeled with bank deposit date
-  // Sat+Sun amounts are shown on their own day but labeled as Tue so the chart stays evenly spaced
-  const depositByCollectionDate: Record<string, number> = {};
+  // Rolling inflow — COD deposits + missed income by date
+  const inflowByDate: Record<string, number> = {};
   for (const entry of (d.dailyEntries ?? [])) {
     const codByBrand = entry.codSalesByBrand ?? {};
     let deposit = 0;
@@ -252,17 +262,36 @@ export default function FinancePage() {
       const rate = deliveryRates[brand] ?? 65;
       deposit += Math.round(Number(amount) * (rate / 100));
     }
-    if (deposit > 0) depositByCollectionDate[entry.date] = deposit;
+    if (deposit > 0) inflowByDate[entry.date] = (inflowByDate[entry.date] ?? 0) + deposit;
+  }
+  // Add missed income to inflow
+  for (const inc of income) {
+    const incDate = inc.date ?? '';
+    if (inc.endDate) {
+      // Spread across date range
+      const start = new Date(incDate + 'T00:00:00');
+      const end = new Date(inc.endDate + 'T00:00:00');
+      const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+      const dailyAmount = Math.round(inc.amount / rangeDays);
+      for (let j = 0; j < rangeDays; j++) {
+        const dt = new Date(start);
+        dt.setDate(start.getDate() + j);
+        const ds = dt.toISOString().split('T')[0];
+        inflowByDate[ds] = (inflowByDate[ds] ?? 0) + dailyAmount;
+      }
+    } else {
+      inflowByDate[incDate] = (inflowByDate[incDate] ?? 0) + inc.amount;
+    }
   }
 
-  // Build inflow chart — collection dates, last chartDays ending at today
+  // Build inflow chart — last chartDays ending at today
   const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
     const dt = new Date(todayStr + 'T00:00:00');
     dt.setDate(dt.getDate() - (chartDays - 1) + i);
     const dateStr = dt.toISOString().split('T')[0];
     return {
       date: dateStr,
-      deposit: depositByCollectionDate[dateStr] ?? 0,
+      deposit: inflowByDate[dateStr] ?? 0,
       label: fmtMonthDay(dateStr),
     };
   });
