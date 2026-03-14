@@ -120,8 +120,8 @@ export default function FinancePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
 
-  // Date range filter
-  const [dateRange, setDateRange] = useState<'30d' | '7d' | '90d' | 'custom'>('30d');
+  // Date range filter — 14d is the default
+  const [dateRange, setDateRange] = useState<'14d' | '30d' | '7d' | '90d' | 'custom'>('14d');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
@@ -132,7 +132,7 @@ export default function FinancePage() {
       if (dateRange === 'custom' && customStart && customEnd) {
         url += `&start=${customStart}&end=${customEnd}`;
       } else {
-        const days = dateRange === '7d' ? 7 : dateRange === '90d' ? 90 : 30;
+        const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
         url += `&days=${days}`;
       }
       const res = await fetch(url);
@@ -162,6 +162,19 @@ export default function FinancePage() {
 
   const todayStr = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()), []);
 
+  // Number of days for charts — driven by the date range filter
+  const chartDays = useMemo(() => {
+    if (dateRange === '7d') return 7;
+    if (dateRange === '14d') return 14;
+    if (dateRange === '30d') return 30;
+    if (dateRange === '90d') return 90;
+    if (dateRange === 'custom' && customStart && customEnd) {
+      const diff = Math.ceil((new Date(customEnd).getTime() - new Date(customStart).getTime()) / 86400000) + 1;
+      return Math.max(diff, 7);
+    }
+    return 14;
+  }, [dateRange, customStart, customEnd]);
+
   // Build daily outflow map (expenses + baselines by date)
   // Shows ALL baselines (paid and unpaid) in chart, differentiated visually
   const dailyOutflows = useMemo(() => {
@@ -185,11 +198,11 @@ export default function FinancePage() {
     return map;
   }, [expenses, baselines]);
 
-  // Build outflow chart data — next 14 days from today (must be before loading return)
+  // Build outflow chart data — uses chartDays from filter
   const outflowDays = useMemo(() => {
     const days: Array<{ date: string; label: string; total: number; expenses: number; unpaidBaselines: number; paidBaselines: number }> = [];
     const start = new Date(todayStr + 'T00:00:00');
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < chartDays; i++) {
       const dt = new Date(start);
       dt.setDate(start.getDate() + i);
       const dateStr = dt.toISOString().split('T')[0];
@@ -205,7 +218,7 @@ export default function FinancePage() {
       });
     }
     return days;
-  }, [todayStr, dailyOutflows]);
+  }, [todayStr, dailyOutflows, chartDays]);
 
   if (loading) {
     return (
@@ -241,23 +254,34 @@ export default function FinancePage() {
     if (deposit > 0) depositByCollectionDate[entry.date] = deposit;
   }
 
-  // Build fixed 14-point grid anchored to today
+  // Build inflow chart data — group deposits by BANK DEPOSIT date
+  // Fri COD → Mon, Sat+Sun COD → Tue (combined total)
+  const depositByBankDate: Record<string, number> = {};
+  for (const [collectionDate, deposit] of Object.entries(depositByCollectionDate)) {
+    const bankDate = getBankDepositDate(collectionDate);
+    depositByBankDate[bankDate] = (depositByBankDate[bankDate] ?? 0) + deposit;
+  }
+
+  // Build fixed grid of bank deposit dates (skip weekends — no deposits land on Sat/Sun)
   const inflowGridStart = new Date(todayStr + 'T00:00:00');
-  inflowGridStart.setDate(inflowGridStart.getDate() - 13);
-  const last14Deposits = Array.from({ length: 14 }, (_, i) => {
+  inflowGridStart.setDate(inflowGridStart.getDate() - (chartDays - 1));
+  const inflowChartData: Array<{ date: string; deposit: number; label: string }> = [];
+  for (let i = 0; i < chartDays + 7; i++) { // extra days to fill chartDays worth of weekdays
     const dt = new Date(inflowGridStart);
     dt.setDate(inflowGridStart.getDate() + i);
-    const collectionDate = dt.toISOString().split('T')[0];
-    const bankDate = getBankDepositDate(collectionDate);
-    return {
-      date: collectionDate,
-      deposit: depositByCollectionDate[collectionDate] ?? 0,
-      label: fmtMonthDay(bankDate),
-    };
-  });
+    const dateStr = dt.toISOString().split('T')[0];
+    const day = dt.getDay();
+    if (day === 0 || day === 6) continue; // skip weekends (no deposits land on Sat/Sun)
+    inflowChartData.push({
+      date: dateStr,
+      deposit: depositByBankDate[dateStr] ?? 0,
+      label: fmtMonthDay(dateStr),
+    });
+    if (inflowChartData.length >= chartDays) break;
+  }
 
-  const inflow14Start = last14Deposits[0]?.label ?? '';
-  const inflow14End = last14Deposits[last14Deposits.length - 1]?.label ?? '';
+  const inflowStart = inflowChartData[0]?.label ?? '';
+  const inflowEnd = inflowChartData[inflowChartData.length - 1]?.label ?? '';
 
   const totalOutflow14d = outflowDays.reduce((s, od) => s + od.total, 0);
 
@@ -307,7 +331,7 @@ export default function FinancePage() {
       {/* Date Range Filter */}
       <div className="flex items-center gap-2 flex-wrap">
         <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-        {(['7d', '30d', '90d'] as const).map((range) => (
+        {(['14d', '30d', '90d', '7d'] as const).map((range) => (
           <button
             key={range}
             onClick={() => setDateRange(range)}
@@ -317,7 +341,7 @@ export default function FinancePage() {
                 : 'border border-border text-muted-foreground hover:text-foreground hover:border-border/80'
             }`}
           >
-            {range === '7d' ? '7 Days' : range === '30d' ? '30 Days' : '90 Days'}
+            {range === '7d' ? '7 Days' : range === '14d' ? '14 Days' : range === '30d' ? '30 Days' : '90 Days'}
           </button>
         ))}
         <button
@@ -351,14 +375,14 @@ export default function FinancePage() {
 
       {/* Key Metrics */}
       {(() => {
-        const rangeLabel = dateRange === 'custom' ? 'Custom' : dateRange === '7d' ? '7d' : dateRange === '90d' ? '90d' : '30d';
+        const rangeLabel = dateRange === 'custom' ? 'Custom' : dateRange === '7d' ? '7d' : dateRange === '14d' ? '14d' : dateRange === '90d' ? '90d' : '30d';
         return (
           <StaggerContainer className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <StaggerItem>
               <MetricCard label={`Total Sales (${rangeLabel})`} value={d.totalSales} icon={<DollarSign className="h-4 w-4 text-emerald-400" />} color="text-foreground" />
             </StaggerItem>
             <StaggerItem>
-              <MetricCard label="Bank Deposits (4wk)" value={totalCODProjected} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color="text-emerald-400" />
+              <MetricCard label={`Bank Deposits (${rangeLabel})`} value={totalCODProjected} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color="text-emerald-400" />
             </StaggerItem>
             <StaggerItem>
               <MetricCard label={`Net Profit (${rangeLabel})`} value={d.totalNetProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={d.totalNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
@@ -380,7 +404,7 @@ export default function FinancePage() {
                     <h2 className="text-base font-semibold text-foreground">Total Cash-In</h2>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {inflow14Start ? <>{inflow14Start} <ArrowRight className="inline h-2.5 w-2.5" /> {inflow14End}</> : 'Last 14 days'}
+                    {inflowStart} <ArrowRight className="inline h-2.5 w-2.5" /> {inflowEnd}
                   </p>
                 </div>
                 <div className="text-right">
@@ -391,13 +415,11 @@ export default function FinancePage() {
                 </div>
               </div>
 
-              {/* 14-day rolling deposits chart — collection dates mapped to bank deposit dates */}
               <div>
-                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-3">14 Days — Bank Deposit Dates (Fri→Mon · Sat+Sun→Tue)</p>
-                {last14Deposits.length > 0 ? (
+                {inflowChartData.length > 0 ? (
                   <div className="h-48">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={last14Deposits} margin={{ top: 4, right: 4, left: 4, bottom: 20 }}>
+                      <AreaChart data={inflowChartData} margin={{ top: 4, right: 4, left: 4, bottom: 20 }}>
                         <defs>
                           <linearGradient id="depositGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
@@ -406,6 +428,7 @@ export default function FinancePage() {
                         </defs>
                         <XAxis
                           dataKey="label"
+                          interval={chartDays <= 14 ? 0 : chartDays <= 30 ? 2 : 6}
                           tick={({ x, y, payload }) => (
                             <text
                               x={x as number} y={(y as number) + 14}
@@ -457,7 +480,7 @@ export default function FinancePage() {
                     <h2 className="text-base font-semibold text-foreground">Spending Power</h2>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {spending.weekStart} <ArrowRight className="inline h-2.5 w-2.5" /> {spending.weekEnd}
+                    {fmtMonthDay(spending.weekStart)} <ArrowRight className="inline h-2.5 w-2.5" /> {fmtMonthDay(spending.weekEnd)}
                   </p>
                 </div>
                 <div className="text-right">
@@ -523,7 +546,7 @@ export default function FinancePage() {
                     <h2 className="text-base font-semibold text-foreground">Cash Outflow</h2>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Next 14 days — Expenses & baselines
+                    {fmtMonthDay(outflowDays[0]?.date ?? todayStr)} <ArrowRight className="inline h-2.5 w-2.5" /> {fmtMonthDay(outflowDays[outflowDays.length - 1]?.date ?? todayStr)}
                   </p>
                 </div>
                 <div className="text-right">
@@ -576,6 +599,7 @@ export default function FinancePage() {
                       </defs>
                       <XAxis
                         dataKey="label"
+                        interval={chartDays <= 14 ? 0 : chartDays <= 30 ? 2 : 6}
                         tick={({ x, y, payload }) => (
                           <text
                             x={x as number} y={(y as number) + 14}
@@ -684,7 +708,7 @@ function SpendingBreakdownModal({ spending, onClose, onRefresh }: { spending: Sp
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground">Spending Power Breakdown</h2>
-              <p className="text-[11px] text-muted-foreground">{spending.weekStart} → {spending.weekEnd}</p>
+              <p className="text-[11px] text-muted-foreground">{fmtMonthDay(spending.weekStart)} → {fmtMonthDay(spending.weekEnd)}</p>
             </div>
           </div>
           <button onClick={onClose} className="rounded-xl border border-border/60 bg-background/60 p-2 text-muted-foreground transition hover:text-foreground">

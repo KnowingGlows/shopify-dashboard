@@ -236,7 +236,7 @@ export default function ExpenditurePage() {
   const topCategories = Object.entries(categoryBreakdown).sort((a, b) => b[1] - a[1]);
   const usedCategories = [...new Set(expenses.map((e) => e.category))];
 
-  // Monthly COD inflow total
+  // Monthly inflow total
   const monthCodInflow = useMemo(() => {
     let total = 0;
     for (const [date, amount] of Object.entries(codByDate)) {
@@ -385,7 +385,7 @@ export default function ExpenditurePage() {
           {!selectedDate && (
             <>
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-400/70 mb-1">Monthly COD Inflow</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-400/70 mb-1">Monthly Inflow</p>
                 <p className="text-2xl font-semibold text-emerald-400 tabular-nums">
                   <AnimatedNumber value={monthCodInflow} formatter={formatINR} />
                 </p>
