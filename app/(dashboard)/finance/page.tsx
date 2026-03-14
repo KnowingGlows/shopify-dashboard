@@ -210,13 +210,13 @@ export default function FinancePage() {
     return map;
   }, [expenses, baselines]);
 
-  // Build outflow chart data — past chartDays up to today
+  // Build outflow chart data — today forward for chartDays
   const outflowDays = useMemo(() => {
     const days: Array<{ date: string; label: string; total: number; expenses: number; unpaidBaselines: number; paidBaselines: number }> = [];
-    const end = new Date(todayStr + 'T00:00:00');
+    const start = new Date(todayStr + 'T00:00:00');
     for (let i = 0; i < chartDays; i++) {
-      const dt = new Date(end);
-      dt.setDate(end.getDate() - (chartDays - 1) + i);
+      const dt = new Date(start);
+      dt.setDate(start.getDate() + i);
       const dateStr = dt.toISOString().split('T')[0];
       const data = dailyOutflows[dateStr];
       days.push({
@@ -284,10 +284,10 @@ export default function FinancePage() {
     }
   }
 
-  // Build inflow chart — last chartDays ending at today
+  // Build inflow chart — today forward for chartDays
   const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
     const dt = new Date(todayStr + 'T00:00:00');
-    dt.setDate(dt.getDate() - (chartDays - 1) + i);
+    dt.setDate(dt.getDate() + i);
     const dateStr = dt.toISOString().split('T')[0];
     return {
       date: dateStr,
@@ -299,17 +299,17 @@ export default function FinancePage() {
 
   const totalOutflow14d = outflowDays.reduce((s, od) => s + od.total, 0);
 
-  // Total missed income in the chart date range
-  const chartStartDate = (() => {
+  // Total missed income in the chart date range (today → today + chartDays)
+  const chartEndDate = (() => {
     const dt = new Date(todayStr + 'T00:00:00');
-    dt.setDate(dt.getDate() - (chartDays - 1));
+    dt.setDate(dt.getDate() + chartDays - 1);
     return dt.toISOString().split('T')[0];
   })();
   const totalIncomeInRange = income.reduce((s, inc) => {
     const incDate = inc.date ?? '';
     const incEnd = inc.endDate ?? incDate;
     // Include if income overlaps with the chart range
-    if (incDate <= todayStr && incEnd >= chartStartDate) {
+    if (incDate <= chartEndDate && incEnd >= todayStr) {
       return s + inc.amount;
     }
     return s;
@@ -596,27 +596,29 @@ export default function FinancePage() {
               </div>
 
               <div>
-                <div className="flex items-center gap-4 mb-3">
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2 w-2 rounded-sm bg-red-500/40" />
-                    <span className="text-[9px] text-muted-foreground/60">Expenses</span>
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                      <span className="text-[9px] text-muted-foreground/60">Expenses</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      <span className="text-[9px] text-muted-foreground/60">Baselines (unpaid)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-1.5 w-1.5 rounded-full bg-amber-400/30 ring-1 ring-amber-400/40" />
+                      <span className="text-[9px] text-muted-foreground/60">Baselines (paid)</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2 w-2 rounded-sm bg-amber-500/50" />
-                    <span className="text-[9px] text-muted-foreground/60">Baselines (unpaid)</span>
+                  <div className="flex gap-1.5">
+                    <Link href="/finance/expenditure" className="rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1 text-[9px] font-medium text-red-400 transition hover:bg-red-500/10">
+                      Expenditure
+                    </Link>
+                    <Link href="/finance/baselines" className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1 text-[9px] font-medium text-amber-400 transition hover:bg-amber-500/10">
+                      Baselines
+                    </Link>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-2 w-2 rounded-sm bg-amber-500/20 border border-amber-500/30" />
-                    <span className="text-[9px] text-muted-foreground/60">Baselines (paid ✓)</span>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-2 mb-4">
-                  <Link href="/finance/expenditure" className="inline-flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-[10px] font-medium text-red-400 transition hover:bg-red-500/10 hover:border-red-500/30">
-                    Expenditure →
-                  </Link>
-                  <Link href="/finance/baselines" className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-1.5 text-[10px] font-medium text-amber-400 transition hover:bg-amber-500/10 hover:border-amber-500/30">
-                    Baselines →
-                  </Link>
                 </div>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
