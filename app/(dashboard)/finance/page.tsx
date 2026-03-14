@@ -299,6 +299,22 @@ export default function FinancePage() {
 
   const totalOutflow14d = outflowDays.reduce((s, od) => s + od.total, 0);
 
+  // Total missed income in the chart date range
+  const chartStartDate = (() => {
+    const dt = new Date(todayStr + 'T00:00:00');
+    dt.setDate(dt.getDate() - (chartDays - 1));
+    return dt.toISOString().split('T')[0];
+  })();
+  const totalIncomeInRange = income.reduce((s, inc) => {
+    const incDate = inc.date ?? '';
+    const incEnd = inc.endDate ?? incDate;
+    // Include if income overlaps with the chart range
+    if (incDate <= todayStr && incEnd >= chartStartDate) {
+      return s + inc.amount;
+    }
+    return s;
+  }, 0);
+
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
       {/* Reminders */}
@@ -562,12 +578,20 @@ export default function FinancePage() {
                     <ArrowDown className="h-5 w-5 text-red-400" />
                     <h2 className="text-base font-semibold text-foreground">Cash Outflow</h2>
                   </div>
+                  {totalIncomeInRange > 0 && (
+                    <p className="text-[10px] text-emerald-400/70 mt-0.5">
+                      +{formatINR(totalIncomeInRange)} income offset
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Due</p>
-                  <p className="text-3xl font-bold text-red-400 tabular-nums">
-                    <AnimatedNumber value={totalOutflow14d} formatter={formatINR} />
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Net Due</p>
+                  <p className={`text-3xl font-bold tabular-nums ${totalOutflow14d - totalIncomeInRange > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    <AnimatedNumber value={Math.max(0, totalOutflow14d - totalIncomeInRange)} formatter={formatINR} />
                   </p>
+                  {totalIncomeInRange > 0 && (
+                    <p className="text-[10px] text-muted-foreground/50 mt-0.5 line-through">{formatINR(totalOutflow14d)}</p>
+                  )}
                 </div>
               </div>
 
