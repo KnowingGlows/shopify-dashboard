@@ -111,13 +111,16 @@ export default function DailyEntriesPage() {
     setSaveStatus('idle');
   };
 
+  // Normalize gross margin — if user enters 0.7 treat as 70%, if 70 treat as 70%
+  const normalizeMargin = (gm: number) => gm <= 1 ? gm : gm / 100;
+
   const updateEditField = (brand: string, field: keyof BrandDailyData, value: number) => {
     setEditData((prev) => {
       const updated = { ...prev, [brand]: { ...prev[brand], [field]: value } };
       // Recalculate grossProfit when sales or margin changes
       const b = updated[brand];
       if (field === 'sales' || field === 'grossMargin') {
-        b.grossProfit = Math.round(b.sales * (b.grossMargin / 100));
+        b.grossProfit = Math.round(b.sales * normalizeMargin(b.grossMargin));
       }
       return updated;
     });
@@ -130,10 +133,11 @@ export default function DailyEntriesPage() {
     try {
       const brandData: Record<string, BrandDailyData> = {};
       for (const [brand, data] of Object.entries(editData)) {
+        const margin = normalizeMargin(data.grossMargin);
         brandData[brand] = {
           sales: data.sales,
-          grossMargin: data.grossMargin / 100,
-          grossProfit: Math.round(data.sales * (data.grossMargin / 100)),
+          grossMargin: margin,
+          grossProfit: Math.round(data.sales * margin),
           adSpend: data.adSpend,
           codSales: data.codSales,
           deliveryRate: data.deliveryRate,
@@ -173,7 +177,7 @@ export default function DailyEntriesPage() {
   const editTotals = Object.values(editData).reduce(
     (acc, b) => ({
       sales: acc.sales + b.sales,
-      grossProfit: acc.grossProfit + Math.round(b.sales * (b.grossMargin / 100)),
+      grossProfit: acc.grossProfit + Math.round(b.sales * normalizeMargin(b.grossMargin)),
       adSpend: acc.adSpend + b.adSpend,
     }),
     { sales: 0, grossProfit: 0, adSpend: 0 },

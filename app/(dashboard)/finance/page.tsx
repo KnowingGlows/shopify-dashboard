@@ -91,13 +91,14 @@ interface FinanceSummary {
 }
 
 // ── COD settlement date logic ────────────────────────────────────────────────
-// Friday collections → Monday deposit, Sat+Sun → Tuesday deposit (combined)
+// Total delay ~7 days (dispatch + delivery + COD processing).
+// No bank deposits on Sunday → shifts to Monday.
+// Fri collection → deposit lands Sun → Mon. Sat+Sun → deposit lands on Tue.
 function getBankDepositDate(collectionDateStr: string): string {
   const d = new Date(collectionDateStr + 'T00:00:00');
-  const day = d.getDay(); // 0=Sun,1=Mon,...,5=Fri,6=Sat
-  if (day === 5) d.setDate(d.getDate() + 3); // Fri → Mon
-  else if (day === 6) d.setDate(d.getDate() + 3); // Sat → Tue
-  else if (day === 0) d.setDate(d.getDate() + 2); // Sun → Tue
+  d.setDate(d.getDate() + 7); // 7-day total delay
+  const day = d.getDay();
+  if (day === 0) d.setDate(d.getDate() + 1); // Sun → Mon
   return d.toISOString().split('T')[0];
 }
 
@@ -262,23 +263,19 @@ export default function FinancePage() {
     depositByBankDate[bankDate] = (depositByBankDate[bankDate] ?? 0) + deposit;
   }
 
-  // Build fixed grid of bank deposit dates (skip weekends — no deposits land on Sat/Sun)
+  // Build fixed grid — every calendar day, deposits merged to bank dates
   const inflowGridStart = new Date(todayStr + 'T00:00:00');
   inflowGridStart.setDate(inflowGridStart.getDate() - (chartDays - 1));
-  const inflowChartData: Array<{ date: string; deposit: number; label: string }> = [];
-  for (let i = 0; i < chartDays + 7; i++) { // extra days to fill chartDays worth of weekdays
+  const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
     const dt = new Date(inflowGridStart);
     dt.setDate(inflowGridStart.getDate() + i);
     const dateStr = dt.toISOString().split('T')[0];
-    const day = dt.getDay();
-    if (day === 0 || day === 6) continue; // skip weekends (no deposits land on Sat/Sun)
-    inflowChartData.push({
+    return {
       date: dateStr,
       deposit: depositByBankDate[dateStr] ?? 0,
       label: fmtMonthDay(dateStr),
-    });
-    if (inflowChartData.length >= chartDays) break;
-  }
+    };
+  });
 
   const inflowStart = inflowChartData[0]?.label ?? '';
   const inflowEnd = inflowChartData[inflowChartData.length - 1]?.label ?? '';
@@ -428,12 +425,12 @@ export default function FinancePage() {
                         </defs>
                         <XAxis
                           dataKey="label"
-                          interval={chartDays <= 14 ? 0 : chartDays <= 30 ? 2 : 6}
+                          interval={chartDays <= 30 ? 0 : 6}
                           tick={({ x, y, payload }) => (
                             <text
                               x={x as number} y={(y as number) + 14}
                               textAnchor="middle"
-                              fontSize={10}
+                              fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
                               fontWeight={500}
                               fill="#9ca3af"
                             >
@@ -600,12 +597,12 @@ export default function FinancePage() {
                       </defs>
                       <XAxis
                         dataKey="label"
-                        interval={chartDays <= 14 ? 0 : chartDays <= 30 ? 2 : 6}
+                        interval={chartDays <= 30 ? 0 : 6}
                         tick={({ x, y, payload }) => (
                           <text
                             x={x as number} y={(y as number) + 14}
                             textAnchor="middle"
-                            fontSize={10}
+                            fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
                             fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 500}
                             fill={payload.value === fmtMonthDay(todayStr) ? '#a78bfa' : '#9ca3af'}
                           >

@@ -712,7 +712,7 @@ async function getSpendingPower(params: URLSearchParams) {
   // Override from query params if provided
   if (params.get('founderCutPct')) founderCutPct = Number(params.get('founderCutPct'));
 
-  // COD projection for this week (sales from 7 days ago → projected deposit this week)
+  // COD projection for this week (sales from 2 days ago → projected deposit this week)
   const COD_DELAY_DAYS = 7;
   const salesStart = new Date(weekStart);
   salesStart.setDate(salesStart.getDate() - COD_DELAY_DAYS);
@@ -957,6 +957,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const monthlyBaselineTotal = monthlyBaselines.reduce((s, b) => s + (Number(b.amount) || 0), 0);
 
   // ── STEP 3: COD projections (4 weeks, using same allDailyEntries) ──
+  // COD deposited 2 days after collection (with weekend adjustments)
   const COD_DELAY_DAYS = 7;
   const codWeeks: Array<{ weekLabel: string; startDate: string; endDate: string; projectedAmount: number; codRevenue: number; brandBreakdown: Record<string, number> }> = [];
 
