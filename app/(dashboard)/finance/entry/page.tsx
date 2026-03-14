@@ -125,7 +125,7 @@ export default function ActualEntryPage() {
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
   return (
-    <PageTransition className="mx-auto max-w-2xl px-4 py-6 space-y-6">
+    <PageTransition className="mx-auto max-w-5xl px-5 py-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/finance" className="rounded-xl p-2 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
@@ -194,7 +194,7 @@ export default function ActualEntryPage() {
             {/* Category Grid */}
             <div>
               <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-3">Income Source</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
                 {INCOME_CATEGORIES.map((cat) => {
                   const Icon = cat.icon;
                   const isActive = incomeCategory === cat.value;
@@ -217,30 +217,32 @@ export default function ActualEntryPage() {
             </div>
 
             {/* Amount & Description */}
-            <div className="rounded-2xl border border-border/40 bg-card/60 p-4 space-y-4 backdrop-blur-sm">
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Amount</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[14px] font-semibold text-emerald-400/60">₹</span>
+            <div className="rounded-2xl border border-border/40 bg-card/60 p-5 backdrop-blur-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4">
+                <div>
+                  <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Amount</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] font-semibold text-emerald-400/60">₹</span>
+                    <input
+                      type="number"
+                      value={incomeAmount}
+                      onChange={(e) => setIncomeAmount(e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-xl border border-border/40 bg-background/40 pl-10 pr-4 py-3.5 text-[20px] font-semibold text-foreground tabular-nums placeholder:text-muted-foreground/20 focus:border-emerald-500/40 focus:outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Description (optional)</label>
                   <input
-                    type="number"
-                    value={incomeAmount}
-                    onChange={(e) => setIncomeAmount(e.target.value)}
-                    placeholder="0"
-                    className="w-full rounded-xl border border-border/40 bg-background/40 pl-9 pr-4 py-3 text-[18px] font-semibold text-foreground tabular-nums placeholder:text-muted-foreground/20 focus:border-emerald-500/40 focus:outline-none transition"
+                    type="text"
+                    value={incomeDescription}
+                    onChange={(e) => setIncomeDescription(e.target.value)}
+                    placeholder="e.g. Kairova COD deposit for March week 1"
+                    className="w-full rounded-xl border border-border/40 bg-background/40 px-4 py-3.5 text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none transition"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Description (optional)</label>
-                <input
-                  type="text"
-                  value={incomeDescription}
-                  onChange={(e) => setIncomeDescription(e.target.value)}
-                  placeholder="e.g. Kairova COD deposit for March week 1"
-                  className="w-full rounded-xl border border-border/40 bg-background/40 px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:border-emerald-500/40 focus:outline-none transition"
-                />
               </div>
             </div>
 
@@ -306,7 +308,7 @@ export default function ActualEntryPage() {
             {/* Category Grid */}
             <div>
               <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-3">Expense Category</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
                 {EXPENSE_CATEGORIES.map((cat) => {
                   const Icon = cat.icon;
                   const isActive = expenseCategory === cat.value;
@@ -329,30 +331,32 @@ export default function ActualEntryPage() {
             </div>
 
             {/* Amount & Description */}
-            <div className="rounded-2xl border border-border/40 bg-card/60 p-4 space-y-4 backdrop-blur-sm">
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Amount</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[14px] font-semibold text-red-400/60">₹</span>
+            <div className="rounded-2xl border border-border/40 bg-card/60 p-5 backdrop-blur-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-4">
+                <div>
+                  <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Amount</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] font-semibold text-red-400/60">₹</span>
+                    <input
+                      type="number"
+                      value={expenseAmount}
+                      onChange={(e) => setExpenseAmount(e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-xl border border-border/40 bg-background/40 pl-10 pr-4 py-3.5 text-[20px] font-semibold text-foreground tabular-nums placeholder:text-muted-foreground/20 focus:border-red-500/40 focus:outline-none transition"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Description (optional)</label>
                   <input
-                    type="number"
-                    value={expenseAmount}
-                    onChange={(e) => setExpenseAmount(e.target.value)}
-                    placeholder="0"
-                    className="w-full rounded-xl border border-border/40 bg-background/40 pl-9 pr-4 py-3 text-[18px] font-semibold text-foreground tabular-nums placeholder:text-muted-foreground/20 focus:border-red-500/40 focus:outline-none transition"
+                    type="text"
+                    value={expenseDescription}
+                    onChange={(e) => setExpenseDescription(e.target.value)}
+                    placeholder="e.g. Supplier payment for new stock"
+                    className="w-full rounded-xl border border-border/40 bg-background/40 px-4 py-3.5 text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:border-red-500/40 focus:outline-none transition"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Description (optional)</label>
-                <input
-                  type="text"
-                  value={expenseDescription}
-                  onChange={(e) => setExpenseDescription(e.target.value)}
-                  placeholder="e.g. Supplier payment for new stock"
-                  className="w-full rounded-xl border border-border/40 bg-background/40 px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:border-red-500/40 focus:outline-none transition"
-                />
               </div>
             </div>
 

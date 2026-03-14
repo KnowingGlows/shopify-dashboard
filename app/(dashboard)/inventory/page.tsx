@@ -83,8 +83,6 @@ export default function InventoryPage() {
   const [formName, setFormName] = useState('');
   const [formSku, setFormSku] = useState('');
   const [formStock, setFormStock] = useState('');
-  const [formReorder, setFormReorder] = useState('');
-  const [formSupplier, setFormSupplier] = useState('');
   const [formCost, setFormCost] = useState('');
   const [formStatus, setFormStatus] = useState('');
   const [formStore, setFormStore] = useState('');
@@ -96,7 +94,7 @@ export default function InventoryPage() {
     fetch('/api/stores')
       .then((r) => r.json())
       .then((data) => {
-        const stores: string[] = (data.stores ?? []).map((s: { name: string }) => s.name).filter(Boolean);
+        const stores: string[] = (data.stores ?? []).map((s: { handle: string; displayName?: string }) => s.displayName || s.handle).filter(Boolean);
         if (stores.length > 0) {
           // Merge with defaults, deduplicate
           const all = ['', ...new Set([...stores, ...DEFAULT_STORE_OPTIONS.filter(Boolean)])];
@@ -130,8 +128,8 @@ export default function InventoryPage() {
   };
 
   const resetForm = () => {
-    setFormName(''); setFormSku(''); setFormStock(''); setFormReorder('');
-    setFormSupplier(''); setFormCost(''); setFormStatus(''); setFormStore(''); setFormSourcing('');
+    setFormName(''); setFormSku(''); setFormStock('');
+    setFormCost(''); setFormStatus(''); setFormStore(''); setFormSourcing('');
   };
 
   const addItem = async () => {
@@ -142,7 +140,6 @@ export default function InventoryPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productName: formName, sku: formSku, currentStock: Number(formStock) || 0,
-          reorderLevel: Number(formReorder) || 0, supplier: formSupplier,
           costPerUnit: Number(formCost) || 0, status: formStatus,
           store: formStore, sourcingOrigin: formSourcing,
         }),
@@ -166,8 +163,8 @@ export default function InventoryPage() {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: entry.id, productName: entry.productName, sku: entry.sku,
-          currentStock: entry.currentStock, reorderLevel: entry.reorderLevel,
-          supplier: entry.supplier, costPerUnit: entry.costPerUnit, status: entry.status,
+          currentStock: entry.currentStock,
+          costPerUnit: entry.costPerUnit, status: entry.status,
           store: entry.store, sourcingOrigin: entry.sourcingOrigin,
         }),
       });
@@ -422,12 +419,6 @@ export default function InventoryPage() {
                 <FormField label="Current Stock">
                   <input type="number" value={formStock} onChange={(e) => setFormStock(e.target.value)} placeholder="0" className="form-input" />
                 </FormField>
-                <FormField label="Reorder Level">
-                  <input type="number" value={formReorder} onChange={(e) => setFormReorder(e.target.value)} placeholder="0" className="form-input" />
-                </FormField>
-                <FormField label="Supplier">
-                  <input type="text" value={formSupplier} onChange={(e) => setFormSupplier(e.target.value)} placeholder="Supplier name..." className="form-input" />
-                </FormField>
                 <FormField label="Cost per Unit (INR)">
                   <input type="number" value={formCost} onChange={(e) => setFormCost(e.target.value)} placeholder="0" className="form-input" />
                 </FormField>
@@ -591,9 +582,6 @@ export default function InventoryPage() {
                             <FormField label="Current Stock">
                               <input type="number" value={entry.currentStock || ''} onChange={(e) => updateField(entry.id, 'currentStock', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
                             </FormField>
-                            <FormField label="Reorder Level">
-                              <input type="number" value={entry.reorderLevel || ''} onChange={(e) => updateField(entry.id, 'reorderLevel', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
-                            </FormField>
                             <FormField label="Cost/Unit">
                               <input type="number" value={entry.costPerUnit || ''} onChange={(e) => updateField(entry.id, 'costPerUnit', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
                             </FormField>
@@ -601,9 +589,6 @@ export default function InventoryPage() {
                               <select value={entry.status} onChange={(e) => { updateField(entry.id, 'status', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className={`form-input text-[12px] ${cfg?.color ?? ''}`}>
                                 {STATUS_OPTIONS.map((s) => <option key={s} value={s} className="bg-card text-foreground">{s || 'Select...'}</option>)}
                               </select>
-                            </FormField>
-                            <FormField label="Supplier">
-                              <input type="text" value={entry.supplier} onChange={(e) => updateField(entry.id, 'supplier', e.target.value)} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
                             </FormField>
                           </div>
 

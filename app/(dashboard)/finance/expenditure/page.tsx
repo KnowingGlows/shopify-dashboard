@@ -82,8 +82,6 @@ export default function ExpenditurePage() {
 
   // COD projection data for calendar overlay
   const [codByDate, setCodByDate] = useState<Record<string, number>>({});
-  // Net profit per day from finance daily entries
-  const [profitByDate, setProfitByDate] = useState<Record<string, number>>({});
   // Missed income entries
   const [incomeEntries, setIncomeEntries] = useState<Array<{ amount: number; date: string; endDate?: string }>>([]);
 
@@ -103,14 +101,9 @@ export default function ExpenditurePage() {
 
       // Compute projected COD deposits per day (sales date + 7 days = deposit date)
       const rates: Record<string, number> = ratesData.rates ?? {};
-      const entries: Array<{ date: string; netProfit?: number; codSalesByBrand?: Record<string, number> }> = summaryData.dailyEntries ?? [];
+      const entries: Array<{ date: string; codSalesByBrand?: Record<string, number> }> = summaryData.dailyEntries ?? [];
       const depositMap: Record<string, number> = {};
-      const profitMap: Record<string, number> = {};
       for (const entry of entries) {
-        // Net profit per day
-        if (entry.netProfit !== undefined) {
-          profitMap[entry.date] = entry.netProfit;
-        }
         const codByBrand = entry.codSalesByBrand ?? {};
         let deposit = 0;
         for (const [brand, amount] of Object.entries(codByBrand)) {
@@ -119,14 +112,13 @@ export default function ExpenditurePage() {
         }
         if (deposit > 0) {
           // Deposit arrives 7 days after sale
-          const saleDate = new Date(entry.date + 'T00:00:00');
+          const saleDate = new Date(entry.date + 'T00:00:00+05:30');
           saleDate.setDate(saleDate.getDate() + 7);
-          const depositDate = saleDate.toISOString().split('T')[0];
+          const depositDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(saleDate);
           depositMap[depositDate] = (depositMap[depositDate] ?? 0) + deposit;
         }
       }
       setCodByDate(depositMap);
-      setProfitByDate(profitMap);
     } catch { /* silently fail */ }
     finally { setLoading(false); }
   }, []);
@@ -252,14 +244,14 @@ export default function ExpenditurePage() {
       const incDate = inc.date ?? '';
       if (inc.endDate) {
         // Spread across date range, count days in this month
-        const start = new Date(inc.date + 'T00:00:00');
-        const end = new Date(inc.endDate + 'T00:00:00');
+        const start = new Date(inc.date + 'T00:00:00+05:30');
+        const end = new Date(inc.endDate + 'T00:00:00+05:30');
         const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
         const dailyAmount = Math.round(inc.amount / rangeDays);
         for (let j = 0; j < rangeDays; j++) {
           const dt = new Date(start);
           dt.setDate(start.getDate() + j);
-          const ds = dt.toISOString().split('T')[0];
+          const ds = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
           if (ds.startsWith(calMonthStr)) total += dailyAmount;
         }
       } else if (incDate.startsWith(calMonthStr)) {
@@ -268,15 +260,6 @@ export default function ExpenditurePage() {
     }
     return total;
   }, [codByDate, incomeEntries, calMonthStr]);
-
-  // Monthly net profit total
-  const monthNetProfit = useMemo(() => {
-    let total = 0;
-    for (const [date, amount] of Object.entries(profitByDate)) {
-      if (date.startsWith(calMonthStr)) total += amount;
-    }
-    return total;
-  }, [profitByDate, calMonthStr]);
 
   // Calendar grid
   const daysInMonth = getDaysInMonth(calYear, calMonth);
@@ -359,7 +342,6 @@ export default function ExpenditurePage() {
               const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
               const dayData = expensesByDate[dateStr];
               const codDeposit = codByDate[dateStr] ?? 0;
-              const dayProfit = profitByDate[dateStr];
               const isToday = dateStr === todayStr;
               const isSelected = dateStr === selectedDate;
               const isFuture = dateStr > todayStr;
@@ -380,18 +362,12 @@ export default function ExpenditurePage() {
                   }`}>
                     {day}
                   </span>
-                  {dayProfit !== undefined && (
-                    <span className={`text-[7px] font-bold tabular-nums leading-none ${dayProfit >= 0 ? 'text-violet-400' : 'text-red-400'}`}>
-                      {dayProfit >= 0 ? '+' : '−'}{formatShort(dayProfit)}
-                    </span>
-                  )}
                   {codDeposit > 0 && (
                     <span className="text-[7px] font-bold text-emerald-400 tabular-nums leading-none">
                       +{formatShort(codDeposit)}
                     </span>
                   )}
                   <div className="flex gap-0.5">
-                    {dayProfit !== undefined && <div className={`h-1 w-1 rounded-full ${dayProfit >= 0 ? 'bg-violet-500' : 'bg-red-500'}`} />}
                     {codDeposit > 0 && <div className="h-1 w-1 rounded-full bg-emerald-500" />}
                     {dayData && [...dayData.categories].slice(0, 1).map((cat) => (
                       <div key={cat} className={`h-1 w-1 rounded-full ${CATEGORY_COLORS[cat] ?? 'bg-zinc-500'}`} />
@@ -422,15 +398,6 @@ export default function ExpenditurePage() {
                 </p>
                 <p className="text-[10px] text-muted-foreground/50 mt-0.5">{monthExpenses.length} expense{monthExpenses.length !== 1 ? 's' : ''} this month</p>
               </div>
-              {monthNetProfit !== 0 && (
-                <div className={`rounded-xl border px-4 py-3 ${monthNetProfit >= 0 ? 'border-violet-500/20 bg-violet-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Net Profit</p>
-                  <p className={`text-2xl font-semibold tabular-nums ${monthNetProfit >= 0 ? 'text-violet-400' : 'text-red-400'}`}>
-                    <AnimatedNumber value={monthNetProfit} formatter={formatINR} />
-                  </p>
-                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">From daily P&L for {monthLabel}</p>
-                </div>
-              )}
               <div className="rounded-xl border border-border bg-card px-4 py-3">
                 <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Net Cashflow</p>
                 <p className={`text-2xl font-semibold tabular-nums ${monthCodInflow - totalMonth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -441,17 +408,6 @@ export default function ExpenditurePage() {
                 </p>
               </div>
             </>
-          )}
-
-          {/* Net Profit for selected date */}
-          {selectedDate && profitByDate[selectedDate] !== undefined && (
-            <div className={`rounded-xl border px-4 py-3 ${profitByDate[selectedDate] >= 0 ? 'border-violet-500/20 bg-violet-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Net Profit</p>
-              <p className={`text-2xl font-semibold tabular-nums ${profitByDate[selectedDate] >= 0 ? 'text-violet-400' : 'text-red-400'}`}>
-                <AnimatedNumber value={profitByDate[selectedDate]} formatter={formatINR} />
-              </p>
-              <p className="text-[10px] text-muted-foreground/50 mt-0.5">Daily P&L for {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
-            </div>
           )}
 
           {/* COD Inflow for selected date */}

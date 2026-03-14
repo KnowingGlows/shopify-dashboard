@@ -106,6 +106,7 @@ export default function ProjectedFinancePage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [income, setIncome] = useState<IncomeEntry[]>([]);
   const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
+  const [plannedExpenses, setPlannedExpenses] = useState<Array<{ id: string; category: string; description: string; amount: number; date: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -116,8 +117,11 @@ export default function ProjectedFinancePage() {
   const fetchAll = useCallback(async () => {
     try {
       const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
-      const res = await fetch(`/api/finance?action=combined&days=${days}`);
-      const data = await res.json();
+      const [res, plannedRes] = await Promise.all([
+        fetch(`/api/finance?action=combined&days=${days}`),
+        fetch('/api/finance?action=planned'),
+      ]);
+      const [data, plannedData] = await Promise.all([res.json(), plannedRes.json()]);
       setSummary(data.summary);
       setCodWeeks(data.codWeeks ?? []);
       setSpending(data.spending);
@@ -125,6 +129,7 @@ export default function ProjectedFinancePage() {
       setDeliveryRates(data.deliveryRates ?? {});
       setExpenses(data.expenses ?? []);
       setIncome(data.income ?? []);
+      setPlannedExpenses(plannedData.planned ?? []);
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,44 +147,29 @@ export default function ProjectedFinancePage() {
     return 14;
   }, [dateRange]);
 
-  // Build daily outflow map (expenses + baselines by date) — FORWARD looking
+  // Build daily outflow map from PLANNED expenses only
   const dailyOutflows = useMemo(() => {
-    const map: Record<string, { expenses: number; unpaidBaselines: number; paidBaselines: number; items: string[] }> = {};
-    for (const exp of expenses) {
-      if (!map[exp.date]) map[exp.date] = { expenses: 0, unpaidBaselines: 0, paidBaselines: 0, items: [] };
-      map[exp.date].expenses += exp.amount;
-      map[exp.date].items.push(exp.description || exp.category);
-    }
-    for (const b of baselines) {
-      if (b.type === 'monthly' && b.dueDate) {
-        if (!map[b.dueDate]) map[b.dueDate] = { expenses: 0, unpaidBaselines: 0, paidBaselines: 0, items: [] };
-        if (b.isPaid) {
-          map[b.dueDate].paidBaselines += b.amount;
-        } else {
-          map[b.dueDate].unpaidBaselines += b.amount;
-        }
-        map[b.dueDate].items.push(b.label + (b.isPaid ? ' ✓' : ''));
+    const map: Record<string, number> = {};
+    for (const p of plannedExpenses) {
+      if (p.date >= todayStr) {
+        map[p.date] = (map[p.date] ?? 0) + p.amount;
       }
     }
     return map;
-  }, [expenses, baselines]);
+  }, [plannedExpenses, todayStr]);
 
   // Build outflow chart data — today FORWARD for chartDays
   const outflowDays = useMemo(() => {
-    const days: Array<{ date: string; label: string; total: number; expenses: number; unpaidBaselines: number; paidBaselines: number }> = [];
-    const start = new Date(todayStr + 'T00:00:00');
+    const days: Array<{ date: string; label: string; planned: number }> = [];
+    const start = new Date(todayStr + 'T00:00:00+05:30');
     for (let i = 0; i < chartDays; i++) {
       const dt = new Date(start);
       dt.setDate(start.getDate() + i);
-      const dateStr = dt.toISOString().split('T')[0];
-      const data = dailyOutflows[dateStr];
+      const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
       days.push({
         date: dateStr,
         label: fmtMonthDay(dateStr),
-        total: (data?.expenses ?? 0) + (data?.unpaidBaselines ?? 0),
-        expenses: data?.expenses ?? 0,
-        unpaidBaselines: data?.unpaidBaselines ?? 0,
-        paidBaselines: data?.paidBaselines ?? 0,
+        planned: dailyOutflows[dateStr] ?? 0,
       });
     }
     return days;
@@ -235,7 +225,7 @@ export default function ProjectedFinancePage() {
     };
   });
 
-  const totalOutflow = outflowDays.reduce((s, od) => s + od.total, 0);
+  const totalOutflow = outflowDays.reduce((s, od) => s + od.planned, 0);
   const totalInflow = inflowChartData.reduce((s, d) => s + d.deposit, 0);
 
   // P&L Net Profit = grossProfit - (adSpend * 1.14) — the formula-based approach
@@ -447,111 +437,85 @@ export default function ProjectedFinancePage() {
       })()}
 
       {/* ═══ Projected Cash Outflow ═══ */}
-      {totalOutflow > 0 && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38 }}>
-          <div className="rounded-2xl border border-red-500/15 bg-gradient-to-br from-red-500/[0.04] via-card to-card">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <ArrowDown className="h-5 w-5 text-red-400" />
-                    <h2 className="text-base font-semibold text-foreground">Projected Cash Outflow</h2>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Due</p>
-                  <p className="text-3xl font-bold tabular-nums text-red-400">
-                    <AnimatedNumber value={totalOutflow} formatter={formatINR} />
-                  </p>
-                </div>
-              </div>
-
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38 }}>
+        <div className="rounded-2xl border border-red-500/15 bg-gradient-to-br from-red-500/[0.04] via-card to-card">
+          <div className="p-6">
+            <div className="flex items-start justify-between mb-6">
               <div>
-                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                      <span className="text-[9px] text-muted-foreground/60">Expenses</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                      <span className="text-[9px] text-muted-foreground/60">Recurring (unpaid)</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 rounded-full bg-amber-400/30 ring-1 ring-amber-400/40" />
-                      <span className="text-[9px] text-muted-foreground/60">Recurring (paid)</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <Link href="/finance/expenditure" className="rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1 text-[9px] font-medium text-red-400 transition hover:bg-red-500/10">
-                      Expenditure
-                    </Link>
-                    <Link href="/finance/expenditure" className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1 text-[9px] font-medium text-amber-400 transition hover:bg-amber-500/10">
-                      Recurring
-                    </Link>
-                  </div>
+                <div className="flex items-center gap-2 mb-1">
+                  <ArrowDown className="h-5 w-5 text-red-400" />
+                  <h2 className="text-base font-semibold text-foreground">Projected Cash Outflow</h2>
                 </div>
-                <div className="h-52">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={outflowDays} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
-                      <defs>
-                        <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
-                        </linearGradient>
-                        <linearGradient id="unpaidBaseGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
-                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.03} />
-                        </linearGradient>
-                        <linearGradient id="paidBaseGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15} />
-                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.01} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis
-                        dataKey="label"
-                        interval={chartDays <= 30 ? 0 : 6}
-                        tick={({ x, y, payload }) => (
-                          <text
-                            x={x as number} y={(y as number) + 14}
-                            textAnchor="middle"
-                            fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
-                            fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 500}
-                            fill={payload.value === fmtMonthDay(todayStr) ? '#a78bfa' : '#9ca3af'}
-                          >
-                            {payload.value}
-                          </text>
-                        )}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (!active || !payload?.length) return null;
-                          const exp = (payload.find((p) => p.dataKey === 'expenses')?.value as number) ?? 0;
-                          const unpaid = (payload.find((p) => p.dataKey === 'unpaidBaselines')?.value as number) ?? 0;
-                          const paid = (payload.find((p) => p.dataKey === 'paidBaselines')?.value as number) ?? 0;
-                          if (exp + unpaid + paid === 0) return null;
-                          return (
-                            <div className="rounded-md border border-border bg-popover px-2.5 py-2 text-[10px] shadow-lg space-y-0.5">
-                              {exp > 0 && <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-red-400 inline-block" /><span className="text-muted-foreground">Expenses</span><span className="font-semibold text-foreground ml-auto pl-3">{formatINR(exp)}</span></div>}
-                              {unpaid > 0 && <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-amber-400 inline-block" /><span className="text-muted-foreground">Due</span><span className="font-semibold text-foreground ml-auto pl-3">{formatINR(unpaid)}</span></div>}
-                              {paid > 0 && <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-amber-400/40 inline-block" /><span className="text-muted-foreground">Paid ✓</span><span className="font-semibold text-foreground ml-auto pl-3">{formatINR(paid)}</span></div>}
-                            </div>
-                          );
-                        }}
-                      />
-                      <Area type="monotone" dataKey="paidBaselines" stroke="#f59e0b" strokeWidth={1} strokeDasharray="3 3" fill="url(#paidBaseGrad)" dot={false} stackId="stack" />
-                      <Area type="monotone" dataKey="unpaidBaselines" stroke="#f59e0b" strokeWidth={1.5} fill="url(#unpaidBaseGrad)" dot={false} stackId="stack" />
-                      <Area type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={1.5} fill="url(#expGrad)" dot={false} stackId="stack" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                <p className="text-[10px] text-muted-foreground/60">Planned reinvestment & expenses</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/finance/projected/planning"
+                  className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-medium text-primary transition hover:bg-primary/10"
+                >
+                  Plan Expenses →
+                </Link>
+                {totalOutflow > 0 && (
+                  <div className="text-right">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Planned</p>
+                    <p className="text-3xl font-bold tabular-nums text-red-400">
+                      <AnimatedNumber value={totalOutflow} formatter={formatINR} />
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
+
+            {totalOutflow > 0 ? (
+              <div className="h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={outflowDays} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
+                    <defs>
+                      <linearGradient id="plannedGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="label"
+                      interval={chartDays <= 30 ? 0 : 6}
+                      tick={({ x, y, payload }) => (
+                        <text
+                          x={x as number} y={(y as number) + 14}
+                          textAnchor="middle"
+                          fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
+                          fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 500}
+                          fill={payload.value === fmtMonthDay(todayStr) ? '#a78bfa' : '#9ca3af'}
+                        >
+                          {payload.value}
+                        </text>
+                      )}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => active && payload?.length && (payload[0].value as number) > 0 ? (
+                        <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
+                          <span className="text-muted-foreground text-[10px] mr-1.5">Planned</span>{formatINR(payload[0].value as number)}
+                        </div>
+                      ) : null}
+                    />
+                    <Area type="monotone" dataKey="planned" stroke="#ef4444" strokeWidth={1.5} fill="url(#plannedGrad)" dot={false} activeDot={{ r: 3, fill: '#ef4444' }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-40 flex flex-col items-center justify-center text-center">
+                <ArrowDown className="h-6 w-6 text-muted-foreground/20 mb-2" />
+                <p className="text-[12px] text-muted-foreground/50">No expenses planned yet</p>
+                <Link href="/finance/projected/planning" className="text-[11px] text-primary hover:text-primary/80 mt-1 transition">
+                  Plan your reinvestment →
+                </Link>
+              </div>
+            )}
           </div>
-        </motion.div>
-      )}
+        </div>
+      </motion.div>
 
       {/* ═══ Spending Power Breakdown Modal ═══ */}
       <AnimatePresence>

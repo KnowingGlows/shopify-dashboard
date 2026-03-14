@@ -184,6 +184,8 @@ export async function GET(request: Request) {
         return getSpendingPower(searchParams);
       case 'spending-config':
         return getSpendingConfig();
+      case 'planned':
+        return getPlannedExpenses();
       default:
         return getFinanceSummary(searchParams);
     }
@@ -223,6 +225,12 @@ export async function POST(request: Request) {
         return saveIncome(body);
       case 'dismiss-reminder':
         return dismissReminder(body);
+      case 'add-planned':
+        return addPlannedExpense(body);
+      case 'update-planned':
+        return updatePlannedExpense(body);
+      case 'delete-planned':
+        return deletePlannedExpense(body);
       default:
         return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
     }
@@ -1335,4 +1343,64 @@ async function fetchCollection(firestore: any, collection: string): Promise<any[
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return snapshot.docs.map((doc: any) => doc.data());
   } catch { return []; }
+}
+
+// ── Planned Expenses (Projected Outflow) ─────────────────────────────────────
+
+async function getPlannedExpenses() {
+  const firestore = db();
+  if (!firestore) return NextResponse.json({ planned: [] });
+
+  const snapshot = await firestore.collection(COLLECTIONS.FINANCE_PLANNED).orderBy('date', 'asc').get();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const planned = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+  return NextResponse.json({ planned });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function addPlannedExpense(body: any) {
+  const firestore = db();
+  if (!firestore) return NextResponse.json({ error: 'DB unavailable' }, { status: 500 });
+
+  const now = getISTDate();
+  const entry = {
+    category: (body.category as string) ?? 'reinvestment',
+    description: (body.description as string) ?? '',
+    amount: Number(body.amount) || 0,
+    date: (body.date as string) ?? now,
+    createdAt: new Date().toISOString(),
+  };
+  if (!entry.amount) return NextResponse.json({ error: 'Amount required' }, { status: 400 });
+
+  const ref = await firestore.collection(COLLECTIONS.FINANCE_PLANNED).add(entry);
+  return NextResponse.json({ success: true, planned: { id: ref.id, ...entry } });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function updatePlannedExpense(body: any) {
+  const firestore = db();
+  if (!firestore) return NextResponse.json({ error: 'DB unavailable' }, { status: 500 });
+  const id = body.id as string;
+  if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updates: Record<string, any> = {};
+  if (body.category !== undefined) updates.category = body.category;
+  if (body.description !== undefined) updates.description = body.description;
+  if (body.amount !== undefined) updates.amount = Number(body.amount) || 0;
+  if (body.date !== undefined) updates.date = body.date;
+
+  await firestore.collection(COLLECTIONS.FINANCE_PLANNED).doc(id).update(updates);
+  return NextResponse.json({ success: true });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function deletePlannedExpense(body: any) {
+  const firestore = db();
+  if (!firestore) return NextResponse.json({ error: 'DB unavailable' }, { status: 500 });
+  const id = body.id as string;
+  if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+
+  await firestore.collection(COLLECTIONS.FINANCE_PLANNED).doc(id).delete();
+  return NextResponse.json({ success: true });
 }

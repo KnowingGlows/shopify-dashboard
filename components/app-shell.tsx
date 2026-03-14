@@ -35,6 +35,7 @@ const navItems: NavItem[] = [
   { href: '/finance/entries', label: 'Entries', icon: List, section: 'core', parent: '/finance' },
   { href: '/finance/projected', label: 'Projected', icon: TrendingUp, section: 'core' },
   { href: '/finance/projected/entry', label: 'Daily P&L', icon: PenLine, section: 'core', parent: '/finance/projected' },
+  { href: '/finance/projected/planning', label: 'Planning', icon: ClipboardList, section: 'core', parent: '/finance/projected' },
   { href: '/finance/projected/entries', label: 'Entries', icon: List, section: 'core', parent: '/finance/projected' },
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'core' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
@@ -150,8 +151,8 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
             // Hide child items unless parent route is active
             if (i.parent) {
               if (!activePath.startsWith(i.parent)) return false;
-              // Prevent /finance children from showing on /finance/projected routes
-              if (i.parent === '/finance' && activePath.startsWith('/finance/projected')) return false;
+              // Prevent /finance children from showing on standalone /finance/* routes
+              if (i.parent === '/finance' && (activePath.startsWith('/finance/projected') || activePath === '/finance/calculator')) return false;
             }
             return true;
           });

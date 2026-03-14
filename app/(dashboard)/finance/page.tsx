@@ -41,6 +41,7 @@ interface Expense {
   description: string;
   amount: number;
   date: string;
+  endDate?: string;
 }
 
 interface IncomeEntry {
@@ -72,11 +73,10 @@ export default function ActualFinancePage() {
   const [dateRange, setDateRange] = useState<'14d' | '30d' | '7d' | '90d'>('14d');
 
   const yesterdayStr = useMemo(() => {
-    // Get today in IST, then subtract one day (avoids timezone edge cases)
     const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-    const d = new Date(todayIST + 'T00:00:00');
+    const d = new Date(todayIST + 'T00:00:00+05:30');
     d.setDate(d.getDate() - 1);
-    return d.toISOString().split('T')[0];
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
   }, []);
 
   const fetchAll = useCallback(async () => {
@@ -124,9 +124,9 @@ export default function ActualFinancePage() {
       }
       if (deposit > 0) {
         // Deposit lands 7 days after the sale
-        const depositDate = new Date(entry.date + 'T00:00:00');
+        const depositDate = new Date(entry.date + 'T00:00:00+05:30');
         depositDate.setDate(depositDate.getDate() + 7);
-        const ds = depositDate.toISOString().split('T')[0];
+        const ds = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(depositDate);
         if (ds <= yesterdayStr) {
           map[ds] = (map[ds] ?? 0) + deposit;
         }
@@ -142,14 +142,14 @@ export default function ActualFinancePage() {
     for (const inc of income) {
       const incDate = inc.date ?? '';
       if (inc.endDate) {
-        const start = new Date(incDate + 'T00:00:00');
-        const end = new Date(inc.endDate + 'T00:00:00');
+        const start = new Date(incDate + 'T00:00:00+05:30');
+        const end = new Date(inc.endDate + 'T00:00:00+05:30');
         const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
         const dailyAmount = Math.round(inc.amount / rangeDays);
         for (let j = 0; j < rangeDays; j++) {
           const dt = new Date(start);
           dt.setDate(start.getDate() + j);
-          const ds = dt.toISOString().split('T')[0];
+          const ds = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
           if (ds <= yesterdayStr) map[ds] = (map[ds] ?? 0) + dailyAmount;
         }
       } else if (incDate <= yesterdayStr) {
@@ -163,7 +163,19 @@ export default function ActualFinancePage() {
   const moneyOutByDate = useMemo(() => {
     const map: Record<string, number> = {};
     for (const exp of expenses) {
-      if (exp.date <= yesterdayStr) {
+      if (exp.endDate && exp.endDate !== exp.date) {
+        // Spread date-range expenses evenly across days (same as Money In does for income)
+        const start = new Date(exp.date + 'T00:00:00+05:30');
+        const end = new Date(exp.endDate + 'T00:00:00+05:30');
+        const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+        const dailyAmount = Math.round(exp.amount / rangeDays);
+        for (let j = 0; j < rangeDays; j++) {
+          const dt = new Date(start);
+          dt.setDate(start.getDate() + j);
+          const ds = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
+          if (ds <= yesterdayStr) map[ds] = (map[ds] ?? 0) + dailyAmount;
+        }
+      } else if (exp.date <= yesterdayStr) {
         map[exp.date] = (map[exp.date] ?? 0) + exp.amount;
       }
     }
@@ -179,11 +191,11 @@ export default function ActualFinancePage() {
   const chartData = useMemo(() => {
     const days: Array<{ date: string; label: string; moneyIn: number; moneyOut: number; cashReserve: number }> = [];
     let runningReserve = 0;
-    const end = new Date(yesterdayStr + 'T00:00:00');
+    const end = new Date(yesterdayStr + 'T00:00:00+05:30');
     for (let i = 0; i < chartDays; i++) {
       const dt = new Date(end);
       dt.setDate(end.getDate() - (chartDays - 1) + i);
-      const dateStr = dt.toISOString().split('T')[0];
+      const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
       const inAmount = moneyInByDate[dateStr] ?? 0;
       const outAmount = moneyOutByDate[dateStr] ?? 0;
       runningReserve += inAmount - outAmount;
