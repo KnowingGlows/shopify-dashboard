@@ -263,12 +263,10 @@ export default function FinancePage() {
     depositByBankDate[bankDate] = (depositByBankDate[bankDate] ?? 0) + deposit;
   }
 
-  // Build fixed grid — every calendar day, deposits merged to bank dates
-  const inflowGridStart = new Date(todayStr + 'T00:00:00');
-  inflowGridStart.setDate(inflowGridStart.getDate() - (chartDays - 1));
+  // Build fixed grid — forward-looking from today (when money will hit the bank)
   const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
-    const dt = new Date(inflowGridStart);
-    dt.setDate(inflowGridStart.getDate() + i);
+    const dt = new Date(todayStr + 'T00:00:00');
+    dt.setDate(dt.getDate() + i);
     const dateStr = dt.toISOString().split('T')[0];
     return {
       date: dateStr,
