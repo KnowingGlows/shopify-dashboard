@@ -407,7 +407,16 @@ export default function FinancePage() {
 
       {/* ═══ Total Cash-In — Hero Card ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        {currentWeek && currentWeek.codRevenue > 0 ? (
+        {(() => {
+          const totalInflow = inflowChartData.reduce((s, d) => s + d.deposit, 0);
+          const hasData = totalInflow > 0 || (currentWeek && currentWeek.codRevenue > 0);
+          if (!hasData) return (
+            <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
+              <Clock className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
+              <p className="text-[12px] text-muted-foreground">No inflow data yet. COD orders are auto-fetched when you enter daily data.</p>
+            </div>
+          );
+          return (
           <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card">
             <div className="p-6">
               {/* Top row */}
@@ -419,9 +428,9 @@ export default function FinancePage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Projected Deposit</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Inflow</p>
                   <p className="text-3xl font-bold text-emerald-400 tabular-nums">
-                    <AnimatedNumber value={currentWeek.projectedAmount} formatter={formatINR} />
+                    <AnimatedNumber value={totalInflow} formatter={formatINR} />
                   </p>
                 </div>
               </div>
@@ -471,12 +480,8 @@ export default function FinancePage() {
               </div>
             </div>
           </div>
-        ) : (
-          <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
-            <Clock className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
-            <p className="text-[12px] text-muted-foreground">No COD data yet. COD orders are auto-fetched when you enter daily data.</p>
-          </div>
-        )}
+          );
+        })()}
       </motion.div>
 
       {/* ═══ Spending Power — Hero Card ═══ */}
