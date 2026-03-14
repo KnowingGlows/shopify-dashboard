@@ -31,7 +31,7 @@ import Database from 'better-sqlite3';
 // ── Config ───────────────────────────────────────────────────────────
 
 const ORBIT_URL = process.env.ORBIT_URL || 'http://localhost:3000';
-const ORBIT_TOKEN = process.env.ORBIT_TOKEN || '';
+const ORBIT_TOKEN = process.env.ORBIT_TOKEN || 'orbit-sms-ingest-2026';
 const MESSAGES_DB = resolve(homedir(), 'Library/Messages/chat.db');
 
 // Parse CLI args

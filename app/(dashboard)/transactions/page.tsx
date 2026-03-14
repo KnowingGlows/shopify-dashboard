@@ -157,7 +157,7 @@ export default function TransactionsPage() {
     try {
       const params = new URLSearchParams();
       if (tab !== 'all') params.set('status', tab);
-      const res = await fetch(`/api/transactions?action=list&${params}`);
+      const res = await fetch(`/api/transactions?action=list&key=orbit-sms-ingest-2026&${params}`);
       const data = await res.json();
       if (data.success) {
         setTransactions(data.transactions ?? []);
@@ -220,7 +220,7 @@ export default function TransactionsPage() {
   async function updateTransaction(id: string, status: TxnStatus, category?: ExpenseCategory) {
     setActionLoading(true);
     try {
-      await fetch('/api/transactions', {
+      await fetch('/api/transactions?key=orbit-sms-ingest-2026', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'review', id, status, category }),
@@ -235,7 +235,7 @@ export default function TransactionsPage() {
     if (selectedIds.size === 0) return;
     setActionLoading(true);
     try {
-      await fetch('/api/transactions', {
+      await fetch('/api/transactions?key=orbit-sms-ingest-2026', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, ids: Array.from(selectedIds) }),

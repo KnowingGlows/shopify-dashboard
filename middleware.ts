@@ -14,6 +14,7 @@ const publicPaths = [
   '/api/auth/logout',
   '/api/auth/signup',
   '/api/auth/seed',
+  '/api/transactions',
 ];
 
 export async function middleware(request: NextRequest) {

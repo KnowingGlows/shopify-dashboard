@@ -2,6 +2,17 @@ import { NextResponse } from 'next/server';
 import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
 import { parseHDFCSMS, categorizeTransaction, type ParsedTransaction, type ExpenseCategory } from '@/lib/sms-parser';
 
+// ── API Key Auth (for external scripts like sms-reader) ──────────────
+const API_KEY = process.env.ORBIT_INGEST_KEY || 'orbit-sms-ingest-2026';
+
+function checkAuth(request: Request): boolean {
+  const authHeader = request.headers.get('authorization');
+  if (authHeader === `Bearer ${API_KEY}`) return true;
+  const url = new URL(request.url);
+  if (url.searchParams.get('key') === API_KEY) return true;
+  return false;
+}
+
 // ── Types ────────────────────────────────────────────────────────────
 
 interface StoredTransaction {
@@ -28,6 +39,9 @@ interface StoredTransaction {
 
 export async function GET(request: Request) {
   try {
+    if (!checkAuth(request)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     if (!isFirebaseAvailable()) {
       return NextResponse.json({ error: 'Firebase not available' }, { status: 500 });
     }
@@ -105,6 +119,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    if (!checkAuth(request)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     if (!isFirebaseAvailable()) {
       return NextResponse.json({ error: 'Firebase not available' }, { status: 500 });
     }
