@@ -146,10 +146,11 @@ export default function FinanceEntryPage() {
     try {
       const brandData: Record<string, { sales: number; grossMargin: number; grossProfit: number; adSpend: number; codSales: number; deliveryRate: number }> = {};
       for (const [brand, entry] of Object.entries(brandEntries)) {
+        const margin = normalizeMargin(entry.grossMargin);
         brandData[brand] = {
           sales: entry.sales,
-          grossMargin: entry.grossMargin / 100,
-          grossProfit: Math.round(entry.sales * (entry.grossMargin / 100)),
+          grossMargin: margin,
+          grossProfit: Math.round(entry.sales * margin),
           adSpend: entry.adSpend,
           codSales: entry.codSales,
           deliveryRate: entry.deliveryRate,
@@ -175,11 +176,14 @@ export default function FinanceEntryPage() {
   };
 
 
+  // Normalize gross margin — if user enters 0.7 treat as 70%, if 70 treat as 70%
+  const normalizeMargin = (gm: number) => gm <= 1 ? gm : gm / 100;
+
   // Computed totals
   const totals = Object.values(brandEntries).reduce(
     (acc, e) => ({
       sales: acc.sales + e.sales,
-      grossProfit: acc.grossProfit + Math.round(e.sales * (e.grossMargin / 100)),
+      grossProfit: acc.grossProfit + Math.round(e.sales * normalizeMargin(e.grossMargin)),
       adSpend: acc.adSpend + e.adSpend,
       codSales: acc.codSales + e.codSales,
     }),
@@ -189,7 +193,7 @@ export default function FinanceEntryPage() {
   const totalNetProfit = totals.grossProfit - totalActualAdCost;
 
   const currentBrand = activeBrand ? brandEntries[activeBrand] : null;
-  const brandGrossProfit = currentBrand ? Math.round(currentBrand.sales * (currentBrand.grossMargin / 100)) : 0;
+  const brandGrossProfit = currentBrand ? Math.round(currentBrand.sales * normalizeMargin(currentBrand.grossMargin)) : 0;
   const brandActualAdCost = currentBrand ? Math.round(currentBrand.adSpend * 1.14) : 0;
   const brandNetProfit = brandGrossProfit - brandActualAdCost;
 

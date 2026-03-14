@@ -394,7 +394,7 @@ export default function FinancePage() {
       {/* ═══ Total Cash-In — Hero Card ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         {currentWeek && currentWeek.codRevenue > 0 ? (
-          <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card overflow-hidden">
+          <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card">
             <div className="p-6">
               {/* Top row */}
               <div className="flex items-start justify-between mb-6">
@@ -417,9 +417,9 @@ export default function FinancePage() {
 
               <div>
                 {inflowChartData.length > 0 ? (
-                  <div className="h-48">
+                  <div className="h-52">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={inflowChartData} margin={{ top: 4, right: 4, left: 4, bottom: 20 }}>
+                      <AreaChart data={inflowChartData} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
                         <defs>
                           <linearGradient id="depositGrad" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
@@ -433,8 +433,9 @@ export default function FinancePage() {
                             <text
                               x={x as number} y={(y as number) + 14}
                               textAnchor="middle"
-                              fontSize={9}
-                              fill="#6b7280"
+                              fontSize={10}
+                              fontWeight={500}
+                              fill="#9ca3af"
                             >
                               {payload.value}
                             </text>
@@ -537,7 +538,7 @@ export default function FinancePage() {
       {/* ═══ Cash Outflow — Bar Chart ═══ */}
       {totalOutflow14d > 0 && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38 }}>
-          <div className="rounded-2xl border border-red-500/15 bg-gradient-to-br from-red-500/[0.04] via-card to-card overflow-hidden">
+          <div className="rounded-2xl border border-red-500/15 bg-gradient-to-br from-red-500/[0.04] via-card to-card">
             <div className="p-6">
               <div className="flex items-start justify-between mb-6">
                 <div>
@@ -580,9 +581,9 @@ export default function FinancePage() {
                     Baselines →
                   </Link>
                 </div>
-                <div className="h-48">
+                <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={outflowDays} margin={{ top: 4, right: 4, left: 4, bottom: 20 }}>
+                    <AreaChart data={outflowDays} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
                       <defs>
                         <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
@@ -604,9 +605,9 @@ export default function FinancePage() {
                           <text
                             x={x as number} y={(y as number) + 14}
                             textAnchor="middle"
-                            fontSize={9}
-                            fill={payload.value === fmtMonthDay(todayStr) ? '#a78bfa' : '#6b7280'}
-                            fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 400}
+                            fontSize={10}
+                            fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 500}
+                            fill={payload.value === fmtMonthDay(todayStr) ? '#a78bfa' : '#9ca3af'}
                           >
                             {payload.value}
                           </text>
