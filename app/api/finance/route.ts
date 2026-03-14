@@ -982,7 +982,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rawCombinedExpenses = expensesSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
   // Expand recurring expenses for combined data
-  const todayDate = new Date();
+  const nowDate = new Date();
   const allExpenses: typeof rawCombinedExpenses = [];
   for (const exp of rawCombinedExpenses) {
     allExpenses.push(exp);
@@ -993,7 +993,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
         const nextDate = new Date(origDate);
         nextDate.setMonth(origDate.getMonth() + m);
         if (nextDate.getDate() !== origDay) nextDate.setDate(0);
-        if (nextDate <= todayDate) continue;
+        if (nextDate <= nowDate) continue;
         const dateStr = nextDate.toISOString().split('T')[0];
         allExpenses.push({ ...exp, id: `${exp.id}_recurring_${dateStr}`, date: dateStr, recurring: true });
       }
