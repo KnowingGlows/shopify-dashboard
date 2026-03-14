@@ -199,13 +199,13 @@ export default function FinancePage() {
     return map;
   }, [expenses, baselines]);
 
-  // Build outflow chart data — uses chartDays from filter
+  // Build outflow chart data — past chartDays up to today
   const outflowDays = useMemo(() => {
     const days: Array<{ date: string; label: string; total: number; expenses: number; unpaidBaselines: number; paidBaselines: number }> = [];
-    const start = new Date(todayStr + 'T00:00:00');
+    const end = new Date(todayStr + 'T00:00:00');
     for (let i = 0; i < chartDays; i++) {
-      const dt = new Date(start);
-      dt.setDate(start.getDate() + i);
+      const dt = new Date(end);
+      dt.setDate(end.getDate() - (chartDays - 1) + i);
       const dateStr = dt.toISOString().split('T')[0];
       const data = dailyOutflows[dateStr];
       days.push({
@@ -263,10 +263,10 @@ export default function FinancePage() {
     depositByBankDate[bankDate] = (depositByBankDate[bankDate] ?? 0) + deposit;
   }
 
-  // Build fixed grid — forward-looking from today (when money will hit the bank)
+  // Build fixed grid — past chartDays up to today (what already came in / is coming today)
   const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
     const dt = new Date(todayStr + 'T00:00:00');
-    dt.setDate(dt.getDate() + i);
+    dt.setDate(dt.getDate() - (chartDays - 1) + i);
     const dateStr = dt.toISOString().split('T')[0];
     return {
       date: dateStr,
@@ -275,8 +275,6 @@ export default function FinancePage() {
     };
   });
 
-  const inflowStart = inflowChartData[0]?.label ?? '';
-  const inflowEnd = inflowChartData[inflowChartData.length - 1]?.label ?? '';
 
   const totalOutflow14d = outflowDays.reduce((s, od) => s + od.total, 0);
 
@@ -398,9 +396,6 @@ export default function FinancePage() {
                     <BanknoteIcon className="h-5 w-5 text-emerald-400" />
                     <h2 className="text-base font-semibold text-foreground">Total Cash-In</h2>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    {inflowStart} <ArrowRight className="inline h-2.5 w-2.5" /> {inflowEnd}
-                  </p>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Projected Deposit</p>
@@ -541,9 +536,6 @@ export default function FinancePage() {
                     <ArrowDown className="h-5 w-5 text-red-400" />
                     <h2 className="text-base font-semibold text-foreground">Cash Outflow</h2>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    {fmtMonthDay(outflowDays[0]?.date ?? todayStr)} <ArrowRight className="inline h-2.5 w-2.5" /> {fmtMonthDay(outflowDays[outflowDays.length - 1]?.date ?? todayStr)}
-                  </p>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Due</p>

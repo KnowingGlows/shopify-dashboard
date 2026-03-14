@@ -218,6 +218,8 @@ export async function POST(request: Request) {
         return saveDeliveryRates(body);
       case 'save-spending-config':
         return saveSpendingConfig(body);
+      case 'save-income':
+        return saveIncome(body);
       case 'dismiss-reminder':
         return dismissReminder(body);
       default:
@@ -458,6 +460,31 @@ async function addExpense(body: Record<string, unknown>) {
 
   await firestore.collection(COLLECTIONS.FINANCE_EXPENSES).doc(expense.id).set(expense);
   return NextResponse.json({ success: true, expense });
+}
+
+async function saveIncome(body: Record<string, unknown>) {
+  const firestore = db();
+  const now = new Date().toISOString();
+  const income = {
+    id: crypto.randomUUID(),
+    category: (body.category as string) ?? '',
+    description: (body.description as string) ?? '',
+    amount: Number(body.amount) || 0,
+    date: (body.date as string) ?? now.split('T')[0],
+    enteredBy: (body.enteredBy as string) ?? '',
+    createdAt: now,
+  };
+
+  if (!income.category || !income.amount) {
+    return NextResponse.json({ error: 'Category and amount are required.' }, { status: 400 });
+  }
+
+  if (!firestore) {
+    return NextResponse.json({ success: true, income });
+  }
+
+  await firestore.collection(COLLECTIONS.FINANCE_INCOME).doc(income.id).set(income);
+  return NextResponse.json({ success: true, income });
 }
 
 function getWeekLabel(date: Date): string {
