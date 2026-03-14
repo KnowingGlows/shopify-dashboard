@@ -4,6 +4,17 @@ export interface ShopifyStore {
   accessToken: string;
 }
 
+export interface ShopifyFulfillment {
+  id: number;
+  status: string; // 'success' | 'cancelled' | 'error' | 'failure'
+  tracking_company?: string | null;
+  tracking_number?: string | null;
+  tracking_url?: string | null;
+  shipment_status?: string | null; // 'confirmed' | 'in_transit' | 'out_for_delivery' | 'delivered' | 'failure' | 'attempted_delivery'
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ShopifyOrder {
   id: string;
   name: string;
@@ -16,6 +27,8 @@ export interface ShopifyOrder {
   currency: string;
   financial_status: string;
   fulfillment_status: string | null;
+  tags?: string;
+  fulfillments?: ShopifyFulfillment[];
   refunds?: Array<{
     transactions?: Array<{
       amount: string;
@@ -34,6 +47,7 @@ export interface ShopifyOrder {
   };
   phone?: string;
   order_number?: number;
+  note?: string | null;
 }
 
 export interface OrderData {
