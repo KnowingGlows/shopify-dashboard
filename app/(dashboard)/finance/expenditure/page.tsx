@@ -20,6 +20,7 @@ interface Expense {
   amount: number;
   date: string;
   endDate?: string;
+  recurring?: boolean;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -162,7 +163,7 @@ export default function ExpenditurePage() {
     }).catch(() => {});
   };
 
-  const handleAddExpense = async (data: { category: string; description: string; amount: number; date: string; endDate?: string }) => {
+  const handleAddExpense = async (data: { category: string; description: string; amount: number; date: string; endDate?: string; recurring?: boolean }) => {
     // Optimistically add a temporary entry so the user sees immediate feedback
     const tempId = crypto.randomUUID();
     const tempExpense: Expense = { id: tempId, ...data };
@@ -602,6 +603,11 @@ export default function ExpenditurePage() {
                           <span className="text-[12px] font-medium text-foreground truncate">
                             {exp.description || (CATEGORY_LABELS[exp.category] ?? exp.category)}
                           </span>
+                          {exp.recurring && (
+                            <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-amber-400 border border-amber-500/20">
+                              Recurring
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -684,7 +690,7 @@ export default function ExpenditurePage() {
 
 function AddExpenseModal({ onClose, onAdd }: {
   onClose: () => void;
-  onAdd: (data: { category: string; description: string; amount: number; date: string; endDate?: string }) => void;
+  onAdd: (data: { category: string; description: string; amount: number; date: string; endDate?: string; recurring?: boolean }) => void;
 }) {
   const [category, setCategory] = useState('inventory');
   const [description, setDescription] = useState('');
@@ -692,6 +698,7 @@ function AddExpenseModal({ onClose, onAdd }: {
   const [date, setDate] = useState(getToday());
   const [endDate, setEndDate] = useState('');
   const [isRange, setIsRange] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -703,6 +710,7 @@ function AddExpenseModal({ onClose, onAdd }: {
       amount: Number(amount),
       date,
       endDate: isRange && endDate ? endDate : undefined,
+      recurring: isRecurring || undefined,
     });
   };
 
@@ -730,7 +738,7 @@ function AddExpenseModal({ onClose, onAdd }: {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground">Add Expense</h2>
-              <p className="text-[11px] text-muted-foreground">One-off or date-range expense</p>
+              <p className="text-[11px] text-muted-foreground">One-off, date-range, or recurring expense</p>
             </div>
           </div>
           <button onClick={onClose} className="rounded-xl border border-border/60 bg-background/60 p-2 text-muted-foreground transition hover:text-foreground">
@@ -794,8 +802,8 @@ function AddExpenseModal({ onClose, onAdd }: {
             </div>
           </div>
 
-          {/* Date range toggle */}
-          <div>
+          {/* Date range & recurring toggles */}
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setIsRange(!isRange)}
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition border ${
@@ -805,30 +813,55 @@ function AddExpenseModal({ onClose, onAdd }: {
               }`}
             >
               <Calendar className="h-3.5 w-3.5" />
-              Date range expense
+              Date range
             </button>
-            <AnimatePresence>
-              {isRange && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-3">
-                    <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">End Date</label>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      min={date}
-                      className="w-full max-w-[200px] rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-primary/50 focus:outline-none transition"
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <button
+              onClick={() => setIsRecurring(!isRecurring)}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition border ${
+                isRecurring
+                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                  : 'text-muted-foreground border-border hover:text-foreground'
+              }`}
+            >
+              <Receipt className="h-3.5 w-3.5" />
+              Recurring monthly
+            </button>
           </div>
+          <AnimatePresence>
+            {isRange && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-1">
+                  <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">End Date</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={date}
+                    className="w-full max-w-[200px] rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-primary/50 focus:outline-none transition"
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <AnimatePresence>
+            {isRecurring && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <p className="mt-1 text-[10px] text-amber-400/70">
+                  This expense will automatically repeat on the {new Date(date + 'T00:00:00').getDate()}{['st','nd','rd'][new Date(date + 'T00:00:00').getDate() % 10 - 1] ?? 'th'} of every month.
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Footer */}

@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Box, CheckSquare, ClipboardList, DollarSign, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Users, X,
-  PenLine, Calculator, List, Landmark, Receipt,
+  PenLine, Calculator, List, Landmark, Receipt, TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -30,11 +30,14 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: Home, section: 'core' },
   { href: '/finance', label: 'Finance', icon: DollarSign, section: 'core' },
-  { href: '/finance/entry', label: 'Daily P&L', icon: PenLine, section: 'core', parent: '/finance' },
+  { href: '/finance/entry', label: 'Daily Entry', icon: PenLine, section: 'core', parent: '/finance' },
   { href: '/finance/expenditure', label: 'Expenditure', icon: Receipt, section: 'core', parent: '/finance' },
-  { href: '/finance/baselines', label: 'Baselines', icon: Landmark, section: 'core', parent: '/finance' },
   { href: '/finance/entries', label: 'Daily Entries', icon: List, section: 'core', parent: '/finance' },
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'core', parent: '/finance' },
+  { href: '/finance/projected', label: 'Projected', icon: TrendingUp, section: 'core' },
+  { href: '/finance/projected/entry', label: 'Daily P&L', icon: PenLine, section: 'core', parent: '/finance/projected' },
+  { href: '/finance/projected/calculator', label: 'Calculator', icon: Calculator, section: 'core', parent: '/finance/projected' },
+  { href: '/finance/projected/entries', label: 'Entries', icon: List, section: 'core', parent: '/finance/projected' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
   { href: '/ads-tracker', label: 'OPS Ads', icon: Megaphone, section: 'marketing' },
@@ -146,7 +149,11 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
             // Hide pages the user doesn't have permission for
             if (!hasAccess(i.href)) return false;
             // Hide child items unless parent route is active
-            if (i.parent && !activePath.startsWith(i.parent)) return false;
+            if (i.parent) {
+              if (!activePath.startsWith(i.parent)) return false;
+              // Prevent /finance children from showing on /finance/projected routes
+              if (i.parent === '/finance' && activePath.startsWith('/finance/projected')) return false;
+            }
             return true;
           });
           if (items.length === 0) return null;

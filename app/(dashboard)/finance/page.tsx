@@ -1,14 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
   RefreshCw, Loader2, DollarSign, Wallet, Plus,
-  Bell, X, ArrowRight, Clock, Calendar,
-  TrendingDown, TrendingUp,
-  ArrowDown, BanknoteIcon, Settings2,
-  Check, ToggleLeft, ToggleRight,
+  Calendar, TrendingUp, TrendingDown,
+  ArrowDown, BanknoteIcon,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
@@ -24,6 +22,7 @@ interface FinanceDailyEntry {
   adSpend: number;
   netProfit: number;
   codSalesByBrand?: Record<string, number>;
+  prepaidSettlement?: number;
 }
 
 interface Baseline {
@@ -34,7 +33,6 @@ interface Baseline {
   amount: number;
   dueDate?: string;
   isPaid?: boolean;
-  paidDate?: string;
 }
 
 interface Expense {
@@ -54,63 +52,6 @@ interface IncomeEntry {
   endDate?: string;
 }
 
-interface CODWeek {
-  weekLabel: string;
-  startDate: string;
-  endDate: string;
-  projectedAmount: number;
-  codRevenue: number;
-  brandBreakdown: Record<string, number>;
-}
-
-interface Reminder {
-  type: string;
-  message: string;
-  date: string;
-  priority?: string;
-}
-
-interface SpendingPower {
-  weekLabel: string;
-  weekStart: string;
-  weekEnd: string;
-  codRevenue: number;
-  projectedDeposit: number;
-  founderCut: number;
-  founderCutPct: number;
-  inventoryNeeds: number;
-  baselinesDue: number;
-  weekExpenses: number;
-  spendingPower: number;
-  breakdown: Array<{ label: string; amount: number; type: 'income' | 'deduction' | 'result' }>;
-  enabledItems: Record<string, boolean>;
-}
-
-interface FinanceSummary {
-  totalSales: number;
-  totalGrossProfit: number;
-  totalAdSpend: number;
-  totalNetProfit: number;
-  totalExpenses: number;
-  dailyBaselineTotal: number;
-  monthlyBaselineTotal: number;
-  dailyEntries: FinanceDailyEntry[];
-  dailyBaselines: Baseline[];
-  monthlyBaselines: Baseline[];
-}
-
-// ── COD settlement date logic ────────────────────────────────────────────────
-// Total delay ~7 days (dispatch + delivery + COD processing).
-// No bank deposits on Sunday → shifts to Monday.
-// Fri collection → deposit lands Sun → Mon. Sat+Sun → deposit lands on Tue.
-function getBankDepositDate(collectionDateStr: string): string {
-  const d = new Date(collectionDateStr + 'T00:00:00');
-  d.setDate(d.getDate() + 7); // 7-day total delay
-  const day = d.getDay();
-  if (day === 0) d.setDate(d.getDate() + 1); // Sun → Mon
-  return d.toISOString().split('T')[0];
-}
-
 function fmtMonthDay(dateStr: string): string {
   const [, m, day] = dateStr.split('-');
   return `${m}/${day}`;
@@ -118,40 +59,29 @@ function fmtMonthDay(dateStr: string): string {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export default function FinancePage() {
-  const [summary, setSummary] = useState<FinanceSummary | null>(null);
-  const [codWeeks, setCodWeeks] = useState<CODWeek[]>([]);
-  const [spending, setSpending] = useState<SpendingPower | null>(null);
-  const [reminders, setReminders] = useState<Reminder[]>([]);
+export default function ActualFinancePage() {
+  const [dailyEntries, setDailyEntries] = useState<FinanceDailyEntry[]>([]);
   const [baselines, setBaselines] = useState<Baseline[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [income, setIncome] = useState<IncomeEntry[]>([]);
   const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [breakdownOpen, setBreakdownOpen] = useState(false);
 
-  // Date range filter — 14d is the default
-  const [dateRange, setDateRange] = useState<'14d' | '30d' | '7d' | '90d' | 'custom'>('14d');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  // Date range filter — backward from yesterday
+  const [dateRange, setDateRange] = useState<'14d' | '30d' | '7d' | '90d'>('14d');
+
+  const yesterdayStr = useMemo(() => {
+    const d = new Date(Date.now() - 86400000);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  }, []);
 
   const fetchAll = useCallback(async () => {
     try {
-      // Single combined API call instead of 7 parallel calls (saves ~80% Firestore reads)
-      let url = '/api/finance?action=combined';
-      if (dateRange === 'custom' && customStart && customEnd) {
-        url += `&start=${customStart}&end=${customEnd}`;
-      } else {
-        const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
-        url += `&days=${days}`;
-      }
-      const res = await fetch(url);
+      const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
+      const res = await fetch(`/api/finance?action=combined&days=${days}`);
       const data = await res.json();
-      setSummary(data.summary);
-      setCodWeeks(data.codWeeks ?? []);
-      setSpending(data.spending);
-      setReminders(data.reminders ?? []);
+      setDailyEntries(data.summary?.dailyEntries ?? []);
       setBaselines([...(data.baselines?.daily ?? []), ...(data.baselines?.monthly ?? [])]);
       setDeliveryRates(data.deliveryRates ?? {});
       setExpenses(data.expenses ?? []);
@@ -159,78 +89,117 @@ export default function FinancePage() {
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange, customStart, customEnd]);
+  }, [dateRange]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const dismissReminder = async (type: string) => {
-    setReminders((prev) => prev.filter((r) => r.type !== type));
-    await fetch('/api/finance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'dismiss-reminder', type }),
-    }).catch(() => {});
-  };
-
-  const todayStr = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()), []);
-
-  // Number of days for charts — driven by the date range filter
   const chartDays = useMemo(() => {
     if (dateRange === '7d') return 7;
     if (dateRange === '14d') return 14;
     if (dateRange === '30d') return 30;
     if (dateRange === '90d') return 90;
-    if (dateRange === 'custom' && customStart && customEnd) {
-      const diff = Math.ceil((new Date(customEnd).getTime() - new Date(customStart).getTime()) / 86400000) + 1;
-      return Math.max(diff, 7);
-    }
     return 14;
-  }, [dateRange, customStart, customEnd]);
+  }, [dateRange]);
 
-  // Build daily outflow map (expenses + baselines by date)
-  // Shows ALL baselines (paid and unpaid) in chart, differentiated visually
-  const dailyOutflows = useMemo(() => {
-    const map: Record<string, { expenses: number; unpaidBaselines: number; paidBaselines: number; items: string[] }> = {};
-    for (const exp of expenses) {
-      if (!map[exp.date]) map[exp.date] = { expenses: 0, unpaidBaselines: 0, paidBaselines: 0, items: [] };
-      map[exp.date].expenses += exp.amount;
-      map[exp.date].items.push(exp.description || exp.category);
-    }
-    for (const b of baselines) {
-      if (b.type === 'monthly' && b.dueDate) {
-        if (!map[b.dueDate]) map[b.dueDate] = { expenses: 0, unpaidBaselines: 0, paidBaselines: 0, items: [] };
-        if (b.isPaid) {
-          map[b.dueDate].paidBaselines += b.amount;
-        } else {
-          map[b.dueDate].unpaidBaselines += b.amount;
+  // Filter entries up to yesterday (actual data only)
+  const pastEntries = useMemo(() =>
+    dailyEntries.filter((e) => e.date <= yesterdayStr),
+  [dailyEntries, yesterdayStr]);
+
+  // ── Money In per day ──
+  // COD deposits received (using bank deposit date = sale date + 7) + prepaid + income
+  const moneyInByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+
+    // COD deposits: sale date + 7 days = deposit date. Only count deposits that already landed.
+    for (const entry of pastEntries) {
+      const codByBrand = entry.codSalesByBrand ?? {};
+      let deposit = 0;
+      for (const [brand, amount] of Object.entries(codByBrand)) {
+        const rate = deliveryRates[brand] ?? 65;
+        deposit += Math.round(Number(amount) * (rate / 100));
+      }
+      if (deposit > 0) {
+        // Deposit lands 7 days after the sale
+        const depositDate = new Date(entry.date + 'T00:00:00');
+        depositDate.setDate(depositDate.getDate() + 7);
+        const ds = depositDate.toISOString().split('T')[0];
+        if (ds <= yesterdayStr) {
+          map[ds] = (map[ds] ?? 0) + deposit;
         }
-        map[b.dueDate].items.push(b.label + (b.isPaid ? ' ✓' : ''));
+      }
+      // Prepaid settlement received on the entry date
+      const prepaid = Number(entry.prepaidSettlement) || 0;
+      if (prepaid > 0) {
+        map[entry.date] = (map[entry.date] ?? 0) + prepaid;
+      }
+    }
+
+    // Missed income
+    for (const inc of income) {
+      const incDate = inc.date ?? '';
+      if (inc.endDate) {
+        const start = new Date(incDate + 'T00:00:00');
+        const end = new Date(inc.endDate + 'T00:00:00');
+        const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+        const dailyAmount = Math.round(inc.amount / rangeDays);
+        for (let j = 0; j < rangeDays; j++) {
+          const dt = new Date(start);
+          dt.setDate(start.getDate() + j);
+          const ds = dt.toISOString().split('T')[0];
+          if (ds <= yesterdayStr) map[ds] = (map[ds] ?? 0) + dailyAmount;
+        }
+      } else if (incDate <= yesterdayStr) {
+        map[incDate] = (map[incDate] ?? 0) + inc.amount;
       }
     }
     return map;
-  }, [expenses, baselines]);
+  }, [pastEntries, income, deliveryRates, yesterdayStr]);
 
-  // Build outflow chart data — today forward for chartDays
-  const outflowDays = useMemo(() => {
-    const days: Array<{ date: string; label: string; total: number; expenses: number; unpaidBaselines: number; paidBaselines: number }> = [];
-    const start = new Date(todayStr + 'T00:00:00');
+  // ── Money Out per day ──
+  const moneyOutByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const exp of expenses) {
+      if (exp.date <= yesterdayStr) {
+        map[exp.date] = (map[exp.date] ?? 0) + exp.amount;
+      }
+    }
+    for (const b of baselines) {
+      if (b.type === 'monthly' && b.dueDate && b.isPaid && b.dueDate <= yesterdayStr) {
+        map[b.dueDate] = (map[b.dueDate] ?? 0) + b.amount;
+      }
+    }
+    return map;
+  }, [expenses, baselines, yesterdayStr]);
+
+  // Build chart data — backward from yesterday
+  const chartData = useMemo(() => {
+    const days: Array<{ date: string; label: string; moneyIn: number; moneyOut: number; cashReserve: number }> = [];
+    let runningReserve = 0;
+    const end = new Date(yesterdayStr + 'T00:00:00');
     for (let i = 0; i < chartDays; i++) {
-      const dt = new Date(start);
-      dt.setDate(start.getDate() + i);
+      const dt = new Date(end);
+      dt.setDate(end.getDate() - (chartDays - 1) + i);
       const dateStr = dt.toISOString().split('T')[0];
-      const data = dailyOutflows[dateStr];
+      const inAmount = moneyInByDate[dateStr] ?? 0;
+      const outAmount = moneyOutByDate[dateStr] ?? 0;
+      runningReserve += inAmount - outAmount;
       days.push({
         date: dateStr,
         label: fmtMonthDay(dateStr),
-        // total due = expenses + unpaid baselines only (paid ones don't need paying)
-        total: (data?.expenses ?? 0) + (data?.unpaidBaselines ?? 0),
-        expenses: data?.expenses ?? 0,
-        unpaidBaselines: data?.unpaidBaselines ?? 0,
-        paidBaselines: data?.paidBaselines ?? 0,
+        moneyIn: inAmount,
+        moneyOut: outAmount,
+        cashReserve: runningReserve,
       });
     }
     return days;
-  }, [todayStr, dailyOutflows, chartDays]);
+  }, [yesterdayStr, chartDays, moneyInByDate, moneyOutByDate]);
+
+  // Totals
+  const totalMoneyIn = chartData.reduce((s, d) => s + d.moneyIn, 0);
+  const totalMoneyOut = chartData.reduce((s, d) => s + d.moneyOut, 0);
+  const netProfit = totalMoneyIn - totalMoneyOut;
+  const cashReserve = chartData.length > 0 ? chartData[chartData.length - 1].cashReserve : 0;
 
   if (loading) {
     return (
@@ -243,102 +212,13 @@ export default function FinancePage() {
     );
   }
 
-  const d = summary ?? {
-    totalSales: 0, totalGrossProfit: 0, totalAdSpend: 0, totalNetProfit: 0,
-    totalExpenses: 0,
-    dailyBaselineTotal: 0, monthlyBaselineTotal: 0,
-    dailyEntries: [], dailyBaselines: [], monthlyBaselines: [],
-  };
-
-  const currentWeek = codWeeks[0];
-  const totalCODProjected = codWeeks.reduce((s, w) => s + w.projectedAmount, 0);
-
-  // Rolling inflow — COD deposits + missed income by date
-  const inflowByDate: Record<string, number> = {};
-  for (const entry of (d.dailyEntries ?? [])) {
-    const codByBrand = entry.codSalesByBrand ?? {};
-    let deposit = 0;
-    for (const [brand, amount] of Object.entries(codByBrand)) {
-      const rate = deliveryRates[brand] ?? 65;
-      deposit += Math.round(Number(amount) * (rate / 100));
-    }
-    if (deposit > 0) inflowByDate[entry.date] = (inflowByDate[entry.date] ?? 0) + deposit;
-  }
-  // Add missed income to inflow
-  for (const inc of income) {
-    const incDate = inc.date ?? '';
-    if (inc.endDate) {
-      // Spread across date range
-      const start = new Date(incDate + 'T00:00:00');
-      const end = new Date(inc.endDate + 'T00:00:00');
-      const rangeDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
-      const dailyAmount = Math.round(inc.amount / rangeDays);
-      for (let j = 0; j < rangeDays; j++) {
-        const dt = new Date(start);
-        dt.setDate(start.getDate() + j);
-        const ds = dt.toISOString().split('T')[0];
-        inflowByDate[ds] = (inflowByDate[ds] ?? 0) + dailyAmount;
-      }
-    } else {
-      inflowByDate[incDate] = (inflowByDate[incDate] ?? 0) + inc.amount;
-    }
-  }
-
-  // Build inflow chart — today forward for chartDays
-  const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
-    const dt = new Date(todayStr + 'T00:00:00');
-    dt.setDate(dt.getDate() + i);
-    const dateStr = dt.toISOString().split('T')[0];
-    return {
-      date: dateStr,
-      deposit: inflowByDate[dateStr] ?? 0,
-      label: fmtMonthDay(dateStr),
-    };
-  });
-
-
-  const totalOutflow14d = outflowDays.reduce((s, od) => s + od.total, 0);
-
-  // Total missed income in the chart date range (today → today + chartDays)
-  const chartEndDate = (() => {
-    const dt = new Date(todayStr + 'T00:00:00');
-    dt.setDate(dt.getDate() + chartDays - 1);
-    return dt.toISOString().split('T')[0];
-  })();
-  const totalIncomeInRange = income.reduce((s, inc) => {
-    const incDate = inc.date ?? '';
-    const incEnd = inc.endDate ?? incDate;
-    // Include if income overlaps with the chart range
-    if (incDate <= chartEndDate && incEnd >= todayStr) {
-      return s + inc.amount;
-    }
-    return s;
-  }, 0);
-
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
-      {/* Reminders */}
-      {reminders.map((reminder) => (
-        <motion.div
-          key={reminder.type}
-          initial={{ opacity: 0, y: -12 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-center gap-3"
-        >
-          <Bell className="h-4 w-4 text-amber-400 shrink-0" />
-          <div className="flex-1">
-            <p className="text-[13px] font-medium text-amber-300">{reminder.message}</p>
-            {reminder.priority === 'high' && <p className="text-[11px] text-amber-400/70 mt-0.5">This is needed to calculate net profit</p>}
-          </div>
-          <button onClick={() => dismissReminder(reminder.type)} className="rounded-md p-1 text-amber-400/60 hover:text-amber-400 transition"><X className="h-3.5 w-3.5" /></button>
-        </motion.div>
-      ))}
-
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Finance Command Center</h1>
-          <p className="text-[11px] text-muted-foreground">Financial overview & projections</p>
+          <h1 className="text-lg font-semibold text-foreground">Finance</h1>
+          <p className="text-[11px] text-muted-foreground">Actual cashflow — up to yesterday</p>
         </div>
         <div className="flex items-center gap-2">
           <Link
@@ -346,7 +226,7 @@ export default function FinancePage() {
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary/90 px-4 py-2 text-[12px] font-medium text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:bg-primary hover:shadow-md hover:shadow-primary/25 active:scale-[0.97]"
           >
             <Plus className="h-3.5 w-3.5" />
-            Daily P&L
+            Daily Entry
           </Link>
           <button
             onClick={() => { setRefreshing(true); fetchAll(); }}
@@ -374,545 +254,242 @@ export default function FinancePage() {
             {range === '7d' ? '7 Days' : range === '14d' ? '14 Days' : range === '30d' ? '30 Days' : '90 Days'}
           </button>
         ))}
-        <button
-          onClick={() => setDateRange('custom')}
-          className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
-            dateRange === 'custom'
-              ? 'bg-primary/15 text-primary border border-primary/30'
-              : 'border border-border text-muted-foreground hover:text-foreground hover:border-border/80'
-          }`}
-        >
-          Custom
-        </button>
-        {dateRange === 'custom' && (
-          <div className="flex items-center gap-1.5">
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11px] text-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20"
-            />
-            <span className="text-[10px] text-muted-foreground">to</span>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className="rounded-lg border border-border bg-card px-2.5 py-1.5 text-[11px] text-foreground focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/20"
-            />
-          </div>
-        )}
       </div>
 
       {/* Key Metrics */}
       {(() => {
-        const rangeLabel = dateRange === 'custom' ? 'Custom' : dateRange === '7d' ? '7d' : dateRange === '14d' ? '14d' : dateRange === '90d' ? '90d' : '30d';
+        const rangeLabel = dateRange === '7d' ? '7d' : dateRange === '14d' ? '14d' : dateRange === '90d' ? '90d' : '30d';
         return (
-          <StaggerContainer className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StaggerContainer className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StaggerItem>
-              <MetricCard label={`Total Sales (${rangeLabel})`} value={d.totalSales} icon={<DollarSign className="h-4 w-4 text-emerald-400" />} color="text-foreground" />
+              <MetricCard label={`Money In (${rangeLabel})`} value={totalMoneyIn} icon={<TrendingUp className="h-4 w-4 text-emerald-400" />} color="text-emerald-400" />
             </StaggerItem>
             <StaggerItem>
-              <MetricCard label={`Bank Deposits (${rangeLabel})`} value={totalCODProjected} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color="text-emerald-400" />
+              <MetricCard label={`Money Out (${rangeLabel})`} value={totalMoneyOut} icon={<ArrowDown className="h-4 w-4 text-red-400" />} color="text-red-400" />
             </StaggerItem>
             <StaggerItem>
-              <MetricCard label={`Net Profit (${rangeLabel})`} value={d.totalNetProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={d.totalNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+              <MetricCard label={`Net Profit (${rangeLabel})`} value={netProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+            </StaggerItem>
+            <StaggerItem>
+              <MetricCard label="Cash Reserve" value={cashReserve} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color={cashReserve >= 0 ? 'text-emerald-400' : 'text-red-400'} />
             </StaggerItem>
           </StaggerContainer>
         );
       })()}
 
-      {/* ═══ Total Cash-In — Hero Card ═══ */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        {(() => {
-          const totalInflow = inflowChartData.reduce((s, d) => s + d.deposit, 0);
-          const hasData = totalInflow > 0 || (currentWeek && currentWeek.codRevenue > 0);
-          if (!hasData) return (
-            <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
-              <Clock className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
-              <p className="text-[12px] text-muted-foreground">No inflow data yet. COD orders are auto-fetched when you enter daily data.</p>
-            </div>
-          );
-          return (
+      {/* ═══ Money In Chart ═══ */}
+      {totalMoneyIn > 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
           <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card">
             <div className="p-6">
-              {/* Top row */}
               <div className="flex items-start justify-between mb-6">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <BanknoteIcon className="h-5 w-5 text-emerald-400" />
-                    <h2 className="text-base font-semibold text-foreground">Total Cash-In</h2>
+                    <TrendingUp className="h-5 w-5 text-emerald-400" />
+                    <h2 className="text-base font-semibold text-foreground">Money In</h2>
                   </div>
+                  <p className="text-[10px] text-muted-foreground/60">COD deposits + prepaid + other income received</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Inflow</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Received</p>
                   <p className="text-3xl font-bold text-emerald-400 tabular-nums">
-                    <AnimatedNumber value={totalInflow} formatter={formatINR} />
+                    <AnimatedNumber value={totalMoneyIn} formatter={formatINR} />
                   </p>
                 </div>
               </div>
-
-              <div>
-                {inflowChartData.length > 0 ? (
-                  <div className="h-52">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={inflowChartData} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
-                        <defs>
-                          <linearGradient id="depositGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
-                          </linearGradient>
-                        </defs>
-                        <XAxis
-                          dataKey="label"
-                          interval={chartDays <= 30 ? 0 : 6}
-                          tick={({ x, y, payload }) => (
-                            <text
-                              x={x as number} y={(y as number) + 14}
-                              textAnchor="middle"
-                              fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
-                              fontWeight={500}
-                              fill="#9ca3af"
-                            >
-                              {payload.value}
-                            </text>
-                          )}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <Tooltip
-                          content={({ active, payload }) => active && payload?.length ? (
-                            <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
-                              <span className="text-muted-foreground text-[10px] mr-1.5">Bank deposit</span>{formatINR(payload[0].value as number)}
-                            </div>
-                          ) : null}
-                        />
-                        <Area type="monotone" dataKey="deposit" stroke="#10b981" strokeWidth={1.5} fill="url(#depositGrad)" dot={false} activeDot={{ r: 3, fill: '#10b981' }} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="h-40 flex items-center justify-center text-[11px] text-muted-foreground/40">No data yet</div>
-                )}
-              </div>
-            </div>
-          </div>
-          );
-        })()}
-      </motion.div>
-
-      {/* ═══ Spending Power — Hero Card ═══ */}
-      {spending && spending.projectedDeposit > 0 && (() => {
-        return (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-          <div className="rounded-2xl border border-violet-500/15 bg-gradient-to-br from-violet-500/[0.04] via-card to-card overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <TrendingDown className="h-5 w-5 text-violet-400" />
-                    <h2 className="text-base font-semibold text-foreground">Spending Power</h2>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    {fmtMonthDay(spending.weekStart)} <ArrowRight className="inline h-2.5 w-2.5" /> {fmtMonthDay(spending.weekEnd)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Available</p>
-                  <p className={`text-3xl font-bold tabular-nums ${spending.spendingPower > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    <AnimatedNumber value={spending.spendingPower} formatter={formatINR} />
-                  </p>
-                </div>
-              </div>
-
-              {/* Legend + progress bar */}
-              <div className="flex items-center gap-4 mt-4 mb-3">
-                <div className="flex items-center gap-1.5">
-                  <div className="h-2 w-2 rounded-sm bg-emerald-500/40" />
-                  <span className="text-[9px] text-muted-foreground/60">Deposit {formatINR(spending.projectedDeposit)}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="h-2 w-2 rounded-sm bg-red-500/40" />
-                  <span className="text-[9px] text-muted-foreground/60">Expenses {formatINR(spending.weekExpenses)}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="h-2 w-2 rounded-sm bg-amber-500/40" />
-                  <span className="text-[9px] text-muted-foreground/60">Baselines {formatINR(spending.baselinesDue)}</span>
-                </div>
-              </div>
-
-              <div className="h-3 rounded-full bg-border/30 overflow-hidden flex">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(100, (spending.spendingPower / spending.projectedDeposit) * 100)}%` }}
-                  transition={{ duration: 0.8 }}
-                  className={`h-full rounded-full ${spending.spendingPower > 0 ? 'bg-emerald-500/50' : 'bg-red-500/50'}`}
-                />
-              </div>
-              <div className="flex justify-between mt-1.5">
-                <span className="text-[9px] text-muted-foreground/40">₹0</span>
-                <span className="text-[9px] text-muted-foreground/40">{formatINR(spending.projectedDeposit)}</span>
-              </div>
-
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={() => setBreakdownOpen(true)}
-                  className="rounded-lg border border-border px-4 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:border-border/80 transition"
-                >
-                  View Breakdown
-                </button>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-        );
-      })()}
-
-      {/* ═══ Cash Outflow — Bar Chart ═══ */}
-      {totalOutflow14d > 0 && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38 }}>
-          <div className="rounded-2xl border border-red-500/15 bg-gradient-to-br from-red-500/[0.04] via-card to-card">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <ArrowDown className="h-5 w-5 text-red-400" />
-                    <h2 className="text-base font-semibold text-foreground">Cash Outflow</h2>
-                  </div>
-                  {totalIncomeInRange > 0 && (
-                    <p className="text-[10px] text-emerald-400/70 mt-0.5">
-                      +{formatINR(totalIncomeInRange)} income offset
-                    </p>
-                  )}
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Net Due</p>
-                  <p className={`text-3xl font-bold tabular-nums ${totalOutflow14d - totalIncomeInRange > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                    <AnimatedNumber value={Math.max(0, totalOutflow14d - totalIncomeInRange)} formatter={formatINR} />
-                  </p>
-                  {totalIncomeInRange > 0 && (
-                    <p className="text-[10px] text-muted-foreground/50 mt-0.5 line-through">{formatINR(totalOutflow14d)}</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                      <span className="text-[9px] text-muted-foreground/60">Expenses</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                      <span className="text-[9px] text-muted-foreground/60">Baselines (unpaid)</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 rounded-full bg-amber-400/30 ring-1 ring-amber-400/40" />
-                      <span className="text-[9px] text-muted-foreground/60">Baselines (paid)</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <Link href="/finance/expenditure" className="rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1 text-[9px] font-medium text-red-400 transition hover:bg-red-500/10">
-                      Expenditure
-                    </Link>
-                    <Link href="/finance/baselines" className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1 text-[9px] font-medium text-amber-400 transition hover:bg-amber-500/10">
-                      Baselines
-                    </Link>
-                  </div>
-                </div>
-                <div className="h-52">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={outflowDays} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
-                      <defs>
-                        <linearGradient id="expGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
-                        </linearGradient>
-                        <linearGradient id="unpaidBaseGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
-                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.03} />
-                        </linearGradient>
-                        <linearGradient id="paidBaseGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15} />
-                          <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.01} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis
-                        dataKey="label"
-                        interval={chartDays <= 30 ? 0 : 6}
-                        tick={({ x, y, payload }) => (
-                          <text
-                            x={x as number} y={(y as number) + 14}
-                            textAnchor="middle"
-                            fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
-                            fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 500}
-                            fill={payload.value === fmtMonthDay(todayStr) ? '#a78bfa' : '#9ca3af'}
-                          >
-                            {payload.value}
-                          </text>
-                        )}
-                        axisLine={false}
-                        tickLine={false}
-                      />
-                      <Tooltip
-                        content={({ active, payload, label }) => {
-                          if (!active || !payload?.length) return null;
-                          const exp = (payload.find((p) => p.dataKey === 'expenses')?.value as number) ?? 0;
-                          const unpaid = (payload.find((p) => p.dataKey === 'unpaidBaselines')?.value as number) ?? 0;
-                          const paid = (payload.find((p) => p.dataKey === 'paidBaselines')?.value as number) ?? 0;
-                          if (exp + unpaid + paid === 0) return null;
-                          return (
-                            <div className="rounded-md border border-border bg-popover px-2.5 py-2 text-[10px] shadow-lg space-y-0.5">
-                              {exp > 0 && <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-red-400 inline-block" /><span className="text-muted-foreground">Expenses</span><span className="font-semibold text-foreground ml-auto pl-3">{formatINR(exp)}</span></div>}
-                              {unpaid > 0 && <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-amber-400 inline-block" /><span className="text-muted-foreground">Due</span><span className="font-semibold text-foreground ml-auto pl-3">{formatINR(unpaid)}</span></div>}
-                              {paid > 0 && <div className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-amber-400/40 inline-block" /><span className="text-muted-foreground">Paid ✓</span><span className="font-semibold text-foreground ml-auto pl-3">{formatINR(paid)}</span></div>}
-                            </div>
-                          );
-                        }}
-                      />
-                      <Area type="monotone" dataKey="paidBaselines" stroke="#f59e0b" strokeWidth={1} strokeDasharray="3 3" fill="url(#paidBaseGrad)" dot={false} stackId="stack" />
-                      <Area type="monotone" dataKey="unpaidBaselines" stroke="#f59e0b" strokeWidth={1.5} fill="url(#unpaidBaseGrad)" dot={false} stackId="stack" />
-                      <Area type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={1.5} fill="url(#expGrad)" dot={false} stackId="stack" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+              <div className="h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
+                    <defs>
+                      <linearGradient id="moneyInGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="label"
+                      interval={chartDays <= 30 ? 0 : 6}
+                      tick={({ x, y, payload }) => (
+                        <text
+                          x={x as number} y={(y as number) + 14}
+                          textAnchor="middle"
+                          fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
+                          fontWeight={500}
+                          fill="#9ca3af"
+                        >
+                          {payload.value}
+                        </text>
+                      )}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => active && payload?.length ? (
+                        <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
+                          <span className="text-muted-foreground text-[10px] mr-1.5">Received</span>{formatINR(payload[0].value as number)}
+                        </div>
+                      ) : null}
+                    />
+                    <Area type="monotone" dataKey="moneyIn" stroke="#10b981" strokeWidth={1.5} fill="url(#moneyInGrad)" dot={false} activeDot={{ r: 3, fill: '#10b981' }} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
         </motion.div>
       )}
 
-
-      {/* ═══ Spending Power Breakdown Modal ═══ */}
-      <AnimatePresence>
-        {breakdownOpen && spending && (
-          <SpendingBreakdownModal
-            spending={spending}
-            onClose={() => setBreakdownOpen(false)}
-            onRefresh={fetchAll}
-          />
-        )}
-      </AnimatePresence>
-    </PageTransition>
-  );
-}
-
-// ── Spending Breakdown Modal ─────────────────────────────────────────────────
-
-function SpendingBreakdownModal({ spending, onClose, onRefresh }: { spending: SpendingPower; onClose: () => void; onRefresh: () => void }) {
-  const [founderPct, setFounderPct] = useState(spending.founderCutPct ?? 50);
-  const [enabled, setEnabled] = useState<Record<string, boolean>>(spending.enabledItems ?? { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true });
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  const saveConfig = async () => {
-    setSaving(true);
-    try {
-      await fetch('/api/finance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'save-spending-config', founderCutPct: founderPct, enabledItems: enabled }),
-      });
-      setSaved(true);
-      onRefresh();
-      setTimeout(() => setSaved(false), 2000);
-    } catch { /* ignore */ }
-    finally { setSaving(false); }
-  };
-
-  const toggleItem = (key: string) => {
-    setEnabled((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  return (
-    <div className="fixed inset-0 z-[80] flex items-start justify-center pt-[8vh] md:pt-[10vh]">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <motion.div
-        initial={{ opacity: 0, y: -12, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -12, scale: 0.95 }}
-        transition={{ duration: 0.2 }}
-        className="relative z-10 w-[92vw] max-w-[520px] rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl mx-4 max-h-[80vh] overflow-y-auto"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/50 px-5 py-4 sticky top-0 bg-card/95 backdrop-blur-xl z-10">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-              <TrendingDown className="h-4 w-4 text-violet-400" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Spending Power Breakdown</h2>
-              <p className="text-[11px] text-muted-foreground">{fmtMonthDay(spending.weekStart)} → {fmtMonthDay(spending.weekEnd)}</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="rounded-xl border border-border/60 bg-background/60 p-2 text-muted-foreground transition hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Waterfall */}
-        <div className="p-4 space-y-0">
-          {(() => {
-            // Group ALL deductions into: Founder Cut, Inventory, Expenses total, Baselines total
-            const knownDeductions = ['founder cut', 'inventory'];
-            const isKnownDeduction = (label: string) => knownDeductions.some((k) => label.toLowerCase().includes(k));
-
-            // Known deductions stay as individual rows (founder cut, inventory)
-            const keepItems = spending.breakdown.filter((item) =>
-              item.type === 'income' || item.type === 'result' || (item.type === 'deduction' && isKnownDeduction(item.label))
-            );
-
-            // Everything else gets grouped into Expenses or Baselines total
-            const otherDeductions = spending.breakdown.filter((item) =>
-              item.type === 'deduction' && !isKnownDeduction(item.label)
-            );
-
-            // Use spending.weekExpenses and spending.baselinesDue for accurate totals
-            const totalExpenses = spending.weekExpenses;
-            const totalBaselines = spending.baselinesDue;
-
-            // Build grouped breakdown
-            const grouped: Array<{ label: string; amount: number; type: 'income' | 'deduction' | 'result' }> = [];
-            for (const item of keepItems) {
-              if (item.type === 'result') {
-                if (totalExpenses > 0) {
-                  grouped.push({ label: 'Expenses', amount: -totalExpenses, type: 'deduction' });
-                }
-                if (totalBaselines > 0) {
-                  grouped.push({ label: 'Baselines', amount: -totalBaselines, type: 'deduction' });
-                }
-              }
-              grouped.push(item);
-            }
-
-            return grouped.map((item, i) => {
-              const isIncome = item.type === 'income';
-              const isResult = item.type === 'result';
-              const isDeduction = item.type === 'deduction';
-
-              return (
-                <motion.div
-                  key={item.label}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className={`flex items-center gap-3 px-4 py-3 ${
-                    isResult
-                      ? 'rounded-xl border border-emerald-500/20 bg-emerald-500/5 mt-2'
-                      : i > 0 ? 'border-t border-border/30' : ''
-                  }`}
-                >
-                  <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
-                    isIncome ? 'bg-emerald-500/10 border border-emerald-500/20'
-                      : isResult ? 'bg-emerald-500/15 border border-emerald-500/30'
-                      : 'bg-red-500/8 border border-red-500/15'
-                  }`}>
-                    {isIncome ? <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> :
-                     isResult ? <Wallet className="h-3.5 w-3.5 text-emerald-400" /> :
-                     <ArrowDown className="h-3.5 w-3.5 text-red-400" />}
+      {/* ═══ Money Out Chart ═══ */}
+      {totalMoneyOut > 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+          <div className="rounded-2xl border border-red-500/15 bg-gradient-to-br from-red-500/[0.04] via-card to-card">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingDown className="h-5 w-5 text-red-400" />
+                    <h2 className="text-base font-semibold text-foreground">Money Out</h2>
                   </div>
-                  <span className={`text-[13px] flex-1 ${isResult ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
-                    {item.label}
-                  </span>
-                  <span className={`text-[14px] font-semibold tabular-nums ${
-                    isIncome ? 'text-emerald-400'
-                      : isResult ? (item.amount > 0 ? 'text-emerald-400' : 'text-red-400')
-                      : 'text-red-400'
-                  }`}>
-                    {isDeduction ? '−' : ''}{formatINR(Math.abs(item.amount))}
-                  </span>
-                </motion.div>
-              );
-            });
-          })()}
-
-          {/* Quick links */}
-          <div className="flex gap-2 px-4 pt-4">
-            <Link href="/finance/expenditure" className="flex-1 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-[11px] font-medium text-center text-red-400 transition hover:bg-red-500/10 hover:border-red-500/30">
-              View Expenditure →
-            </Link>
-            <Link href="/finance/baselines" className="flex-1 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-[11px] font-medium text-center text-amber-400 transition hover:bg-amber-500/10 hover:border-amber-500/30">
-              View Baselines →
-            </Link>
-          </div>
-        </div>
-
-        {/* Settings */}
-        <div className="border-t border-border/50 px-5 py-4 space-y-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
-            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Customize Deductions</p>
-          </div>
-
-          {/* Founder cut */}
-          <div className="flex items-center justify-between rounded-lg border border-border/30 px-3 py-2.5">
-            <div className="flex items-center gap-2.5">
-              <button onClick={() => toggleItem('founderCut')} className="text-muted-foreground hover:text-foreground transition">
-                {enabled.founderCut !== false ? <ToggleRight className="h-5 w-5 text-primary" /> : <ToggleLeft className="h-5 w-5" />}
-              </button>
-              <span className="text-[12px] font-medium text-foreground">Founder Cut</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={founderPct}
-                onChange={(e) => setFounderPct(Number(e.target.value) || 0)}
-                disabled={enabled.founderCut === false}
-                className="w-14 bg-transparent text-right text-[13px] font-semibold text-foreground tabular-nums outline-none border-b border-border/30 focus:border-primary/50 disabled:opacity-40 transition"
-              />
-              <span className="text-[11px] text-muted-foreground">%</span>
-            </div>
-          </div>
-
-          {/* Toggle items */}
-          {[
-            { key: 'inventoryNeeds', label: 'Inventory Restock' },
-            { key: 'baselines', label: 'Baselines Due' },
-            { key: 'expenses', label: 'Week Expenses' },
-          ].map(({ key, label }) => (
-            <div key={key} className="flex items-center justify-between rounded-lg border border-border/30 px-3 py-2.5">
-              <div className="flex items-center gap-2.5">
-                <button onClick={() => toggleItem(key)} className="text-muted-foreground hover:text-foreground transition">
-                  {enabled[key] !== false ? <ToggleRight className="h-5 w-5 text-primary" /> : <ToggleLeft className="h-5 w-5" />}
-                </button>
-                <span className="text-[12px] font-medium text-foreground">{label}</span>
+                  <p className="text-[10px] text-muted-foreground/60">Expenses + recurring expenses paid</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Spent</p>
+                  <p className="text-3xl font-bold text-red-400 tabular-nums">
+                    <AnimatedNumber value={totalMoneyOut} formatter={formatINR} />
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                    <span className="text-[9px] text-muted-foreground/60">Expenses + Recurring</span>
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <Link href="/finance/expenditure" className="rounded-md border border-red-500/20 bg-red-500/5 px-2.5 py-1 text-[9px] font-medium text-red-400 transition hover:bg-red-500/10">
+                    Expenditure
+                  </Link>
+                  <Link href="/finance/recurring" className="rounded-md border border-amber-500/20 bg-amber-500/5 px-2.5 py-1 text-[9px] font-medium text-amber-400 transition hover:bg-amber-500/10">
+                    Recurring
+                  </Link>
+                </div>
+              </div>
+              <div className="h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
+                    <defs>
+                      <linearGradient id="moneyOutGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="label"
+                      interval={chartDays <= 30 ? 0 : 6}
+                      tick={({ x, y, payload }) => (
+                        <text
+                          x={x as number} y={(y as number) + 14}
+                          textAnchor="middle"
+                          fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
+                          fontWeight={500}
+                          fill="#9ca3af"
+                        >
+                          {payload.value}
+                        </text>
+                      )}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => active && payload?.length ? (
+                        <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
+                          <span className="text-muted-foreground text-[10px] mr-1.5">Spent</span>{formatINR(payload[0].value as number)}
+                        </div>
+                      ) : null}
+                    />
+                    <Area type="monotone" dataKey="moneyOut" stroke="#ef4444" strokeWidth={1.5} fill="url(#moneyOutGrad)" dot={false} activeDot={{ r: 3, fill: '#ef4444' }} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
-          ))}
+          </div>
+        </motion.div>
+      )}
 
-          <button
-            onClick={saveConfig}
-            disabled={saving}
-            className="w-full rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-primary-foreground hover:bg-primary/90 transition disabled:opacity-40 flex items-center justify-center gap-1.5"
-          >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saved ? <Check className="h-3.5 w-3.5" /> : null}
-            {saved ? 'Saved!' : 'Save Configuration'}
-          </button>
+      {/* ═══ Cash Reserve Chart ═══ */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+        <div className="rounded-2xl border border-blue-500/15 bg-gradient-to-br from-blue-500/[0.04] via-card to-card">
+          <div className="p-6">
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <DollarSign className="h-5 w-5 text-blue-400" />
+                  <h2 className="text-base font-semibold text-foreground">Cash Reserve</h2>
+                </div>
+                <p className="text-[10px] text-muted-foreground/60">Cumulative net position over time</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Current</p>
+                <p className={`text-3xl font-bold tabular-nums ${cashReserve >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                  <AnimatedNumber value={cashReserve} formatter={formatINR} />
+                </p>
+              </div>
+            </div>
+            <div className="h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
+                  <defs>
+                    <linearGradient id="reserveGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="label"
+                    interval={chartDays <= 30 ? 0 : 6}
+                    tick={({ x, y, payload }) => (
+                      <text
+                        x={x as number} y={(y as number) + 14}
+                        textAnchor="middle"
+                        fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
+                        fontWeight={500}
+                        fill="#9ca3af"
+                      >
+                        {payload.value}
+                      </text>
+                    )}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => active && payload?.length ? (
+                      <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
+                        <span className="text-muted-foreground text-[10px] mr-1.5">Reserve</span>{formatINR(payload[0].value as number)}
+                      </div>
+                    ) : null}
+                  />
+                  <Area type="monotone" dataKey="cashReserve" stroke="#3b82f6" strokeWidth={1.5} fill="url(#reserveGrad)" dot={false} activeDot={{ r: 3, fill: '#3b82f6' }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
       </motion.div>
-    </div>
+    </PageTransition>
   );
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-function MetricCard({ label, value, icon, color, formatter }: { label: string; value: number; icon: React.ReactNode; color: string; formatter?: (v: number) => string }) {
-  const format = formatter ?? formatINR;
+function MetricCard({ label, value, icon, color }: { label: string; value: number; icon: React.ReactNode; color: string }) {
   return (
     <motion.div whileHover={{ y: -2 }} transition={{ type: 'spring', stiffness: 400, damping: 25 }} className="card-hover-glow rounded-lg border border-border bg-card px-4 py-3">
       <div className="relative z-10 flex items-center justify-between">
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
         {icon}
       </div>
-      <p className={`relative z-10 mt-1.5 text-2xl font-semibold ${color}`}><AnimatedNumber value={value} formatter={format} /></p>
+      <p className={`relative z-10 mt-1.5 text-2xl font-semibold ${color}`}><AnimatedNumber value={value} formatter={formatINR} /></p>
     </motion.div>
   );
 }

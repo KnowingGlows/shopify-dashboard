@@ -53,6 +53,7 @@ interface FinanceExpense {
   amount: number;
   date: string;
   endDate?: string; // for date-range expenses
+  recurring?: boolean; // if true, repeats on same day each month
   createdAt: string;
 }
 
@@ -421,7 +422,7 @@ async function getExpenses() {
     .orderBy('createdAt', 'desc')
     .get();
 
-  const expenses = snapshot.docs.map((doc) => {
+  const rawExpenses = snapshot.docs.map((doc) => {
     const data = doc.data();
     return {
       id: data.id ?? doc.id,
@@ -430,11 +431,39 @@ async function getExpenses() {
       amount: data.amount ?? 0,
       date: data.date ?? '',
       ...(data.endDate ? { endDate: data.endDate } : {}),
+      recurring: data.recurring ?? false,
       createdAt: data.createdAt ?? '',
     };
   });
 
-  return NextResponse.json({ expenses });
+  // Expand recurring expenses into future months (up to 12 months ahead)
+  const today = new Date();
+  const expanded: typeof rawExpenses = [];
+  for (const exp of rawExpenses) {
+    expanded.push(exp);
+    if (exp.recurring && exp.date) {
+      const origDate = new Date(exp.date + 'T00:00:00');
+      const origDay = origDate.getDate();
+      for (let m = 1; m <= 12; m++) {
+        const nextDate = new Date(origDate);
+        nextDate.setMonth(origDate.getMonth() + m);
+        // Handle months with fewer days (e.g. 31st → 28th in Feb)
+        if (nextDate.getDate() !== origDay) {
+          nextDate.setDate(0); // last day of previous month
+        }
+        if (nextDate <= today) continue; // skip past dates (original already covers them)
+        const dateStr = nextDate.toISOString().split('T')[0];
+        expanded.push({
+          ...exp,
+          id: `${exp.id}_recurring_${dateStr}`,
+          date: dateStr,
+          recurring: true,
+        });
+      }
+    }
+  }
+
+  return NextResponse.json({ expenses: expanded });
 }
 
 async function addExpense(body: Record<string, unknown>) {
@@ -449,6 +478,7 @@ async function addExpense(body: Record<string, unknown>) {
     createdAt: now,
   };
   if (body.endDate) expense.endDate = body.endDate as string;
+  if (body.recurring) expense.recurring = true;
 
   if (!expense.category || !expense.amount) {
     return NextResponse.json({ error: 'Category and amount are required.' }, { status: 400 });
@@ -950,7 +980,25 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allBaselines = baselinesSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const allExpenses = expensesSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
+  const rawCombinedExpenses = expensesSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
+  // Expand recurring expenses for combined data
+  const todayDate = new Date();
+  const allExpenses: typeof rawCombinedExpenses = [];
+  for (const exp of rawCombinedExpenses) {
+    allExpenses.push(exp);
+    if (exp.recurring && exp.date) {
+      const origDate = new Date(exp.date + 'T00:00:00');
+      const origDay = origDate.getDate();
+      for (let m = 1; m <= 12; m++) {
+        const nextDate = new Date(origDate);
+        nextDate.setMonth(origDate.getMonth() + m);
+        if (nextDate.getDate() !== origDay) nextDate.setDate(0);
+        if (nextDate <= todayDate) continue;
+        const dateStr = nextDate.toISOString().split('T')[0];
+        allExpenses.push({ ...exp, id: `${exp.id}_recurring_${dateStr}`, date: dateStr, recurring: true });
+      }
+    }
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allIncome = incomeSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
