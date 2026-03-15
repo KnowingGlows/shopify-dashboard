@@ -251,6 +251,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true });
     }
 
+    // ── Delete All ────────────────────────────────────────────────────
+    if (action === 'delete-all') {
+      const snap = await db.collection(COLLECTIONS.BANK_TRANSACTIONS).get();
+      const batchSize = 500;
+      const docs = snap.docs;
+      for (let i = 0; i < docs.length; i += batchSize) {
+        const batch = db.batch();
+        docs.slice(i, i + batchSize).forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+      }
+      return NextResponse.json({ success: true, deleted: docs.length });
+    }
+
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
   } catch (error) {
     console.error('Error processing transaction:', error);

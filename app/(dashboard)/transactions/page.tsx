@@ -43,7 +43,7 @@ interface Transaction {
   note?: string;
 }
 
-type TabFilter = 'all' | 'pending' | 'approved' | 'dismissed';
+type TabFilter = 'all' | 'pending' | 'approved';
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -150,6 +150,7 @@ export default function TransactionsPage() {
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [summary, setSummary] = useState({ total: 0, pending: 0, approved: 0, totalDebit: 0, totalCredit: 0 });
 
   const fetchTransactions = useCallback(async () => {
@@ -168,11 +169,12 @@ export default function TransactionsPage() {
 
   useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
 
-  // Filtered by search
+  // Filtered: hide dismissed, then apply search
   const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return transactions;
+    const visible = transactions.filter((t) => t.status !== 'dismissed');
+    if (!searchQuery.trim()) return visible;
     const q = searchQuery.toLowerCase();
-    return transactions.filter((t) =>
+    return visible.filter((t) =>
       (t.merchant?.toLowerCase().includes(q)) ||
       t.rawMessage.toLowerCase().includes(q) ||
       t.category.includes(q) ||
@@ -248,6 +250,20 @@ export default function TransactionsPage() {
     } finally { setActionLoading(false); }
   }
 
+  async function deleteAll() {
+    setActionLoading(true);
+    try {
+      await fetch('/api/transactions?key=orbit-sms-ingest-2026', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-all' }),
+      });
+      setTransactions([]);
+      setSummary({ total: 0, pending: 0, approved: 0, totalDebit: 0, totalCredit: 0 });
+      setShowDeleteConfirm(false);
+    } finally { setActionLoading(false); }
+  }
+
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -301,6 +317,44 @@ export default function TransactionsPage() {
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
               Refresh
             </button>
+            {transactions.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
+                  className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-sm text-red-400 transition hover:bg-red-500/15"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Clear All
+                </button>
+                <AnimatePresence>
+                  {showDeleteConfirm && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.95 }}
+                      className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-red-500/30 bg-[#0c0c0e] p-3 shadow-xl space-y-2"
+                    >
+                      <p className="text-[12px] text-muted-foreground">Delete all {transactions.length} transactions? This cannot be undone.</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={deleteAll}
+                          disabled={actionLoading}
+                          className="flex-1 rounded-md bg-red-500/20 py-1.5 text-[12px] font-medium text-red-400 transition hover:bg-red-500/30"
+                        >
+                          {actionLoading ? 'Deleting...' : 'Yes, delete all'}
+                        </button>
+                        <button
+                          onClick={() => setShowDeleteConfirm(false)}
+                          className="rounded-md bg-white/5 px-3 py-1.5 text-[12px] text-muted-foreground transition hover:bg-white/10"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -444,7 +498,7 @@ export default function TransactionsPage() {
           className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex items-center gap-1.5">
-            {(['all', 'pending', 'approved', 'dismissed'] as TabFilter[]).map((t) => (
+            {(['all', 'pending', 'approved'] as TabFilter[]).map((t) => (
               <button
                 key={t}
                 onClick={() => { setTab(t); setSelectedIds(new Set()); }}
@@ -737,14 +791,6 @@ export default function TransactionsPage() {
                                         <X className="h-3 w-3" /> Dismiss
                                       </button>
                                     </>
-                                  )}
-                                  {txn.status === 'dismissed' && (
-                                    <button
-                                      onClick={() => updateTransaction(txn.id, 'pending')}
-                                      className="flex items-center gap-1.5 rounded-md bg-amber-500/15 px-3 py-1.5 text-[12px] font-medium text-amber-400 transition hover:bg-amber-500/25"
-                                    >
-                                      <RefreshCw className="h-3 w-3" /> Restore
-                                    </button>
                                   )}
                                   {txn.status === 'approved' && (
                                     <button
