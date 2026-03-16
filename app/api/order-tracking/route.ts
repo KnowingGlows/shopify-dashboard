@@ -34,6 +34,7 @@ function classifyOrderStatus(order: {
   cancelled_at?: string | null;
   fulfillment_status: string | null;
   tags?: string;
+  note?: string | null;
   fulfillments?: Array<{
     status: string;
     shipment_status?: string | null;
@@ -44,8 +45,16 @@ function classifyOrderStatus(order: {
   if (order.cancelled_at) return 'cancelled';
 
   const tags = (order.tags ?? '').toLowerCase();
+  const note = (order.note ?? '').toLowerCase();
 
-  // Check tags first — Indian shipping partners (Shiprocket, Delhivery, etc.) update these
+  // Check order notes first — Delhivery/shipping partners update these
+  if (note.includes('in transit for return') || note.includes('rto in transit') || note.includes('in transit to origin')) return 'rto_in_transit';
+  if (note.includes('return to origin') || note.includes('rto initiated') || note.includes('rto')) return 'rto';
+  if (note.includes('ndr') || note.includes('undelivered') || note.includes('delivery attempted') || note.includes('not delivered')) return 'attempted';
+  if (note.includes('delivered')) return 'delivered';
+  if (note.includes('out for delivery')) return 'out_for_delivery';
+
+  // Check tags — Indian shipping partners (Shiprocket, Delhivery, etc.) also update these
   if (tags.includes('rto-in-transit') || tags.includes('rto in transit') || tags.includes('rto_in_transit')) return 'rto_in_transit';
   if (tags.includes('rto') || tags.includes('return to origin')) return 'rto';
   if (tags.includes('delivered')) return 'delivered';
@@ -102,9 +111,17 @@ export async function GET(request: Request) {
     } else {
       const todayIST = toISTDateStr(now);
       const todayStart = parseISTDate(todayIST);
-      const daysBack = range === '30d' ? 29 : range === '14d' ? 13 : 6;
-      createdAtMin = new Date(todayStart.getTime() - daysBack * DAY_MS).toISOString();
-      createdAtMax = now.toISOString();
+      if (range === 'today') {
+        createdAtMin = todayStart.toISOString();
+        createdAtMax = now.toISOString();
+      } else if (range === 'yesterday') {
+        createdAtMin = new Date(todayStart.getTime() - DAY_MS).toISOString();
+        createdAtMax = todayStart.toISOString();
+      } else {
+        const daysBack = range === '30d' ? 29 : range === '14d' ? 13 : 6;
+        createdAtMin = new Date(todayStart.getTime() - daysBack * DAY_MS).toISOString();
+        createdAtMax = now.toISOString();
+      }
     }
 
     const { ordersData, errors } = await fetchAllStoresOrders(stores, {

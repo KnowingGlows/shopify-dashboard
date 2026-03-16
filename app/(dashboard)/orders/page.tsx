@@ -17,7 +17,7 @@ import { formatINR } from '@/lib/currency-converter';
 // ── Types ────────────────────────────────────────────────────────────
 type DeliveryStatus = 'delivered' | 'in_transit' | 'out_for_delivery' | 'rto' | 'rto_in_transit' | 'unfulfilled' | 'cancelled' | 'attempted';
 type PaymentType = 'cod' | 'prepaid';
-type DateRange = '7d' | '14d' | '30d' | 'custom';
+type DateRange = 'today' | 'yesterday' | '7d' | '14d' | '30d' | 'custom';
 
 interface ClassifiedOrder {
   id: string;
@@ -69,10 +69,12 @@ const PIE_COLORS: Record<DeliveryStatus, string> = {
 };
 
 const RANGE_OPTIONS: { value: DateRange; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
   { value: '7d', label: '7 Days' },
   { value: '14d', label: '14 Days' },
   { value: '30d', label: '30 Days' },
-  { value: 'custom', label: 'Custom' },
+  { value: 'custom', label: 'Custom Range' },
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -337,7 +339,7 @@ export default function OrderTrackingPage() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -4, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-border bg-[#0c0c0e] p-1 shadow-xl"
+                    className="absolute right-0 top-full z-20 mt-1 w-44 rounded-lg border border-border bg-[#0c0c0e] p-1 shadow-xl"
                   >
                     {RANGE_OPTIONS.map((opt) => (
                       <button
