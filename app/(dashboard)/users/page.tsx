@@ -27,6 +27,8 @@ const PAGES = [
   { path: '/ads-tracker', label: 'OPS Ads' },
   { path: '/prs', label: 'PRS' },
   { path: '/inventory', label: 'Inventory' },
+  { path: '/orders', label: 'Logistics' },
+  { path: '/transactions', label: 'Transactions' },
   { path: '/tasks', label: 'Tasks' },
   { path: '/settings', label: 'Settings' },
   { path: '/logs', label: 'Daily Logs' },
