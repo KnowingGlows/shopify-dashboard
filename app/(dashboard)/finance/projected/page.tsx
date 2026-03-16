@@ -141,6 +141,7 @@ export default function ProjectedFinancePage() {
   const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
   const [plannedExpenses, setPlannedExpenses] = useState<Array<{ id: string; category: string; description: string; amount: number; date: string }>>([]);
   const [codProjection, setCodProjection] = useState<CodProjectionData | null>(null);
+  const [codLoading, setCodLoading] = useState(true);
   const [codStore, setCodStore] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -152,12 +153,12 @@ export default function ProjectedFinancePage() {
   const fetchAll = useCallback(async () => {
     try {
       const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
-      const [res, plannedRes, codRes] = await Promise.all([
+      // Fetch finance data first (fast)
+      const [res, plannedRes] = await Promise.all([
         fetch(`/api/finance?action=combined&days=${days}`),
         fetch('/api/finance?action=planned'),
-        fetch(`/api/cod-projection?days=${days}`),
       ]);
-      const [data, plannedData, codData] = await Promise.all([res.json(), plannedRes.json(), codRes.json()]);
+      const [data, plannedData] = await Promise.all([res.json(), plannedRes.json()]);
       setSummary(data.summary);
       setCodWeeks(data.codWeeks ?? []);
       setSpending(data.spending);
@@ -166,7 +167,16 @@ export default function ProjectedFinancePage() {
       setExpenses(data.expenses ?? []);
       setIncome(data.income ?? []);
       setPlannedExpenses(plannedData.planned ?? []);
-      if (codData.success) setCodProjection(codData);
+      setLoading(false);
+
+      // Fetch COD projection separately (slow — hits Delhivery API)
+      setCodLoading(true);
+      try {
+        const codRes = await fetch(`/api/cod-projection?days=${days}`);
+        const codData = await codRes.json();
+        if (codData.success) setCodProjection(codData);
+      } catch { /* silent */ }
+      finally { setCodLoading(false); }
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -425,7 +435,12 @@ export default function ProjectedFinancePage() {
             </div>
 
             {/* Stacked Bar Chart */}
-            {codChartData.length > 0 ? (
+            {codLoading ? (
+              <div className="h-56 flex flex-col items-center justify-center">
+                <Loader2 className="h-5 w-5 animate-spin text-emerald-400 mb-2" />
+                <p className="text-[11px] text-muted-foreground/50">Fetching Delhivery tracking data...</p>
+              </div>
+            ) : codChartData.length > 0 ? (
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={codChartData} margin={{ top: 8, right: 4, left: -10, bottom: 24 }}>
