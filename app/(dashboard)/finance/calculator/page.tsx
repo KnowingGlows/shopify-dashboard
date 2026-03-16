@@ -1,16 +1,42 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Calculator, Percent } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Calculator, Percent, Bookmark, Plus, X, Trash2 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 
 const USD_TO_INR = 90.7;
+const PRESETS_KEY = 'orbit-calc-presets';
+
+interface CalcPreset {
+  id: string;
+  name: string;
+  currency: 'USD' | 'INR';
+  margin: string;
+  adSpend: string;
+  roas: string;
+  numDays: string;
+  sellingPrice: string;
+  costPrice: string;
+  deliveryRate: string;
+}
+
+function loadPresets(): CalcPreset[] {
+  if (typeof window === 'undefined') return [];
+  try { return JSON.parse(localStorage.getItem(PRESETS_KEY) ?? '[]'); } catch { return []; }
+}
+
+function savePresets(presets: CalcPreset[]) {
+  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
 
 export default function ProfitCalculatorPage() {
   const [currency, setCurrency] = useState<'USD' | 'INR'>('USD');
+  const [presets, setPresets] = useState<CalcPreset[]>([]);
+  const [showPresets, setShowPresets] = useState(false);
+  const [presetName, setPresetName] = useState('');
 
   // ROI Calculator
   const [margin, setMargin] = useState('0.6');
@@ -22,6 +48,34 @@ export default function ProfitCalculatorPage() {
   const [sellingPrice, setSellingPrice] = useState('100');
   const [costPrice, setCostPrice] = useState('35');
   const [deliveryRate, setDeliveryRate] = useState('95');
+
+  useEffect(() => { setPresets(loadPresets()); }, []);
+
+  const applyPreset = useCallback((p: CalcPreset) => {
+    setCurrency(p.currency);
+    setMargin(p.margin); setAdSpend(p.adSpend); setRoas(p.roas); setNumDays(p.numDays);
+    setSellingPrice(p.sellingPrice); setCostPrice(p.costPrice); setDeliveryRate(p.deliveryRate);
+    setShowPresets(false);
+  }, []);
+
+  const saveCurrentAsPreset = () => {
+    if (!presetName.trim()) return;
+    const newPreset: CalcPreset = {
+      id: Date.now().toString(),
+      name: presetName.trim(),
+      currency, margin, adSpend, roas, numDays, sellingPrice, costPrice, deliveryRate,
+    };
+    const updated = [...presets, newPreset];
+    setPresets(updated);
+    savePresets(updated);
+    setPresetName('');
+  };
+
+  const deletePreset = (id: string) => {
+    const updated = presets.filter((p) => p.id !== id);
+    setPresets(updated);
+    savePresets(updated);
+  };
 
   const fmt = (amount: number) => currency === 'USD' ? formatUSD(amount) : formatINR(amount);
 
@@ -57,20 +111,30 @@ export default function ProfitCalculatorPage() {
             <p className="text-[11px] text-muted-foreground">Calculate ROI & profit margins for paid advertising</p>
           </div>
         </div>
-        {/* Currency toggle */}
-        <div className="flex items-center rounded-lg border border-border bg-card overflow-hidden">
+        <div className="flex items-center gap-2">
+          {/* Presets */}
           <button
-            onClick={() => setCurrency('USD')}
-            className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'USD' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            onClick={() => setShowPresets(!showPresets)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:bg-accent/30"
           >
-            $ USD
+            <Bookmark className="h-3.5 w-3.5" />
+            Presets {presets.length > 0 && <span className="text-primary">({presets.length})</span>}
           </button>
-          <button
-            onClick={() => setCurrency('INR')}
-            className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'INR' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            ₹ INR
-          </button>
+          {/* Currency toggle */}
+          <div className="flex items-center rounded-lg border border-border bg-card overflow-hidden">
+            <button
+              onClick={() => setCurrency('USD')}
+              className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'USD' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              $ USD
+            </button>
+            <button
+              onClick={() => setCurrency('INR')}
+              className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'INR' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              ₹ INR
+            </button>
+          </div>
         </div>
       </div>
 
@@ -163,6 +227,81 @@ export default function ProfitCalculatorPage() {
           </div>
         </motion.div>
       </div>
+
+      {/* Presets Modal */}
+      <AnimatePresence>
+        {showPresets && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPresets(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="relative z-10 w-full max-w-md mx-4 rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between border-b border-border/50 px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <Bookmark className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-semibold text-foreground">Brand Presets</h2>
+                </div>
+                <button onClick={() => setShowPresets(false)} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+                {/* Save current */}
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2">Save Current Values</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)}
+                      placeholder="e.g. Kairova, Mavric..."
+                      onKeyDown={(e) => e.key === 'Enter' && saveCurrentAsPreset()}
+                      className="flex-1 rounded-lg border border-border/50 bg-background/60 px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none transition"
+                    />
+                    <button onClick={saveCurrentAsPreset} disabled={!presetName.trim()}
+                      className="rounded-lg bg-primary/15 px-3 py-2 text-[11px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
+                    ><Plus className="h-3.5 w-3.5" /></button>
+                  </div>
+                </div>
+
+                {/* Saved presets */}
+                {presets.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2">Saved Presets</p>
+                    <div className="space-y-1.5">
+                      {presets.map((p) => (
+                        <div key={p.id} className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-2.5 group">
+                          <button onClick={() => applyPreset(p)} className="flex-1 text-left min-w-0">
+                            <p className="text-[12px] font-medium text-foreground truncate">{p.name}</p>
+                            <p className="text-[10px] text-muted-foreground/60">
+                              Margin {(parseFloat(p.margin) * 100).toFixed(0)}% · SP {p.currency === 'INR' ? '₹' : '$'}{p.sellingPrice} · CP {p.currency === 'INR' ? '₹' : '$'}{p.costPrice} · DR {p.deliveryRate}%
+                            </p>
+                          </button>
+                          <button onClick={() => deletePreset(p.id)}
+                            className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-red-400 transition"
+                          ><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {presets.length === 0 && (
+                  <div className="text-center py-6">
+                    <Bookmark className="h-6 w-6 mx-auto text-muted-foreground/20 mb-2" />
+                    <p className="text-[12px] text-muted-foreground/50">No presets saved yet</p>
+                    <p className="text-[10px] text-muted-foreground/30 mt-1">Set your calculator values and save them as a brand preset</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </PageTransition>
   );
 }

@@ -40,6 +40,8 @@ interface DatePickerProps {
 export function DatePicker({ value, onChange, max, min, placeholder = 'Select date', className, compact }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ alignRight: boolean; openUp: boolean }>({ alignRight: false, openUp: false });
 
   // Parse current value or default to today
   const today = todayIST();
@@ -112,8 +114,19 @@ export function DatePicker({ value, onChange, max, min, placeholder = 'Select da
     <div ref={ref} className={cn('relative', className)}>
       {/* Trigger */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            const dropdownWidth = 280;
+            const dropdownHeight = 360; // approximate calendar height
+            const alignRight = rect.left + dropdownWidth > window.innerWidth - 8;
+            const openUp = rect.bottom + dropdownHeight > window.innerHeight - 8 && rect.top - dropdownHeight > 8;
+            setDropdownPos({ alignRight, openUp });
+          }
+          setOpen(!open);
+        }}
         className={cn(
           'flex items-center gap-2 rounded-lg border border-border bg-card/60 text-foreground backdrop-blur-sm transition hover:bg-card/80',
           compact ? 'px-2.5 py-1.5 text-[12px]' : 'px-3 py-2 text-sm',
@@ -128,11 +141,15 @@ export function DatePicker({ value, onChange, max, min, placeholder = 'Select da
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.95 }}
+            initial={{ opacity: 0, y: dropdownPos.openUp ? 4 : -4, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.95 }}
+            exit={{ opacity: 0, y: dropdownPos.openUp ? 4 : -4, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="absolute z-50 mt-1 w-[280px] rounded-xl border border-border bg-[#0c0c0e] p-3 shadow-2xl"
+            className={cn(
+              'absolute z-50 w-[280px] rounded-xl border border-border bg-[#0c0c0e] p-3 shadow-2xl',
+              dropdownPos.openUp ? 'bottom-full mb-1' : 'top-full mt-1',
+              dropdownPos.alignRight ? 'right-0' : 'left-0',
+            )}
           >
             {/* Month/Year Header */}
             <div className="flex items-center justify-between mb-3">

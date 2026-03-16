@@ -334,7 +334,7 @@ export async function GET(request: Request) {
         codDeliveredAmount: codOrd.filter((o) => o.status === 'delivered').reduce((s, o) => s + o.amount, 0),
         totalRevenue: codOrd.reduce((s, o) => s + o.amount, 0),
         deliveredRevenue: codOrd.filter((o) => o.status === 'delivered').reduce((s, o) => s + o.amount, 0),
-        lostRevenue: codOrd.filter((o) => o.status === 'rto' || o.status === 'cancelled').reduce((s, o) => s + o.amount, 0),
+        lostRevenue: codOrd.filter((o) => o.status === 'rto' || o.status === 'rto_in_transit' || o.status === 'cancelled').reduce((s, o) => s + o.amount, 0),
       };
     }
 

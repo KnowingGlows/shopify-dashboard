@@ -6,12 +6,11 @@ import Link from 'next/link';
 import {
   Package, Truck, CheckCircle2, AlertTriangle, RotateCcw, XCircle,
   Calendar, ChevronDown, ChevronRight, Loader2, Store,
-  Clock, ShieldAlert, Target, Timer, Wallet, TrendingUp, BadgeDollarSign,
-  Zap, BarChart3,
+  Clock, ShieldAlert, Timer, Wallet,
+  BarChart3,
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, BarChart, Bar, CartesianGrid,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { cn } from '@/lib/utils';
 import { DatePicker } from '@/components/date-picker';
@@ -92,9 +91,6 @@ function pctNum(num: number, den: number): number {
   if (den === 0) return 0;
   return Math.round(num / den * 1000) / 10;
 }
-function formatDate(dateStr: string): string {
-  return new Date(dateStr + 'T00:00:00+05:30').toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
-}
 
 // ── Animated Number ──────────────────────────────────────────────────
 function AnimNum({ value, suffix = '' }: { value: number; suffix?: string }) {
@@ -140,23 +136,6 @@ function InsightCard({ label, value, suffix, sub, icon: Icon, color, delay }: {
       </p>
       {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
     </motion.div>
-  );
-}
-
-// ── Custom Tooltip ───────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg border border-border bg-[#0c0c0e]/95 px-3 py-2 shadow-xl backdrop-blur-sm">
-      <p className="text-[11px] font-medium text-muted-foreground mb-1">{label}</p>
-      {payload.map((p) => (
-        <div key={p.name} className="flex items-center gap-2 text-[12px]">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />
-          <span className="text-muted-foreground">{p.name}:</span>
-          <span className="font-medium text-foreground">{p.value}</span>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -208,28 +187,6 @@ export default function LogisticsPage() {
     if (activeStore === 'all') return combined;
     return stores[activeStore]?.totals ?? null;
   }, [activeStore, stores, combined]);
-
-  // Chart data
-  const dailyChartData = useMemo(() => {
-    const src = activeStore === 'all'
-      ? Object.values(stores).reduce((acc, s) => {
-          for (const [date, day] of Object.entries(s.dailyBreakdown)) {
-            if (!acc[date]) acc[date] = { total: 0, cod: 0, prepaid: 0, delivered: 0, codDelivered: 0, inTransit: 0, rto: 0, rtoInTransit: 0, attempted: 0 };
-            const d = acc[date]; d.total += day.total; d.cod += day.cod; d.prepaid += day.prepaid;
-            d.delivered += day.delivered; d.codDelivered += day.codDelivered;
-            d.inTransit += day.inTransit; d.rto += day.rto; d.rtoInTransit += day.rtoInTransit;
-            d.attempted += day.attempted;
-          }
-          return acc;
-        }, {} as Record<string, DayBreakdown>)
-      : stores[activeStore]?.dailyBreakdown ?? {};
-    return Object.entries(src)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, day]) => ({
-        date: formatDate(date), Total: day.total, Delivered: day.delivered,
-        RTO: day.rto + day.rtoInTransit, COD: day.cod, Prepaid: day.prepaid,
-      }));
-  }, [activeStore, stores]);
 
   // Pie data
   const pieData = useMemo(() => {
@@ -334,104 +291,54 @@ export default function LogisticsPage() {
         {!loading && t && (
           <div className="space-y-5">
 
-            {/* ─── Primary Metrics ───────────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <InsightCard label="Delivery Rate" value={pctNum(t.delivered, fulfilledTotal || t.total)}
-                suffix="%" icon={CheckCircle2} color="text-emerald-400" delay={0}
-                sub={`${t.delivered} of ${fulfilledTotal || t.total} delivered`} />
-              <InsightCard label="RTO Rate" value={pctNum(t.rto + t.rtoInTransit, fulfilledTotal || t.total)}
-                suffix="%" icon={RotateCcw} color="text-red-400" delay={0.04}
-                sub={`${t.rto + t.rtoInTransit} returns`} />
-              <InsightCard label="FAD Rate" value={a?.fadPct ?? null}
-                suffix="%" icon={Target} color="text-emerald-400" delay={0.08}
-                sub={a && a.fadTotal > 0 ? `${a.fadCount} of ${a.fadTotal} first-attempt` : 'No data'} />
-              <InsightCard label="NDR Resolution" value={a?.ndrResolutionRate ?? null}
-                suffix="%" icon={Zap} color="text-amber-400" delay={0.12}
-                sub={a && a.totalNdrOrders > 0 ? `${a.totalNdrOrders} NDR orders` : 'No NDRs'} />
-            </div>
-
-            {/* ─── Secondary Metrics ──────────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-              <InsightCard label="Total Orders" value={t.total} icon={Package}
-                color="text-violet-400" delay={0.14} sub={`${t.cod} COD · ${t.prepaid} Prepaid`} />
-            </div>
-
-            {/* ─── Delivery Intelligence ─────────────────────────────── */}
-            {a && (
-              <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2.5 px-1">Delivery Intelligence</p>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                  <InsightCard label="FAD Rate" value={a.fadPct} suffix="%"
-                    icon={Target} color="text-emerald-400" delay={0.18}
-                    sub={a.fadTotal > 0 ? `${a.fadCount} of ${a.fadTotal} first-attempt` : 'No data'} />
-                  <InsightCard label="Avg Delivery" value={a.avgDeliveryDays != null ? `${a.avgDeliveryDays}d` : null}
-                    icon={Timer} color="text-blue-400" delay={0.2}
-                    sub={a.avgCodDeliveryDays != null ? `COD: ${a.avgCodDeliveryDays}d · Prepaid: ${a.avgPrepaidDeliveryDays ?? '—'}d` : undefined} />
-                  <InsightCard label="NDR Resolution" value={a.ndrResolutionRate} suffix="%"
-                    icon={Zap} color="text-amber-400" delay={0.22}
-                    sub={a.totalNdrOrders > 0 ? `${a.totalNdrOrders} NDR orders · ${a.avgNdrAttempts ?? 0} avg attempts` : 'No NDRs'} />
-                  <InsightCard label="COD at Risk" value={a.atRiskValue > 0 ? formatINR(a.atRiskValue) : '₹0'}
-                    icon={ShieldAlert} color="text-red-400" delay={0.24}
-                    sub="RTO + NDR COD value" />
-                  <InsightCard label="COD in Transit" value={a.codPendingDelivery > 0 ? formatINR(a.codPendingDelivery) : '₹0'}
-                    icon={Wallet} color="text-amber-400" delay={0.26}
-                    sub="Pending delivery" />
-                  <InsightCard label="COD Delivered" value={a.codDeliveredAmount > 0 ? formatINR(a.codDeliveredAmount) : '₹0'}
-                    icon={BadgeDollarSign} color="text-emerald-400" delay={0.28}
-                    sub="Awaiting bank deposit (~7d)" />
-                </div>
-              </motion.div>
-            )}
-
-            {/* ─── Cashflow Summary ──────────────────────────────────── */}
+            {/* ─── COD Revenue Pipeline (top priority) ─────────────── */}
             {a && a.totalRevenue > 0 && (
-              <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-                className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4"
+              <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+                className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-5"
               >
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">COD Revenue Pipeline</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-4">COD Revenue Pipeline</p>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <div>
                     <p className="text-[10px] text-muted-foreground/60">Total COD Value</p>
-                    <p className="text-lg font-bold text-foreground">{formatINR(a.totalRevenue)}</p>
+                    <p className="text-xl font-bold text-foreground">{formatINR(a.totalRevenue)}</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground/60">Delivered</p>
-                    <p className="text-lg font-bold text-emerald-400">{formatINR(a.deliveredRevenue)}</p>
-                    <p className="text-[9px] text-muted-foreground/50">{pct(a.deliveredRevenue, a.totalRevenue)} — awaiting bank deposit</p>
+                    <p className="text-xl font-bold text-emerald-400">{formatINR(a.deliveredRevenue)}</p>
+                    <p className="text-[9px] text-muted-foreground/50">{pct(a.deliveredRevenue, a.totalRevenue)} — awaiting deposit</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground/60">In Transit</p>
-                    <p className="text-lg font-bold text-blue-400">{formatINR(a.codPendingDelivery)}</p>
+                    <p className="text-xl font-bold text-blue-400">{formatINR(a.codPendingDelivery)}</p>
                     <p className="text-[9px] text-muted-foreground/50">Pending delivery</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground/60">Lost to RTO</p>
-                    <p className="text-lg font-bold text-red-400">{formatINR(a.lostRevenue)}</p>
+                    <p className="text-[10px] text-muted-foreground/60">Lost (RTO + In Transit)</p>
+                    <p className="text-xl font-bold text-red-400">{formatINR(a.lostRevenue)}</p>
                     <p className="text-[9px] text-muted-foreground/50">{pct(a.lostRevenue, a.totalRevenue)} of COD</p>
                   </div>
                 </div>
 
-                {/* Revenue bar */}
-                <div className="mt-3 h-3 rounded-full bg-zinc-800/50 overflow-hidden flex">
+                <div className="mt-4 h-3 rounded-full bg-zinc-800/50 overflow-hidden flex">
                   {a.deliveredRevenue > 0 && (
                     <motion.div initial={{ width: 0 }} animate={{ width: `${a.deliveredRevenue / a.totalRevenue * 100}%` }}
-                      transition={{ delay: 0.5, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                      className="bg-emerald-500 h-full" title={`Delivered: ${formatINR(a.deliveredRevenue)}`} />
+                      transition={{ delay: 0.4, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                      className="bg-emerald-500 h-full" />
                   )}
                   {a.codPendingDelivery > 0 && (
                     <motion.div initial={{ width: 0 }} animate={{ width: `${a.codPendingDelivery / a.totalRevenue * 100}%` }}
-                      transition={{ delay: 0.6, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                      className="bg-blue-500 h-full" title={`In Transit: ${formatINR(a.codPendingDelivery)}`} />
+                      transition={{ delay: 0.5, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                      className="bg-blue-500 h-full" />
                   )}
                   {a.atRiskValue > 0 && (
                     <motion.div initial={{ width: 0 }} animate={{ width: `${a.atRiskValue / a.totalRevenue * 100}%` }}
-                      transition={{ delay: 0.7, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                      className="bg-amber-500 h-full" title={`At Risk: ${formatINR(a.atRiskValue)}`} />
+                      transition={{ delay: 0.6, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                      className="bg-amber-500 h-full" />
                   )}
                   {a.lostRevenue > 0 && (
                     <motion.div initial={{ width: 0 }} animate={{ width: `${a.lostRevenue / a.totalRevenue * 100}%` }}
-                      transition={{ delay: 0.8, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                      className="bg-red-500 h-full" title={`Lost: ${formatINR(a.lostRevenue)}`} />
+                      transition={{ delay: 0.7, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                      className="bg-red-500 h-full" />
                   )}
                 </div>
                 <div className="flex items-center gap-4 mt-2 text-[10px]">
@@ -443,127 +350,79 @@ export default function LogisticsPage() {
               </motion.div>
             )}
 
-            {/* ─── Charts ────────────────────────────────────────────── */}
-            <div className="grid gap-4 lg:grid-cols-5">
-              {/* Pie */}
-              <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}
-                className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4 lg:col-span-2"
-              >
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Status Distribution</p>
-                <div className="flex items-center gap-4">
-                  <div className="h-[170px] w-[170px] shrink-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={48} outerRadius={76}
-                          dataKey="value" strokeWidth={0} animationDuration={800} animationBegin={300}>
-                          {pieData.map((d) => <Cell key={d.status} fill={PIE_COLORS[d.status]} />)}
-                        </Pie>
-                        <Tooltip content={({ active, payload }) => {
-                          if (!active || !payload?.[0]) return null;
-                          const d = payload[0].payload;
-                          return (
-                            <div className="rounded-lg border border-border bg-[#0c0c0e]/95 px-3 py-2 shadow-xl backdrop-blur-sm">
-                              <p className="text-[12px] font-medium text-foreground">{d.name}</p>
-                              <p className="text-[11px] text-muted-foreground">{d.value} orders ({pct(d.value, t.total)})</p>
-                            </div>
-                          );
-                        }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="flex-1 space-y-1.5">
-                    {pieData.map((d) => (
-                      <div key={d.status} className="flex items-center gap-2 text-[12px]">
-                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: PIE_COLORS[d.status] }} />
-                        <span className="text-muted-foreground truncate">{d.name}</span>
-                        <span className="ml-auto font-medium text-foreground">{d.value}</span>
-                        <span className="text-muted-foreground/60 w-10 text-right">{pct(d.value, t.total)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* Daily Chart */}
-              <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
-                className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4 lg:col-span-3"
-              >
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Daily Orders</p>
-                <div className="h-[170px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={dailyChartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                      <defs>
-                        <linearGradient id="ordT" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.3} /><stop offset="100%" stopColor="#a78bfa" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="ordD" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#34d399" stopOpacity={0.3} /><stop offset="100%" stopColor="#34d399" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Area type="monotone" dataKey="Total" stroke="#a78bfa" fill="url(#ordT)" strokeWidth={2} dot={false} animationDuration={800} />
-                      <Area type="monotone" dataKey="Delivered" stroke="#34d399" fill="url(#ordD)" strokeWidth={2} dot={false} animationDuration={800} animationBegin={200} />
-                      <Area type="monotone" dataKey="RTO" stroke="#f87171" fill="none" strokeWidth={1.5} strokeDasharray="4 4" dot={false} animationDuration={800} animationBegin={400} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </motion.div>
+            {/* ─── Key Metrics ─────────────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <InsightCard label="Delivery Rate" value={pctNum(t.delivered, fulfilledTotal || t.total)}
+                suffix="%" icon={CheckCircle2} color="text-emerald-400" delay={0.1}
+                sub={`${t.delivered} of ${fulfilledTotal || t.total} attempted`} />
+              <InsightCard label="COD Delivery" value={t.cod > 0 ? pctNum(t.codDelivered, t.cod) : 0}
+                suffix="%" icon={Wallet} color="text-blue-400" delay={0.14}
+                sub={`${t.codDelivered} of ${t.cod} COD delivered`} />
+              <InsightCard label="RTO Rate" value={pctNum(t.rto + t.rtoInTransit, fulfilledTotal || t.total)}
+                suffix="%" icon={RotateCcw} color="text-red-400" delay={0.18}
+                sub={`${t.rto + t.rtoInTransit} returns`} />
+              <InsightCard label="Avg Delivery" value={a?.avgDeliveryDays != null ? `${a.avgDeliveryDays}d` : null}
+                icon={Timer} color="text-violet-400" delay={0.22}
+                sub={a?.avgCodDeliveryDays != null ? `COD: ${a.avgCodDeliveryDays}d` : 'Calculating...'} />
             </div>
 
-            {/* ─── Status Cards + COD vs Prepaid ─────────────────────── */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              {/* Status Cards */}
-              <div className="grid grid-cols-3 gap-2">
-                {([
-                  ['In Transit', t.inTransit, 'in_transit'],
-                  ['Out for Delivery', t.outForDelivery, 'out_for_delivery'],
-                  ['Attempted / NDR', t.attempted, 'attempted'],
-                  ['RTO', t.rto, 'rto'],
-                  ['RTO In Transit', t.rtoInTransit, 'rto_in_transit'],
-                  ['Unfulfilled', t.unfulfilled, 'unfulfilled'],
-                ] as [string, number, DeliveryStatus][]).map(([label, value, status], i) => {
-                  const cfg = STATUS_CONFIG[status];
-                  const Icon = cfg.icon;
-                  return (
-                    <motion.div key={status} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.38 + i * 0.03 }}
-                      className={cn('rounded-xl border border-border p-3 space-y-1', cfg.bg)}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <Icon className={cn('h-3 w-3', cfg.color)} />
-                        <p className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</p>
-                      </div>
-                      <p className={cn('text-xl font-bold', cfg.color)}><AnimNum value={value} /></p>
-                    </motion.div>
-                  );
-                })}
+            {/* ─── Status Distribution (prominent) ─────────────────── */}
+            <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.26 }}
+              className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-5"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Order Status</p>
+                <p className="text-sm text-muted-foreground">{t.total} total orders</p>
               </div>
-
-              {/* COD vs Prepaid */}
-              <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-                className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4"
-              >
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">COD vs Prepaid</p>
-                <div className="h-[145px]">
+              <div className="flex flex-col lg:flex-row items-center gap-6">
+                <div className="h-[200px] w-[200px] shrink-0">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dailyChartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                      <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Bar dataKey="COD" fill="#f59e0b" radius={[3, 3, 0, 0]} animationDuration={800} />
-                      <Bar dataKey="Prepaid" fill="#8b5cf6" radius={[3, 3, 0, 0]} animationDuration={800} animationBegin={200} />
-                    </BarChart>
+                    <PieChart>
+                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={90}
+                        dataKey="value" strokeWidth={0} animationDuration={800} animationBegin={300}>
+                        {pieData.map((d) => <Cell key={d.status} fill={PIE_COLORS[d.status]} />)}
+                      </Pie>
+                      <Tooltip content={({ active, payload }) => {
+                        if (!active || !payload?.[0]) return null;
+                        const d = payload[0].payload;
+                        return (
+                          <div className="rounded-lg border border-border bg-[#0c0c0e]/95 px-3 py-2 shadow-xl backdrop-blur-sm">
+                            <p className="text-[12px] font-medium text-foreground">{d.name}</p>
+                            <p className="text-[11px] text-muted-foreground">{d.value} orders ({pct(d.value, t.total)})</p>
+                          </div>
+                        );
+                      }} />
+                    </PieChart>
                   </ResponsiveContainer>
                 </div>
-              </motion.div>
-            </div>
+                <div className="flex-1 w-full grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {([
+                    ['Delivered', t.delivered, 'delivered'],
+                    ['In Transit', t.inTransit, 'in_transit'],
+                    ['Out for Delivery', t.outForDelivery, 'out_for_delivery'],
+                    ['NDR / Attempted', t.attempted, 'attempted'],
+                    ['RTO', t.rto + t.rtoInTransit, 'rto'],
+                    ['Unfulfilled', t.unfulfilled, 'unfulfilled'],
+                  ] as [string, number, DeliveryStatus][]).map(([label, value, status]) => {
+                    const cfg = STATUS_CONFIG[status];
+                    const Icon = cfg.icon;
+                    return (
+                      <div key={label} className={cn('rounded-xl border border-border p-3 space-y-1', cfg.bg)}>
+                        <div className="flex items-center gap-1.5">
+                          <Icon className={cn('h-3 w-3', cfg.color)} />
+                          <p className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</p>
+                        </div>
+                        <p className={cn('text-xl font-bold', cfg.color)}><AnimNum value={value} /></p>
+                        <p className="text-[9px] text-muted-foreground/50">{pct(value, t.total)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
 
             {/* ─── Day-wise Link ──────────────────────────────────────── */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
               <Link href="/orders/breakdown"
                 className="flex items-center justify-between rounded-xl border border-border bg-card/60 backdrop-blur-sm px-4 py-3 transition hover:bg-card/80 group"
               >
@@ -571,7 +430,7 @@ export default function LogisticsPage() {
                   <BarChart3 className="h-4 w-4 text-primary" />
                   <div>
                     <p className="text-sm font-medium text-foreground">Day-wise Breakdown</p>
-                    <p className="text-[11px] text-muted-foreground">View individual orders by date with Delhivery tracking</p>
+                    <p className="text-[11px] text-muted-foreground">View orders by date with charts & Delhivery tracking</p>
                   </div>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground transition group-hover:text-primary group-hover:translate-x-0.5" />

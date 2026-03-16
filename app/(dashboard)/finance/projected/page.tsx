@@ -361,6 +361,71 @@ export default function ProjectedFinancePage() {
         );
       })()}
 
+      {/* ═══ Projected COD Deposits ═══ */}
+      {totalInflow > 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.36 }}>
+          <div className="rounded-2xl border border-emerald-500/15 bg-gradient-to-br from-emerald-500/[0.04] via-card to-card">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-6">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="h-5 w-5 text-emerald-400" />
+                    <h2 className="text-base font-semibold text-foreground">Projected COD Deposits</h2>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/60">Estimated bank deposits from COD deliveries</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Expected</p>
+                  <p className="text-3xl font-bold tabular-nums text-emerald-400">
+                    <AnimatedNumber value={totalInflow} formatter={formatINR} />
+                  </p>
+                </div>
+              </div>
+
+              <div className="h-52">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={inflowChartData} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
+                    <defs>
+                      <linearGradient id="codDepositGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                    <XAxis
+                      dataKey="label"
+                      interval={chartDays <= 30 ? 0 : 6}
+                      tick={({ x, y, payload }) => (
+                        <text
+                          x={x as number} y={(y as number) + 14}
+                          textAnchor="middle"
+                          fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
+                          fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 500}
+                          fill={payload.value === fmtMonthDay(todayStr) ? '#a78bfa' : '#9ca3af'}
+                        >
+                          {payload.value}
+                        </text>
+                      )}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis tick={{ fill: '#71717a', fontSize: 9 }} axisLine={false} tickLine={false} width={50} />
+                    <Tooltip
+                      content={({ active, payload }) => active && payload?.length && (payload[0].value as number) > 0 ? (
+                        <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
+                          <span className="text-muted-foreground text-[10px] mr-1.5">Deposit</span>{formatINR(payload[0].value as number)}
+                        </div>
+                      ) : null}
+                    />
+                    <Area type="monotone" dataKey="deposit" stroke="#10b981" strokeWidth={1.5} fill="url(#codDepositGrad)" dot={false} activeDot={{ r: 3, fill: '#10b981' }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* ═══ Projected Cash Outflow ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38 }}>
         <div className="rounded-2xl border border-red-500/15 bg-gradient-to-br from-red-500/[0.04] via-card to-card">

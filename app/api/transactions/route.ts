@@ -146,7 +146,7 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Check for duplicates by reference or amount+date+time combo
+        // Check for duplicates: by reference if available, else by amount+date+type+account
         const dupQuery = parsed.reference
           ? await db.collection(COLLECTIONS.BANK_TRANSACTIONS)
               .where('reference', '==', parsed.reference)
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
               .where('amount', '==', parsed.amount)
               .where('date', '==', parsed.date)
               .where('type', '==', parsed.type)
-              .where('rawMessage', '==', parsed.rawMessage)
+              .where('account', '==', parsed.account)
               .limit(1)
               .get();
 

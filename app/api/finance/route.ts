@@ -231,6 +231,22 @@ export async function POST(request: Request) {
         return updatePlannedExpense(body);
       case 'delete-planned':
         return deletePlannedExpense(body);
+      case 'clear-all': {
+        const db = getFirestore();
+        if (!db) return NextResponse.json({ error: 'No database' }, { status: 500 });
+        const cols = [COLLECTIONS.FINANCE_DAILY, COLLECTIONS.FINANCE_EXPENSES, COLLECTIONS.FINANCE_INCOME];
+        let deleted = 0;
+        for (const col of cols) {
+          const snap = await db.collection(col).get();
+          for (let i = 0; i < snap.docs.length; i += 500) {
+            const batch = db.batch();
+            snap.docs.slice(i, i + 500).forEach((doc) => batch.delete(doc.ref));
+            await batch.commit();
+          }
+          deleted += snap.docs.length;
+        }
+        return NextResponse.json({ success: true, deleted });
+      }
       default:
         return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
     }
