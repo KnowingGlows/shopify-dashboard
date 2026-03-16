@@ -56,9 +56,11 @@ function groupByProduct(entries: AdsTrackerEntry[], registeredProducts: string[]
     // Find latest launched batch (Testing or beyond) and compute timeline
     const launchedStatuses = ['Testing', 'Winner', 'Loser', 'Scaled'];
     const launchedBatches = batches.filter((b) => launchedStatuses.includes(b.creativeBatchResult));
-    const sorted = [...launchedBatches].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Sort by updatedAt — when the batch was marked as Testing (launched)
+    const sorted = [...launchedBatches].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     const latestBatch = sorted[0] || null;
-    const daysSinceLastBatch = latestBatch ? Math.floor((now - new Date(latestBatch.createdAt).getTime()) / 86400000) : -1;
+    // daysSince = from when the batch was last updated (marked as Testing), not created
+    const daysSinceLastBatch = latestBatch ? Math.floor((now - new Date(latestBatch.updatedAt).getTime()) / 86400000) : -1;
     const nextBatchDue = daysSinceLastBatch >= 7;
 
     return { name, batches, totalSpend, avgRoas, winners, losers, testing, scaled, hitRate, lastUpdated, latestBatch, daysSinceLastBatch, nextBatchDue };

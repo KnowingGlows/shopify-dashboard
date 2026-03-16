@@ -7,6 +7,9 @@ import {
   Package, Truck, CheckCircle2, AlertTriangle, RotateCcw, XCircle,
   Calendar, ChevronDown, ChevronLeft, Loader2, Store, Clock, ShieldAlert,
 } from 'lucide-react';
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts';
 import { cn } from '@/lib/utils';
 import { DatePicker } from '@/components/date-picker';
 import { formatINR } from '@/lib/currency-converter';
@@ -148,6 +151,21 @@ export default function BreakdownPage() {
       });
   }, [expandedDay, activeData]);
 
+  // Chart data for daily trend
+  const dailyChartData = useMemo(() => {
+    if (!activeData) return [];
+    return Object.entries(activeData.dailyBreakdown)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, day]) => ({
+        date: new Date(date + 'T00:00:00+05:30').toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' }),
+        Total: day.total,
+        Delivered: day.delivered,
+        RTO: day.rto + day.rtoInTransit,
+        COD: day.cod,
+        Prepaid: day.prepaid,
+      }));
+  }, [activeData]);
+
   const storeNames = Object.keys(stores);
 
   return (
@@ -226,6 +244,50 @@ export default function BreakdownPage() {
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
+        )}
+
+        {/* Daily Trend Chart */}
+        {!loading && dailyChartData.length > 1 && (
+          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4"
+          >
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Daily Orders Trend</p>
+            <div className="h-[180px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={dailyChartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                  <defs>
+                    <linearGradient id="bkTotal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.3} /><stop offset="100%" stopColor="#a78bfa" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="bkDelivered" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#34d399" stopOpacity={0.3} /><stop offset="100%" stopColor="#34d399" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <Tooltip content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    return (
+                      <div className="rounded-lg border border-border bg-[#0c0c0e]/95 px-3 py-2 shadow-xl backdrop-blur-sm">
+                        <p className="text-[11px] font-medium text-muted-foreground mb-1">{label}</p>
+                        {payload.map((p) => (
+                          <div key={p.name} className="flex items-center gap-2 text-[12px]">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color as string }} />
+                            <span className="text-muted-foreground">{p.name}:</span>
+                            <span className="font-medium text-foreground">{p.value as number}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  }} />
+                  <Area type="monotone" dataKey="Total" stroke="#a78bfa" fill="url(#bkTotal)" strokeWidth={2} dot={false} animationDuration={800} />
+                  <Area type="monotone" dataKey="Delivered" stroke="#34d399" fill="url(#bkDelivered)" strokeWidth={2} dot={false} animationDuration={800} animationBegin={200} />
+                  <Area type="monotone" dataKey="RTO" stroke="#f87171" fill="none" strokeWidth={1.5} strokeDasharray="4 4" dot={false} animationDuration={800} animationBegin={400} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </motion.div>
         )}
 
         {!loading && (

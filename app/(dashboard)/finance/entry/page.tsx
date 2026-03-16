@@ -152,17 +152,14 @@ export default function ActualEntryPage() {
 
       {/* Tab Switch */}
       <div className="relative flex items-center rounded-2xl border border-border/50 bg-card/50 p-1 backdrop-blur-sm">
-        {['income', 'expense'].map((tab) => (
-          tab === activeTab && (
-            <motion.div
-              key="tab-bg"
-              layoutId="entry-tab"
-              className={`absolute inset-y-1 w-[calc(50%-4px)] rounded-xl ${tab === 'income' ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'}`}
-              style={{ left: tab === 'income' ? '4px' : 'calc(50%)' }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-            />
-          )
-        ))}
+        <motion.div
+          layout
+          className={`absolute inset-y-1 w-[calc(50%-4px)] rounded-xl transition-colors duration-200 ${
+            activeTab === 'income' ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'
+          }`}
+          animate={{ left: activeTab === 'income' ? 4 : '50%' }}
+          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        />
         <button
           onClick={() => setActiveTab('income')}
           className={`relative z-10 flex-1 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[13px] font-semibold transition ${
