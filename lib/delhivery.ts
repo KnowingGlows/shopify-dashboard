@@ -223,11 +223,20 @@ function parseShipment(s: any): DelhiveryShipment | null {
     reverseInTransit: s.ReverseInTransit ?? false,
     rtoStartedDate: s.RTOStartedDate ?? null,
     returnedDate: s.ReturnedDate ?? null,
-    deliveryDate: s.DeliveryDate ?? (
-      (s.Status?.StatusType === 'DL' || (s.Status?.Status ?? '').toLowerCase() === 'delivered')
-        ? (s.Status?.StatusDateTime ?? null)
-        : null
-    ),
+    deliveryDate: s.DeliveryDate ?? (() => {
+      // Fallback 1: If current status is Delivered, use StatusDateTime
+      if (s.Status?.StatusType === 'DL' || (s.Status?.Status ?? '').toLowerCase() === 'delivered') {
+        return s.Status?.StatusDateTime ?? null;
+      }
+      // Fallback 2: Check scan history for a "Delivered" scan
+      for (let i = (scans.length - 1); i >= 0; i--) {
+        const scan = scans[i]?.ScanDetail;
+        if ((scan?.Scan ?? '').toLowerCase() === 'delivered') {
+          return scan?.ScanDateTime ?? null;
+        }
+      }
+      return null;
+    })(),
     firstAttemptDate: s.FirstAttemptDate ?? null,
     expectedReturnDate: s.ExpectedReturnDate ?? null,
     codAmount: s.CODAmount ?? 0,

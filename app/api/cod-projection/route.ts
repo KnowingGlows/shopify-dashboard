@@ -117,9 +117,9 @@ export async function GET(request: Request) {
     const now = new Date();
     const todayStr = toISTDateStr(now);
 
-    // Fetch last 20 days of orders (enough for delivery pipeline + remittance window)
+    // Fetch last 30 days of orders (need enough history for delivery rate + remittance pipeline)
     const todayStart = parseISTDate(todayStr);
-    const createdAtMin = new Date(todayStart.getTime() - 19 * DAY_MS).toISOString();
+    const createdAtMin = new Date(todayStart.getTime() - 29 * DAY_MS).toISOString();
     const createdAtMax = now.toISOString();
 
     const { ordersData } = await fetchAllStoresOrders(stores, { createdAtMin, createdAtMax });
@@ -218,7 +218,9 @@ export async function GET(request: Request) {
       const avgDelivDays = m.deliveryDays.length > 0
         ? Math.round(m.deliveryDays.reduce((a, b) => a + b, 0) / m.deliveryDays.length * 10) / 10
         : 5; // default 5 days if no data
-      const deliveryRate = m.totalFulfilled > 0 ? m.totalDelivered / m.totalFulfilled : 0.7;
+      // Use actual delivery rate with 65% floor (for stores with limited data)
+      const rawDeliveryRate = m.totalFulfilled > 0 ? m.totalDelivered / m.totalFulfilled : 0.7;
+      const deliveryRate = Math.max(rawDeliveryRate, 0.65);
       const ndrRate = m.totalNdr > 0 ? m.ndrResolved / m.totalNdr : 0.3;
 
       const dailyProjections: Record<string, DailyProjection> = {};
