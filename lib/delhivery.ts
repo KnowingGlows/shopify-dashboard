@@ -167,114 +167,102 @@ function classifyDelhiveryStatus(shipment: {
 
 // ── Fetch Tracking Data ──────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchBatch(token: string, awbBatch: string[]): Promise<any[]> {
+  try {
+    const res = await fetch(`${DELHIVERY_API}?waybill=${awbBatch.join(',')}`, {
+      headers: { 'Authorization': `Token ${token}`, 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.ShipmentData ?? [];
+  } catch { return []; }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseShipment(s: any): DelhiveryShipment | null {
+  if (!s?.AWB) return null;
+
+  // Count NDR attempts from scans
+  let ndrCount = 0;
+  const scans = s.Scans ?? [];
+  for (let si = 0; si < scans.length; si++) {
+    const sd = scans[si]?.ScanDetail;
+    const inst = (sd?.Instructions ?? '').toLowerCase();
+    const code = (sd?.StatusCode ?? '').toUpperCase();
+    const scanType = (sd?.Scan ?? '').toLowerCase();
+
+    if (
+      code.startsWith('EOD-') || code.startsWith('CR-') || code.startsWith('UD-') ||
+      inst.includes('not delivered') || inst.includes('undelivered') ||
+      inst.includes('delivery attempted') || inst.includes('consignee refused') ||
+      inst.includes('address issue') || inst.includes('customer not available') ||
+      inst.includes('otp not received') || inst.includes('cancellation') ||
+      inst.includes('no client instructions to reattempt') ||
+      inst.includes('rejected') || inst.includes('refused') ||
+      (scanType === 'pending' && si > 0 && (scans[si - 1]?.ScanDetail?.Scan ?? '').toLowerCase() === 'dispatched')
+    ) {
+      ndrCount++;
+    }
+  }
+
+  // Count actual out-for-delivery attempts
+  let dispatchCount = 0;
+  for (const scan of scans) {
+    if ((scan?.ScanDetail?.Scan ?? '').toLowerCase() === 'dispatched') dispatchCount++;
+  }
+
+  return {
+    awb: s.AWB,
+    status: classifyDelhiveryStatus({ ...s, Scans: scans }),
+    statusRaw: s.Status?.Status ?? '',
+    statusType: s.Status?.StatusType ?? '',
+    instructions: s.Status?.Instructions ?? '',
+    location: s.Status?.StatusLocation ?? '',
+    statusDateTime: s.Status?.StatusDateTime ?? '',
+    reverseInTransit: s.ReverseInTransit ?? false,
+    rtoStartedDate: s.RTOStartedDate ?? null,
+    returnedDate: s.ReturnedDate ?? null,
+    deliveryDate: s.DeliveryDate ?? (
+      (s.Status?.StatusType === 'DL' || (s.Status?.Status ?? '').toLowerCase() === 'delivered')
+        ? (s.Status?.StatusDateTime ?? null)
+        : null
+    ),
+    firstAttemptDate: s.FirstAttemptDate ?? null,
+    expectedReturnDate: s.ExpectedReturnDate ?? null,
+    codAmount: s.CODAmount ?? 0,
+    ndrCount,
+    dispatchCount,
+    orderType: s.OrderType ?? '',
+    referenceNo: s.ReferenceNo ?? '',
+    origin: s.Origin ?? '',
+    destination: s.Destination ?? '',
+    consigneeName: s.Consignee?.Name ?? '',
+  };
+}
+
 export async function trackShipments(awbs: string[]): Promise<Map<string, DelhiveryShipment>> {
   const token = await getDelhiveryToken();
   if (!token) throw new Error('Delhivery API token not configured');
 
   const results = new Map<string, DelhiveryShipment>();
 
-  // Process in batches of 50
+  // Split into batches of 50, run 3 concurrently
+  const batches: string[][] = [];
   for (let i = 0; i < awbs.length; i += BATCH_SIZE) {
-    const batch = awbs.slice(i, i + BATCH_SIZE);
-    const waybillParam = batch.join(',');
+    batches.push(awbs.slice(i, i + BATCH_SIZE));
+  }
 
-    try {
-      const res = await fetch(`${DELHIVERY_API}?waybill=${waybillParam}`, {
-        headers: {
-          'Authorization': `Token ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+  const CONCURRENCY = 3;
+  for (let i = 0; i < batches.length; i += CONCURRENCY) {
+    const chunk = batches.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(chunk.map((b) => fetchBatch(token, b)));
 
-      if (!res.ok) {
-        console.error(`Delhivery API error: ${res.status} ${res.statusText}`);
-        continue;
-      }
-
-      const data = await res.json();
-      const shipments = data.ShipmentData ?? [];
-
+    for (const shipments of batchResults) {
       for (const item of shipments) {
-        const s = item.Shipment;
-        if (!s?.AWB) continue;
-
-        // Count NDR attempts from scans — look at status codes and instructions
-        let ndrCount = 0;
-        const scans = s.Scans ?? [];
-        for (let si = 0; si < scans.length; si++) {
-          const sd = scans[si].ScanDetail;
-          const inst = (sd?.Instructions ?? '').toLowerCase();
-          const code = (sd?.StatusCode ?? '').toUpperCase();
-          const scanType = (sd?.Scan ?? '').toLowerCase();
-
-          // EOD codes = end of day reasons (failed delivery)
-          // ST- codes = status calls to consignee during delivery
-          // CR- codes = customer refused
-          // UD- codes = undelivered
-          // Pending after Dispatched = failed delivery attempt
-          if (
-            code.startsWith('EOD-') ||
-            code.startsWith('CR-') ||
-            code.startsWith('UD-') ||
-            inst.includes('not delivered') ||
-            inst.includes('undelivered') ||
-            inst.includes('delivery attempted') ||
-            inst.includes('consignee refused') ||
-            inst.includes('address issue') ||
-            inst.includes('customer not available') ||
-            inst.includes('otp not received') ||
-            inst.includes('cancellation') ||
-            inst.includes('no client instructions to reattempt') ||
-            inst.includes('rejected') ||
-            inst.includes('refused') ||
-            (scanType === 'pending' && si > 0 && (scans[si - 1]?.ScanDetail?.Scan ?? '').toLowerCase() === 'dispatched')
-          ) {
-            ndrCount++;
-          }
-        }
-
-        // Count actual out-for-delivery attempts from scans
-        let dispatchCount = 0;
-        for (const scan of scans) {
-          if ((scan.ScanDetail?.Scan ?? '').toLowerCase() === 'dispatched') dispatchCount++;
-        }
-
-        results.set(s.AWB, {
-          awb: s.AWB,
-          status: classifyDelhiveryStatus({ ...s, Scans: s.Scans }),
-          statusRaw: s.Status?.Status ?? '',
-          statusType: s.Status?.StatusType ?? '',
-          instructions: s.Status?.Instructions ?? '',
-          location: s.Status?.StatusLocation ?? '',
-          statusDateTime: s.Status?.StatusDateTime ?? '',
-          reverseInTransit: s.ReverseInTransit ?? false,
-          rtoStartedDate: s.RTOStartedDate ?? null,
-          returnedDate: s.ReturnedDate ?? null,
-          deliveryDate: s.DeliveryDate ?? (
-            // Fallback: if status is Delivered but DeliveryDate is null, use StatusDateTime
-            (s.Status?.StatusType === 'DL' || (s.Status?.Status ?? '').toLowerCase() === 'delivered')
-              ? (s.Status?.StatusDateTime ?? null)
-              : null
-          ),
-          firstAttemptDate: s.FirstAttemptDate ?? null,
-          expectedReturnDate: s.ExpectedReturnDate ?? null,
-          codAmount: s.CODAmount ?? 0,
-          ndrCount,
-          dispatchCount,
-          orderType: s.OrderType ?? '',
-          referenceNo: s.ReferenceNo ?? '',
-          origin: s.Origin ?? '',
-          destination: s.Destination ?? '',
-          consigneeName: s.Consignee?.Name ?? '',
-        });
+        const parsed = parseShipment(item.Shipment);
+        if (parsed) results.set(parsed.awb, parsed);
       }
-    } catch (error) {
-      console.error('Delhivery tracking batch error:', error);
-    }
-
-    // Small delay between batches to avoid rate limiting
-    if (i + BATCH_SIZE < awbs.length) {
-      await new Promise((r) => setTimeout(r, 200));
     }
   }
 

@@ -117,17 +117,18 @@ export async function GET(request: Request) {
     const now = new Date();
     const todayStr = toISTDateStr(now);
 
-    // Fetch last 45 days of orders (need historical delivered orders for remittance pipeline)
+    // Fetch last 20 days of orders (enough for delivery pipeline + remittance window)
     const todayStart = parseISTDate(todayStr);
-    const createdAtMin = new Date(todayStart.getTime() - 44 * DAY_MS).toISOString();
+    const createdAtMin = new Date(todayStart.getTime() - 19 * DAY_MS).toISOString();
     const createdAtMax = now.toISOString();
 
     const { ordersData } = await fetchAllStoresOrders(stores, { createdAtMin, createdAtMax });
 
-    // ── Collect AWBs ──────────────────────────────────────────────────
+    // ── Collect AWBs (COD only — skip prepaid) ───────────────────────
     const awbMap = new Map<string, { storeName: string; orderId: string }>();
     for (const { storeName, orders } of ordersData) {
       for (const order of orders) {
+        if (order.financial_status !== 'pending') continue; // COD only
         const awb = order.fulfillments?.[0]?.tracking_number;
         if (awb && order.fulfillment_status === 'fulfilled') {
           awbMap.set(awb, { storeName, orderId: order.id });
