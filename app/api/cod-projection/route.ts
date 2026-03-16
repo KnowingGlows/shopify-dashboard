@@ -124,11 +124,10 @@ export async function GET(request: Request) {
 
     const { ordersData } = await fetchAllStoresOrders(stores, { createdAtMin, createdAtMax });
 
-    // ── Collect AWBs (COD only — skip prepaid) ───────────────────────
+    // ── Collect AWBs (all fulfilled orders — we'll use Delhivery OrderType to filter COD) ──
     const awbMap = new Map<string, { storeName: string; orderId: string }>();
     for (const { storeName, orders } of ordersData) {
       for (const order of orders) {
-        if (order.financial_status !== 'pending') continue; // COD only
         const awb = order.fulfillments?.[0]?.tracking_number;
         if (awb && order.fulfillment_status === 'fulfilled') {
           awbMap.set(awb, { storeName, orderId: order.id });
@@ -179,13 +178,15 @@ export async function GET(request: Request) {
       const m = storeMetrics[storeName];
 
       for (const order of orders) {
-        if (order.financial_status !== 'pending') continue; // COD only
         if (order.cancelled_at) continue;
         const awb = order.fulfillments?.[0]?.tracking_number;
         if (!awb) continue;
 
         const dShip = delhiveryData.get(awb);
         if (!dShip) continue;
+
+        // COD only (use Delhivery OrderType — Shopify changes 'pending' to 'paid' after remittance)
+        if (dShip.orderType !== 'COD') continue;
 
         // RTO check
         if (dShip.rtoStartedDate || dShip.returnedDate || dShip.reverseInTransit) {
@@ -235,15 +236,21 @@ export async function GET(request: Request) {
       };
 
       for (const order of orders) {
-        // COD only
-        if (order.financial_status !== 'pending') continue;
         if (order.cancelled_at) continue;
+
+        const awb = order.fulfillments?.[0]?.tracking_number;
+        const dShip = awb ? delhiveryData.get(awb) : undefined;
+
+        // COD check: use Delhivery OrderType if available, else Shopify financial_status
+        // Shopify changes financial_status from 'pending' to 'paid' after COD remittance
+        const isCOD = dShip
+          ? dShip.orderType === 'COD'
+          : order.financial_status === 'pending';
+        if (!isCOD) continue;
 
         const amount = parseFloat(order.total_price) || 0;
         if (amount <= 0) continue;
 
-        const awb = order.fulfillments?.[0]?.tracking_number;
-        const dShip = awb ? delhiveryData.get(awb) : undefined;
         const orderDate = toISTDateStr(new Date(order.created_at));
         const customerName = order.customer
           ? `${order.customer.first_name ?? ''} ${order.customer.last_name ?? ''}`.trim()
