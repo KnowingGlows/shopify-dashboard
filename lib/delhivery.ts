@@ -250,7 +250,12 @@ export async function trackShipments(awbs: string[]): Promise<Map<string, Delhiv
           reverseInTransit: s.ReverseInTransit ?? false,
           rtoStartedDate: s.RTOStartedDate ?? null,
           returnedDate: s.ReturnedDate ?? null,
-          deliveryDate: s.DeliveryDate ?? null,
+          deliveryDate: s.DeliveryDate ?? (
+            // Fallback: if status is Delivered but DeliveryDate is null, use StatusDateTime
+            (s.Status?.StatusType === 'DL' || (s.Status?.Status ?? '').toLowerCase() === 'delivered')
+              ? (s.Status?.StatusDateTime ?? null)
+              : null
+          ),
           firstAttemptDate: s.FirstAttemptDate ?? null,
           expectedReturnDate: s.ExpectedReturnDate ?? null,
           codAmount: s.CODAmount ?? 0,
