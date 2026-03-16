@@ -54,36 +54,27 @@ interface IncomeEntry {
   endDate?: string;
 }
 
-interface CodDailyProjection {
-  date: string;
+interface CodDayDeposit {
   confirmed: number;
-  highConf: number;
-  mediumConf: number;
-  lowConf: number;
+  projected: number;
   total: number;
-  orderCount: number;
 }
 
 interface CodStoreProjection {
   storeName: string;
-  dailyProjections: Record<string, CodDailyProjection>;
-  summary: {
-    totalConfirmed: number;
-    totalProjected: number;
-    totalOrders: number;
-    avgDeliveryDays: number | null;
-    deliveryRate: number;
-    ndrResolutionRate: number;
-  };
+  dailyDelivered: Record<string, number>;
+  avgDailyDelivered: number;
+  projectedDeposits: Record<string, CodDayDeposit>;
+  totalConfirmed: number;
+  totalProjected: number;
 }
 
 interface CodProjectionData {
   stores: Record<string, CodStoreProjection>;
   combined: {
-    dailyProjections: Record<string, CodDailyProjection>;
-    summary: { totalConfirmed: number; totalProjected: number; totalOrders: number };
+    dailyProjections: Record<string, CodDayDeposit>;
+    summary: { totalConfirmed: number; totalProjected: number };
   };
-  remittanceDays: number;
 }
 
 interface CODWeek {
@@ -199,25 +190,23 @@ export default function ProjectedFinancePage() {
     if (!codProjection) return [];
     const source = codStore === 'all'
       ? codProjection.combined.dailyProjections
-      : codProjection.stores[codStore]?.dailyProjections ?? {};
-    return Object.values(source)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map((d) => ({
-        date: d.date,
-        label: fmtMonthDay(d.date),
+      : codProjection.stores[codStore]?.projectedDeposits ?? {};
+    return Object.entries(source)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, d]) => ({
+        date,
+        label: fmtMonthDay(date),
         Confirmed: d.confirmed,
-        'High Conf': d.highConf,
-        'Medium Conf': d.mediumConf,
-        'Low Conf': d.lowConf,
+        Projected: d.projected,
         total: d.total,
-        orders: d.orderCount,
       }));
   }, [codProjection, codStore]);
 
   const codSummary = useMemo(() => {
     if (!codProjection) return null;
     if (codStore === 'all') return codProjection.combined.summary;
-    return codProjection.stores[codStore]?.summary ?? null;
+    const s = codProjection.stores[codStore];
+    return s ? { totalConfirmed: s.totalConfirmed, totalProjected: s.totalProjected } : null;
   }, [codProjection, codStore]);
 
   const codStoreNames = useMemo(() => {
@@ -426,12 +415,10 @@ export default function ProjectedFinancePage() {
               </div>
             )}
 
-            {/* Confidence legend */}
+            {/* Legend */}
             <div className="flex items-center gap-4 text-[9px]">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />Confirmed (delivered)</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-500" />High (out for delivery)</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" />Medium (in transit)</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500/60" />Low (NDR)</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />Confirmed (delivered, awaiting remittance)</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" />Projected (based on 7-day avg)</span>
             </div>
 
             {/* Stacked Bar Chart */}
@@ -485,9 +472,7 @@ export default function ProjectedFinancePage() {
                       }}
                     />
                     <Bar dataKey="Confirmed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} animationDuration={800} />
-                    <Bar dataKey="High Conf" stackId="a" fill="#06b6d4" radius={[0, 0, 0, 0]} animationDuration={800} animationBegin={100} />
-                    <Bar dataKey="Medium Conf" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} animationDuration={800} animationBegin={200} />
-                    <Bar dataKey="Low Conf" stackId="a" fill="#d97706" radius={[3, 3, 0, 0]} animationDuration={800} animationBegin={300} />
+                    <Bar dataKey="Projected" stackId="a" fill="#3b82f6" radius={[3, 3, 0, 0]} animationDuration={800} animationBegin={200} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -508,11 +493,10 @@ export default function ProjectedFinancePage() {
                     className="rounded-xl border border-border/50 bg-card/30 p-3 text-left transition hover:bg-card/60 hover:border-border space-y-1"
                   >
                     <p className="text-[10px] font-medium text-muted-foreground truncate">{s.storeName}</p>
-                    <p className="text-lg font-bold text-emerald-400">{formatINR(s.summary.totalProjected)}</p>
+                    <p className="text-lg font-bold text-emerald-400">{formatINR(s.totalProjected)}</p>
                     <div className="flex items-center gap-2 text-[9px] text-muted-foreground/60">
-                      <span>{s.summary.totalOrders} orders</span>
-                      {s.summary.avgDeliveryDays && <span>· {s.summary.avgDeliveryDays}d avg</span>}
-                      <span>· {s.summary.deliveryRate}% del</span>
+                      <span>{formatINR(s.avgDailyDelivered)}/day avg</span>
+                      <span>· {formatINR(s.totalConfirmed)} confirmed</span>
                     </div>
                   </button>
                 ))}
@@ -520,15 +504,14 @@ export default function ProjectedFinancePage() {
             )}
 
             {/* Single store metrics */}
-            {codStore !== 'all' && codProjection?.stores[codStore]?.summary && (() => {
-              const ss = codProjection.stores[codStore].summary;
+            {codStore !== 'all' && codProjection?.stores[codStore] && (() => {
+              const ss = codProjection.stores[codStore];
               return (
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {([
                     { label: 'Confirmed', value: formatINR(ss.totalConfirmed), icon: ShieldCheck, color: 'text-emerald-400' },
-                    { label: 'Avg Delivery', value: ss.avgDeliveryDays ? `${ss.avgDeliveryDays}d` : '—', icon: Truck, color: 'text-blue-400' },
-                    { label: 'Delivery Rate', value: `${ss.deliveryRate}%`, icon: TrendingUp, color: 'text-cyan-400' },
-                    { label: 'NDR Resolution', value: `${ss.ndrResolutionRate}%`, icon: AlertTriangle, color: 'text-amber-400' },
+                    { label: 'Avg Daily COD', value: formatINR(ss.avgDailyDelivered), icon: TrendingUp, color: 'text-blue-400' },
+                    { label: 'Total Projected', value: formatINR(ss.totalProjected), icon: Truck, color: 'text-cyan-400' },
                   ]).map(({ label, value, icon: Icon, color }) => (
                     <div key={label} className="rounded-xl border border-border/50 bg-card/30 p-3 space-y-1">
                       <div className="flex items-center gap-1.5">

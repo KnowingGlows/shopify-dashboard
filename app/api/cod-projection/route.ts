@@ -1,27 +1,25 @@
 import { NextResponse } from 'next/server';
 import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchAllStoresOrders } from '@/lib/shopify-api';
-import { trackShipments, getDelhiveryToken, type DelhiveryShipment } from '@/lib/delhivery';
+import { trackShipments, getDelhiveryToken } from '@/lib/delhivery';
 
-export const maxDuration = 60; // Allow up to 60s on Vercel Pro
+export const maxDuration = 60;
 
 /**
- * COD Cashflow Projection API
+ * Simple COD Cashflow Projection
  *
- * Uses real Delhivery tracking data to project exactly when COD money
- * will hit the bank account. Per-store and per-day granularity.
- *
- * Logic:
- * - Delivered COD → deposit = deliveryDate + REMITTANCE_DAYS
- * - In Transit COD → est. delivery = orderDate + avgDeliveryDays, then + REMITTANCE_DAYS
- * - Out for Delivery → est. delivery = today/tomorrow, then + REMITTANCE_DAYS
- * - NDR/Attempted → apply ndrResolutionRate probability
- * - RTO/Cancelled → ₹0
+ * Uses last 7 days of actual Delhivery delivery data per store:
+ * 1. Calculate avg daily COD delivered amount per store
+ * 2. Project that forward for next 14 days
+ * 3. Apply D+2 remittance with weekend rules:
+ *    - Mon-Thu delivery → D+2
+ *    - Fri delivery → Mon
+ *    - Sat delivery → Tue
+ *    - Sun delivery → Tue
  */
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const REMITTANCE_DAYS = 2; // COD remittance: money credited on D+2 from delivery
 
 function toISTDateStr(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date);
@@ -38,72 +36,20 @@ function addDays(dateStr: string, days: number): string {
   return toISTDateStr(d);
 }
 
+function getDayOfWeek(dateStr: string): number {
+  return new Date(dateStr + 'T00:00:00+05:30').getDay();
+}
+
 /**
- * Calculate remittance (bank deposit) date from delivery date.
- * Based on actual Delhivery remittance data:
- * - Mon delivery → Wed (D+2)
- * - Tue delivery → Thu (D+2)
- * - Wed delivery → Fri (D+2)
- * - Thu delivery → Sat (D+2)
- * - Fri delivery → Mon (D+3, no Sunday deposits)
- * - Sat delivery → Tue (D+3, Sat+Sun combined on Tue)
- * - Sun delivery → Tue (D+2, Sat+Sun combined on Tue)
- * No deposits ever land on Sunday.
+ * Remittance date from delivery date:
+ * Mon-Thu → D+2, Fri → Mon, Sat → Tue, Sun → Tue
  */
 function getRemittanceDate(deliveryDateStr: string): string {
-  const d = new Date(deliveryDateStr + 'T00:00:00+05:30');
-  const dow = d.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
-
-  if (dow === 5) return addDays(deliveryDateStr, 3);      // Fri → Mon
-  if (dow === 6) return addDays(deliveryDateStr, 3);      // Sat → Tue
-  if (dow === 0) return addDays(deliveryDateStr, 2);      // Sun → Tue
-  return addDays(deliveryDateStr, REMITTANCE_DAYS);        // Mon-Thu → D+2
-}
-
-function daysBetween(from: string, to: string): number {
-  const a = new Date(from + 'T00:00:00+05:30').getTime();
-  const b = new Date(to + 'T00:00:00+05:30').getTime();
-  return Math.round((b - a) / DAY_MS);
-}
-
-type Confidence = 'confirmed' | 'high' | 'medium' | 'low';
-
-interface ProjectedDeposit {
-  depositDate: string;
-  amount: number;          // weighted by confidence
-  rawAmount: number;       // actual order value
-  confidence: Confidence;
-  orderId: string;
-  orderName: string;
-  storeName: string;
-  deliveryDate: string;    // actual or estimated
-  status: string;
-  customerName?: string;
-  awb?: string;
-}
-
-interface DailyProjection {
-  date: string;
-  confirmed: number;    // already delivered, waiting for remittance
-  highConf: number;     // out for delivery
-  mediumConf: number;   // in transit
-  lowConf: number;      // NDR with some chance of delivery
-  total: number;        // weighted sum
-  orderCount: number;
-  deposits: ProjectedDeposit[];
-}
-
-interface StoreProjection {
-  storeName: string;
-  dailyProjections: Record<string, DailyProjection>;
-  summary: {
-    totalConfirmed: number;
-    totalProjected: number;
-    totalOrders: number;
-    avgDeliveryDays: number | null;
-    deliveryRate: number;
-    ndrResolutionRate: number;
-  };
+  const dow = getDayOfWeek(deliveryDateStr);
+  if (dow === 5) return addDays(deliveryDateStr, 3);  // Fri → Mon
+  if (dow === 6) return addDays(deliveryDateStr, 3);  // Sat → Tue
+  if (dow === 0) return addDays(deliveryDateStr, 2);  // Sun → Tue
+  return addDays(deliveryDateStr, 2);                  // Mon-Thu → D+2
 }
 
 export async function GET(request: Request) {
@@ -114,310 +60,179 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const projectionDays = parseInt(searchParams.get('days') ?? '30', 10);
-
+    const projectionDays = parseInt(searchParams.get('days') ?? '14', 10);
     const now = new Date();
     const todayStr = toISTDateStr(now);
 
-    // Fetch last 45 days of orders (need enough history for delivery rate + remittance pipeline)
+    // Fetch last 14 days of orders (7 days for baseline + buffer for delivery tracking)
     const todayStart = parseISTDate(todayStr);
-    const createdAtMin = new Date(todayStart.getTime() - 44 * DAY_MS).toISOString();
+    const createdAtMin = new Date(todayStart.getTime() - 13 * DAY_MS).toISOString();
     const createdAtMax = now.toISOString();
 
     const { ordersData } = await fetchAllStoresOrders(stores, { createdAtMin, createdAtMax });
 
-    // ── Collect AWBs (all fulfilled, Delhivery will tell us which are COD) ──
-    const awbMap = new Map<string, { storeName: string; orderId: string }>();
-    for (const { storeName, orders } of ordersData) {
+    // Collect all AWBs for Delhivery tracking
+    const allAwbs: string[] = [];
+    for (const { orders } of ordersData) {
       for (const order of orders) {
-        if (order.cancelled_at) continue;
         const awb = order.fulfillments?.[0]?.tracking_number;
-        if (awb) {
-          awbMap.set(awb, { storeName, orderId: order.id });
-        }
+        if (awb) allAwbs.push(awb);
       }
     }
 
-    // ── Fetch Delhivery tracking ──────────────────────────────────────
-    let delhiveryData = new Map<string, DelhiveryShipment>();
+    // Track via Delhivery
+    let delhiveryData = new Map<string, { deliveryDate: string | null; codAmount: number; orderType: string }>();
     const token = await getDelhiveryToken();
-    if (token && awbMap.size > 0) {
+    if (token && allAwbs.length > 0) {
       try {
-        delhiveryData = await trackShipments(Array.from(awbMap.keys()));
-      } catch (e) {
-        console.error('Delhivery tracking failed:', e);
-      }
+        const tracked = await trackShipments(allAwbs);
+        delhiveryData = new Map(
+          Array.from(tracked.entries()).map(([awb, s]) => [awb, {
+            deliveryDate: s.deliveryDate,
+            codAmount: s.codAmount,
+            orderType: s.orderType,
+          }])
+        );
+      } catch { /* silent */ }
     }
 
-    // ── Debug stats ────────────────────────────────────────────────────
-    const debugStats = {
-      totalOrders: ordersData.reduce((s, d) => s + d.orders.length, 0),
-      codOrders: ordersData.reduce((s, d) => s + d.orders.filter(o => o.financial_status === 'pending').length, 0),
-      fulfilledCod: ordersData.reduce((s, d) => s + d.orders.filter(o => o.financial_status === 'pending' && o.fulfillment_status === 'fulfilled').length, 0),
-      awbCount: awbMap.size,
-      delhiveryTracked: delhiveryData.size,
-      delhiveryDelivered: Array.from(delhiveryData.values()).filter(s => s.deliveryDate).length,
-      delhiveryDeliveredDL: Array.from(delhiveryData.values()).filter(s => s.statusType === 'DL').length,
-      sampleDelivered: Array.from(delhiveryData.values()).filter(s => s.deliveryDate).slice(0, 3).map(s => ({
-        awb: s.awb, status: s.status, deliveryDate: s.deliveryDate?.substring(0, 10), cod: s.codAmount, ref: s.referenceNo,
-      })),
-    };
-    console.log('COD Projection Debug:', JSON.stringify(debugStats));
-
-    // ── Per-store historical metrics ──────────────────────────────────
-    // Calculate avg delivery days and delivery rate per store
-    const storeMetrics: Record<string, {
-      deliveryDays: number[];
-      totalFulfilled: number;
-      totalDelivered: number;
-      totalNdr: number;
-      ndrResolved: number;
+    // ── Per-store: calculate daily delivered COD for last 7 days ──────
+    const storeProjections: Record<string, {
+      storeName: string;
+      dailyDelivered: Record<string, number>;  // last 7 days actual
+      avgDailyDelivered: number;
+      projectedDeposits: Record<string, { confirmed: number; projected: number; total: number }>;
+      totalConfirmed: number;
+      totalProjected: number;
     }> = {};
 
+    // Generate last 7 day strings
+    const last7Days: string[] = [];
+    for (let i = 7; i >= 1; i--) {
+      last7Days.push(addDays(todayStr, -i));
+    }
+
     for (const { storeName, orders } of ordersData) {
-      if (!storeMetrics[storeName]) {
-        storeMetrics[storeName] = { deliveryDays: [], totalFulfilled: 0, totalDelivered: 0, totalNdr: 0, ndrResolved: 0 };
-      }
-      const m = storeMetrics[storeName];
+      // Track daily COD delivered amounts
+      const dailyDelivered: Record<string, number> = {};
+      for (const day of last7Days) dailyDelivered[day] = 0;
 
       for (const order of orders) {
-        if (order.cancelled_at) continue;
         const awb = order.fulfillments?.[0]?.tracking_number;
         if (!awb) continue;
 
         const dShip = delhiveryData.get(awb);
         if (!dShip) continue;
 
-        // COD only (use Delhivery OrderType — Shopify changes 'pending' to 'paid' after remittance)
-        if (dShip.orderType !== 'COD') continue;
+        // COD only
+        if (dShip.orderType !== 'COD' && order.financial_status !== 'pending') continue;
 
-        // RTO check
-        if (dShip.rtoStartedDate || dShip.returnedDate || dShip.reverseInTransit) {
-          m.totalFulfilled++;
-          continue;
-        }
-
-        m.totalFulfilled++;
-
+        // Check if delivered in last 7 days
         if (dShip.deliveryDate) {
-          m.totalDelivered++;
-          const orderDate = toISTDateStr(new Date(order.created_at));
-          const delivDate = toISTDateStr(new Date(dShip.deliveryDate));
-          const days = daysBetween(orderDate, delivDate);
-          if (days >= 0 && days <= 30) m.deliveryDays.push(days);
-        }
-
-        if (dShip.ndrCount > 0) {
-          m.totalNdr++;
-          if (dShip.deliveryDate) m.ndrResolved++;
+          const delDateStr = toISTDateStr(new Date(dShip.deliveryDate));
+          if (delDateStr >= last7Days[0] && delDateStr <= todayStr) {
+            const amount = dShip.codAmount > 0 ? dShip.codAmount : (parseFloat(order.total_price) || 0);
+            dailyDelivered[delDateStr] = (dailyDelivered[delDateStr] ?? 0) + amount;
+          }
         }
       }
-    }
 
-    // ── Build projections per store ───────────────────────────────────
-    const storeProjections: Record<string, StoreProjection> = {};
+      // Calculate average daily delivered COD (only count days with data)
+      const daysWithDeliveries = Object.values(dailyDelivered).filter(v => v > 0);
+      const avgDaily = daysWithDeliveries.length > 0
+        ? Math.round(daysWithDeliveries.reduce((a, b) => a + b, 0) / daysWithDeliveries.length)
+        : 0;
 
-    for (const { storeName, orders } of ordersData) {
-      const m = storeMetrics[storeName] ?? { deliveryDays: [], totalFulfilled: 0, totalDelivered: 0, totalNdr: 0, ndrResolved: 0 };
-      const avgDelivDays = m.deliveryDays.length > 0
-        ? Math.round(m.deliveryDays.reduce((a, b) => a + b, 0) / m.deliveryDays.length * 10) / 10
-        : 5; // default 5 days if no data
-      // Use actual delivery rate with 65% floor (for stores with limited data)
-      const rawDeliveryRate = m.totalFulfilled > 0 ? m.totalDelivered / m.totalFulfilled : 0.7;
-      const deliveryRate = Math.max(rawDeliveryRate, 0.65);
-      const ndrRate = m.totalNdr > 0 ? m.ndrResolved / m.totalNdr : 0.3;
+      // ── Build projection ────────────────────────────────────────────
+      // CONFIRMED: orders already delivered, waiting for remittance
+      // PROJECTED: estimated future deliveries based on avg daily amount
+      const projectedDeposits: Record<string, { confirmed: number; projected: number; total: number }> = {};
 
-      const dailyProjections: Record<string, DailyProjection> = {};
       const ensureDay = (date: string) => {
-        if (!dailyProjections[date]) {
-          dailyProjections[date] = {
-            date, confirmed: 0, highConf: 0, mediumConf: 0, lowConf: 0,
-            total: 0, orderCount: 0, deposits: [],
-          };
-        }
-        return dailyProjections[date];
+        if (!projectedDeposits[date]) projectedDeposits[date] = { confirmed: 0, projected: 0, total: 0 };
+        return projectedDeposits[date];
       };
 
+      // CONFIRMED: actual delivered orders → remittance date
       for (const order of orders) {
-        if (order.cancelled_at) continue;
-
         const awb = order.fulfillments?.[0]?.tracking_number;
-        const dShip = awb ? delhiveryData.get(awb) : undefined;
+        if (!awb) continue;
+        const dShip = delhiveryData.get(awb);
+        if (!dShip?.deliveryDate) continue;
+        if (dShip.orderType !== 'COD' && order.financial_status !== 'pending') continue;
 
-        // COD check: use Delhivery OrderType if available, else Shopify financial_status
-        // Shopify changes financial_status from 'pending' to 'paid' after COD remittance
-        const isCOD = dShip
-          ? dShip.orderType === 'COD'
-          : order.financial_status === 'pending';
-        if (!isCOD) continue;
+        const delDateStr = toISTDateStr(new Date(dShip.deliveryDate));
+        const remDate = getRemittanceDate(delDateStr);
+        const daysFromToday = Math.round((new Date(remDate + 'T00:00:00+05:30').getTime() - new Date(todayStr + 'T00:00:00+05:30').getTime()) / DAY_MS);
 
-        const amount = parseFloat(order.total_price) || 0;
-        if (amount <= 0) continue;
-
-        const orderDate = toISTDateStr(new Date(order.created_at));
-        const customerName = order.customer
-          ? `${order.customer.first_name ?? ''} ${order.customer.last_name ?? ''}`.trim()
-          : undefined;
-
-        // Use Delhivery's CODAmount (actual collection amount) when available
-        const codAmount = (dShip && dShip.codAmount > 0) ? dShip.codAmount : amount;
-
-        let depositDate: string | null = null;
-        let deliveryDate: string;
-        let confidence: Confidence;
-        let weightedAmount: number;
-        let status: string;
-
-        if (dShip?.returnedDate || dShip?.reverseInTransit || dShip?.rtoStartedDate) {
-          // RTO — no money coming
-          continue;
+        if (daysFromToday >= 0 && daysFromToday <= projectionDays) {
+          const amount = dShip.codAmount > 0 ? dShip.codAmount : (parseFloat(order.total_price) || 0);
+          const day = ensureDay(remDate);
+          day.confirmed += amount;
+          day.total += amount;
         }
-
-        if (dShip?.deliveryDate) {
-          // ── CONFIRMED: Already delivered, just waiting for remittance ──
-          deliveryDate = toISTDateStr(new Date(dShip.deliveryDate));
-          depositDate = getRemittanceDate(deliveryDate);
-          confidence = 'confirmed';
-          weightedAmount = codAmount; // 100%
-          status = 'Delivered';
-        } else if (!awb && (!order.fulfillment_status || order.fulfillment_status === 'null')) {
-          // No AWB and unfulfilled — skip
-          continue;
-        } else if (dShip) {
-          // Has Delhivery data but not yet delivered
-          const inst = (dShip.instructions ?? '').toLowerCase();
-          const scanStatus = (dShip.statusRaw ?? '').toLowerCase();
-
-          if (scanStatus === 'dispatched' || inst.includes('out for delivery')) {
-            // ── HIGH: Out for delivery ──
-            deliveryDate = todayStr;
-            depositDate = getRemittanceDate(deliveryDate);
-            confidence = 'high';
-            weightedAmount = Math.round(codAmount * 0.9); // 90%
-            status = 'Out for Delivery';
-          } else if (dShip.ndrCount > 0) {
-            // ── LOW: NDR — apply resolution rate ──
-            const estDays = Math.ceil(avgDelivDays + 2); // NDR adds ~2 days
-            deliveryDate = addDays(orderDate, estDays);
-            if (deliveryDate < todayStr) deliveryDate = addDays(todayStr, 2);
-            depositDate = getRemittanceDate(deliveryDate);
-            confidence = 'low';
-            weightedAmount = Math.round(codAmount * ndrRate); // ndrResolutionRate
-            status = `NDR (${dShip.ndrCount} attempts)`;
-          } else {
-            // ── MEDIUM: In transit ──
-            const estDays = Math.ceil(avgDelivDays);
-            deliveryDate = addDays(orderDate, estDays);
-            if (deliveryDate < todayStr) deliveryDate = addDays(todayStr, 1);
-            depositDate = getRemittanceDate(deliveryDate);
-            confidence = 'medium';
-            weightedAmount = Math.round(codAmount * deliveryRate); // delivery rate
-            status = 'In Transit';
-          }
-        } else {
-          // Fulfilled but no Delhivery data — estimate
-          const estDays = Math.ceil(avgDelivDays);
-          deliveryDate = addDays(orderDate, estDays);
-          if (deliveryDate < todayStr) deliveryDate = addDays(todayStr, 1);
-          depositDate = getRemittanceDate(deliveryDate);
-          confidence = 'medium';
-          weightedAmount = Math.round(amount * deliveryRate);
-          status = 'In Transit (est.)';
-        }
-
-        if (!depositDate) continue;
-
-        // Only include deposits within the projection window
-        const daysFromToday = daysBetween(todayStr, depositDate);
-        if (daysFromToday < 0 || daysFromToday > projectionDays) continue;
-
-        const day = ensureDay(depositDate);
-        day.orderCount++;
-        day.total += weightedAmount;
-
-        if (confidence === 'confirmed') day.confirmed += weightedAmount;
-        else if (confidence === 'high') day.highConf += weightedAmount;
-        else if (confidence === 'medium') day.mediumConf += weightedAmount;
-        else day.lowConf += weightedAmount;
-
-        day.deposits.push({
-          depositDate,
-          amount: weightedAmount,
-          rawAmount: codAmount,
-          confidence,
-          orderId: order.id,
-          orderName: order.name,
-          storeName,
-          deliveryDate,
-          status,
-          customerName,
-          awb: awb ?? undefined,
-        });
       }
+
+      // PROJECTED: use avg daily delivery → remittance for future days
+      for (let i = 0; i <= projectionDays; i++) {
+        const futureDeliveryDate = addDays(todayStr, i);
+        const remDate = getRemittanceDate(futureDeliveryDate);
+        const daysFromToday = Math.round((new Date(remDate + 'T00:00:00+05:30').getTime() - new Date(todayStr + 'T00:00:00+05:30').getTime()) / DAY_MS);
+
+        if (daysFromToday >= 0 && daysFromToday <= projectionDays) {
+          const day = ensureDay(remDate);
+          // Only add projected if we don't already have confirmed for this delivery date
+          // (confirmed data is more accurate for near-term)
+          if (i > 2) { // Only project deliveries 3+ days out (near-term use confirmed)
+            day.projected += avgDaily;
+            day.total += avgDaily;
+          }
+        }
+      }
+
+      const totalConfirmed = Object.values(projectedDeposits).reduce((s, d) => s + d.confirmed, 0);
+      const totalProjected = Object.values(projectedDeposits).reduce((s, d) => s + d.total, 0);
 
       storeProjections[storeName] = {
         storeName,
-        dailyProjections,
-        summary: {
-          totalConfirmed: Object.values(dailyProjections).reduce((s, d) => s + d.confirmed, 0),
-          totalProjected: Object.values(dailyProjections).reduce((s, d) => s + d.total, 0),
-          totalOrders: Object.values(dailyProjections).reduce((s, d) => s + d.orderCount, 0),
-          avgDeliveryDays: m.deliveryDays.length > 0
-            ? Math.round(m.deliveryDays.reduce((a, b) => a + b, 0) / m.deliveryDays.length * 10) / 10
-            : null,
-          deliveryRate: Math.round(deliveryRate * 1000) / 10,
-          ndrResolutionRate: Math.round(ndrRate * 1000) / 10,
-        },
+        dailyDelivered,
+        avgDailyDelivered: avgDaily,
+        projectedDeposits,
+        totalConfirmed,
+        totalProjected,
       };
     }
 
-    // ── Combined daily projections ────────────────────────────────────
-    const combinedDaily: Record<string, DailyProjection> = {};
-    for (const store of Object.values(storeProjections)) {
-      for (const [date, day] of Object.entries(store.dailyProjections)) {
-        if (!combinedDaily[date]) {
-          combinedDaily[date] = {
-            date, confirmed: 0, highConf: 0, mediumConf: 0, lowConf: 0,
-            total: 0, orderCount: 0, deposits: [],
-          };
-        }
-        const c = combinedDaily[date];
-        c.confirmed += day.confirmed;
-        c.highConf += day.highConf;
-        c.mediumConf += day.mediumConf;
-        c.lowConf += day.lowConf;
-        c.total += day.total;
-        c.orderCount += day.orderCount;
-        c.deposits.push(...day.deposits);
-      }
-    }
+    // ── Combined ──────────────────────────────────────────────────────
+    const combinedDeposits: Record<string, { confirmed: number; projected: number; total: number }> = {};
 
-    // Fill empty days in the projection window
+    // Fill all days in projection window
     for (let i = 0; i <= projectionDays; i++) {
       const date = addDays(todayStr, i);
-      if (!combinedDaily[date]) {
-        combinedDaily[date] = {
-          date, confirmed: 0, highConf: 0, mediumConf: 0, lowConf: 0,
-          total: 0, orderCount: 0, deposits: [],
-        };
+      combinedDeposits[date] = { confirmed: 0, projected: 0, total: 0 };
+    }
+
+    for (const store of Object.values(storeProjections)) {
+      for (const [date, amounts] of Object.entries(store.projectedDeposits)) {
+        if (!combinedDeposits[date]) combinedDeposits[date] = { confirmed: 0, projected: 0, total: 0 };
+        combinedDeposits[date].confirmed += amounts.confirmed;
+        combinedDeposits[date].projected += amounts.projected;
+        combinedDeposits[date].total += amounts.total;
       }
     }
 
     const combinedSummary = {
-      totalConfirmed: Object.values(combinedDaily).reduce((s, d) => s + d.confirmed, 0),
-      totalProjected: Object.values(combinedDaily).reduce((s, d) => s + d.total, 0),
-      totalOrders: Object.values(combinedDaily).reduce((s, d) => s + d.orderCount, 0),
+      totalConfirmed: Object.values(combinedDeposits).reduce((s, d) => s + d.confirmed, 0),
+      totalProjected: Object.values(combinedDeposits).reduce((s, d) => s + d.total, 0),
     };
 
     return NextResponse.json({
       success: true,
       today: todayStr,
       projectionDays,
-      remittanceDays: REMITTANCE_DAYS,
-      debug: debugStats,
       stores: storeProjections,
       combined: {
-        dailyProjections: combinedDaily,
+        dailyProjections: combinedDeposits,
         summary: combinedSummary,
       },
     });
