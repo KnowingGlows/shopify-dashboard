@@ -314,9 +314,13 @@ export async function GET(request: Request) {
         }
       }
 
+      // NDR = orders that have had at least 1 NDR event (ndrCount > 0)
       const ndrOrd = orders.filter((o) => (o.ndrCount ?? 0) > 0);
       const ndrRes = ndrOrd.filter((o) => o.status === 'delivered').length;
       const ndrDel = ndrOrd.filter((o) => o.status === 'delivered');
+      // NDR rate = NDR orders / all attempted orders
+      const allAttemptedOrders = orders.filter((o) => ['delivered', 'attempted', 'rto', 'rto_in_transit'].includes(o.status));
+      const ndrRatePct = allAttemptedOrders.length > 0 ? Math.round(ndrOrd.length / allAttemptedOrders.length * 1000) / 10 : null;
       const codOrd = orders.filter((o) => o.paymentType === 'cod');
 
       return {
@@ -327,11 +331,17 @@ export async function GET(request: Request) {
         avgCodDeliveryDays: avg(codDDays),
         avgPrepaidDeliveryDays: avg(prepaidDDays),
         ndrResolutionRate: ndrOrd.length > 0 ? Math.round(ndrRes / ndrOrd.length * 1000) / 10 : null,
+        ndrRate: ndrRatePct,
+        ndrDeliveredCount: ndrRes,
         avgNdrAttempts: ndrDel.length > 0 ? Math.round(ndrDel.reduce((s, o) => s + (o.ndrCount ?? 0), 0) / ndrDel.length * 10) / 10 : null,
         totalNdrOrders: ndrOrd.length,
+        totalAttemptedOrders: allAttemptedOrders.length,
         atRiskValue: codOrd.filter((o) => o.status === 'rto_in_transit' || o.status === 'rto' || o.status === 'attempted').reduce((s, o) => s + o.amount, 0),
         codPendingDelivery: codOrd.filter((o) => o.status === 'in_transit' || o.status === 'out_for_delivery').reduce((s, o) => s + o.amount, 0),
         codDeliveredAmount: codOrd.filter((o) => o.status === 'delivered').reduce((s, o) => s + o.amount, 0),
+        codDeliveredCount: codOrd.filter((o) => o.status === 'delivered').length,
+        codNdrCount: codOrd.filter((o) => o.status === 'attempted').length,
+        codRtoCount: codOrd.filter((o) => o.status === 'rto' || o.status === 'rto_in_transit').length,
         totalRevenue: codOrd.reduce((s, o) => s + o.amount, 0),
         deliveredRevenue: codOrd.filter((o) => o.status === 'delivered').reduce((s, o) => s + o.amount, 0),
         lostRevenue: codOrd.filter((o) => o.status === 'rto' || o.status === 'rto_in_transit' || o.status === 'cancelled').reduce((s, o) => s + o.amount, 0),

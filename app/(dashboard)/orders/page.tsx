@@ -45,11 +45,17 @@ interface Analytics {
   avgCodDeliveryDays: number | null;
   avgPrepaidDeliveryDays: number | null;
   ndrResolutionRate: number | null;
+  ndrRate: number | null;
+  ndrDeliveredCount: number;
   avgNdrAttempts: number | null;
   totalNdrOrders: number;
+  totalAttemptedOrders: number;
   atRiskValue: number;
   codPendingDelivery: number;
   codDeliveredAmount: number;
+  codDeliveredCount: number;
+  codNdrCount: number;
+  codRtoCount: number;
   totalRevenue: number;
   deliveredRevenue: number;
   lostRevenue: number;
@@ -206,6 +212,8 @@ export default function LogisticsPage() {
   const storeNames = Object.keys(stores);
   const fulfilledTotal = (t?.delivered ?? 0) + (t?.rto ?? 0) + (t?.rtoInTransit ?? 0) + (t?.attempted ?? 0);
   const a = activeStore === 'all' ? analytics : (storeAnalytics[activeStore] ?? null);
+  // COD attempted = COD delivered + COD NDR + COD RTO
+  const codAttempted = (a?.codDeliveredCount ?? 0) + (a?.codNdrCount ?? 0) + (a?.codRtoCount ?? 0);
 
   return (
     <div className="min-h-screen px-4 py-6 md:px-8 md:py-8">
@@ -351,18 +359,24 @@ export default function LogisticsPage() {
             )}
 
             {/* ─── Key Metrics ─────────────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
               <InsightCard label="Delivery Rate" value={pctNum(t.delivered, fulfilledTotal || t.total)}
                 suffix="%" icon={CheckCircle2} color="text-emerald-400" delay={0.1}
                 sub={`${t.delivered} of ${fulfilledTotal || t.total} attempted`} />
-              <InsightCard label="COD Delivery" value={t.cod > 0 ? pctNum(t.codDelivered, t.cod) : 0}
+              <InsightCard label="COD Delivery" value={codAttempted > 0 ? pctNum(a?.codDeliveredCount ?? 0, codAttempted) : 0}
                 suffix="%" icon={Wallet} color="text-blue-400" delay={0.14}
-                sub={`${t.codDelivered} of ${t.cod} COD delivered`} />
+                sub={`${a?.codDeliveredCount ?? 0} delivered of ${codAttempted} COD attempted`} />
               <InsightCard label="RTO Rate" value={pctNum(t.rto + t.rtoInTransit, fulfilledTotal || t.total)}
                 suffix="%" icon={RotateCcw} color="text-red-400" delay={0.18}
                 sub={`${t.rto + t.rtoInTransit} returns`} />
+              <InsightCard label="NDR Recovery" value={a?.ndrResolutionRate ?? null}
+                suffix="%" icon={ShieldAlert} color="text-amber-400" delay={0.22}
+                sub={a && a.totalNdrOrders > 0 ? `${a.ndrDeliveredCount} delivered of ${a.totalNdrOrders} NDR orders` : 'No NDRs'} />
+              <InsightCard label="NDR Rate" value={a?.ndrRate ?? null}
+                suffix="%" icon={AlertTriangle} color="text-orange-400" delay={0.26}
+                sub={a && a.totalAttemptedOrders > 0 ? `${a.totalNdrOrders} NDR of ${a.totalAttemptedOrders} attempted` : 'No data'} />
               <InsightCard label="Avg Delivery" value={a?.avgDeliveryDays != null ? `${a.avgDeliveryDays}d` : null}
-                icon={Timer} color="text-violet-400" delay={0.22}
+                icon={Timer} color="text-violet-400" delay={0.3}
                 sub={a?.avgCodDeliveryDays != null ? `COD: ${a.avgCodDeliveryDays}d` : 'Calculating...'} />
             </div>
 
