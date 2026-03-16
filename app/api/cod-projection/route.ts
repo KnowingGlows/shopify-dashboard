@@ -119,9 +119,9 @@ export async function GET(request: Request) {
     const now = new Date();
     const todayStr = toISTDateStr(now);
 
-    // Fetch last 30 days of orders (need enough history for delivery rate + remittance pipeline)
+    // Fetch last 45 days of orders (need enough history for delivery rate + remittance pipeline)
     const todayStart = parseISTDate(todayStr);
-    const createdAtMin = new Date(todayStart.getTime() - 29 * DAY_MS).toISOString();
+    const createdAtMin = new Date(todayStart.getTime() - 44 * DAY_MS).toISOString();
     const createdAtMax = now.toISOString();
 
     const { ordersData } = await fetchAllStoresOrders(stores, { createdAtMin, createdAtMax });
@@ -132,7 +132,7 @@ export async function GET(request: Request) {
       for (const order of orders) {
         if (order.cancelled_at) continue;
         const awb = order.fulfillments?.[0]?.tracking_number;
-        if (awb && order.fulfillment_status === 'fulfilled') {
+        if (awb) {
           awbMap.set(awb, { storeName, orderId: order.id });
         }
       }
@@ -280,8 +280,8 @@ export async function GET(request: Request) {
           confidence = 'confirmed';
           weightedAmount = codAmount; // 100%
           status = 'Delivered';
-        } else if (!order.fulfillment_status || order.fulfillment_status === 'null') {
-          // Unfulfilled — skip, not shipped yet
+        } else if (!awb && (!order.fulfillment_status || order.fulfillment_status === 'null')) {
+          // No AWB and unfulfilled — skip
           continue;
         } else if (dShip) {
           // Has Delhivery data but not yet delivered
