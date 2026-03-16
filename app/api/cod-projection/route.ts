@@ -37,30 +37,25 @@ function addDays(dateStr: string, days: number): string {
 }
 
 /**
- * Calculate remittance date from delivery date.
- * Rules:
- * - Normal: delivery + 2 days
- * - Friday delivery → Monday (skip Sat/Sun)
- * - Saturday delivery → Tuesday
- * - Sunday delivery → Tuesday
+ * Calculate remittance (bank deposit) date from delivery date.
+ * Based on actual Delhivery remittance data:
+ * - Mon delivery → Wed (D+2)
+ * - Tue delivery → Thu (D+2)
+ * - Wed delivery → Fri (D+2)
+ * - Thu delivery → Sat (D+2)
+ * - Fri delivery → Mon (D+3, no Sunday deposits)
+ * - Sat delivery → Tue (D+3, Sat+Sun combined on Tue)
+ * - Sun delivery → Tue (D+2, Sat+Sun combined on Tue)
+ * No deposits ever land on Sunday.
  */
 function getRemittanceDate(deliveryDateStr: string): string {
   const d = new Date(deliveryDateStr + 'T00:00:00+05:30');
-  const dayOfWeek = d.getDay(); // 0=Sun, 5=Fri, 6=Sat
+  const dow = d.getDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
 
-  if (dayOfWeek === 5) {
-    // Friday → Monday (D+3)
-    return addDays(deliveryDateStr, 3);
-  } else if (dayOfWeek === 6) {
-    // Saturday → Tuesday (D+3)
-    return addDays(deliveryDateStr, 3);
-  } else if (dayOfWeek === 0) {
-    // Sunday → Tuesday (D+2)
-    return addDays(deliveryDateStr, 2);
-  } else {
-    // Mon-Thu → D+2
-    return addDays(deliveryDateStr, REMITTANCE_DAYS);
-  }
+  if (dow === 5) return addDays(deliveryDateStr, 3);      // Fri → Mon
+  if (dow === 6) return addDays(deliveryDateStr, 3);      // Sat → Tue
+  if (dow === 0) return addDays(deliveryDateStr, 2);      // Sun → Tue
+  return addDays(deliveryDateStr, REMITTANCE_DAYS);        // Mon-Thu → D+2
 }
 
 function daysBetween(from: string, to: string): number {
@@ -236,6 +231,9 @@ export async function GET(request: Request) {
           ? `${order.customer.first_name ?? ''} ${order.customer.last_name ?? ''}`.trim()
           : undefined;
 
+        // Use Delhivery's CODAmount (actual collection amount) when available
+        const codAmount = (dShip && dShip.codAmount > 0) ? dShip.codAmount : amount;
+
         let depositDate: string | null = null;
         let deliveryDate: string;
         let confidence: Confidence;
@@ -252,7 +250,7 @@ export async function GET(request: Request) {
           deliveryDate = toISTDateStr(new Date(dShip.deliveryDate));
           depositDate = getRemittanceDate(deliveryDate);
           confidence = 'confirmed';
-          weightedAmount = amount; // 100%
+          weightedAmount = codAmount; // 100%
           status = 'Delivered';
         } else if (!order.fulfillment_status || order.fulfillment_status === 'null') {
           // Unfulfilled — skip, not shipped yet
@@ -267,7 +265,7 @@ export async function GET(request: Request) {
             deliveryDate = todayStr;
             depositDate = getRemittanceDate(deliveryDate);
             confidence = 'high';
-            weightedAmount = Math.round(amount * 0.9); // 90%
+            weightedAmount = Math.round(codAmount * 0.9); // 90%
             status = 'Out for Delivery';
           } else if (dShip.ndrCount > 0) {
             // ── LOW: NDR — apply resolution rate ──
@@ -276,7 +274,7 @@ export async function GET(request: Request) {
             if (deliveryDate < todayStr) deliveryDate = addDays(todayStr, 2);
             depositDate = getRemittanceDate(deliveryDate);
             confidence = 'low';
-            weightedAmount = Math.round(amount * ndrRate); // ndrResolutionRate
+            weightedAmount = Math.round(codAmount * ndrRate); // ndrResolutionRate
             status = `NDR (${dShip.ndrCount} attempts)`;
           } else {
             // ── MEDIUM: In transit ──
@@ -285,7 +283,7 @@ export async function GET(request: Request) {
             if (deliveryDate < todayStr) deliveryDate = addDays(todayStr, 1);
             depositDate = getRemittanceDate(deliveryDate);
             confidence = 'medium';
-            weightedAmount = Math.round(amount * deliveryRate); // delivery rate
+            weightedAmount = Math.round(codAmount * deliveryRate); // delivery rate
             status = 'In Transit';
           }
         } else {
@@ -317,7 +315,7 @@ export async function GET(request: Request) {
         day.deposits.push({
           depositDate,
           amount: weightedAmount,
-          rawAmount: amount,
+          rawAmount: codAmount,
           confidence,
           orderId: order.id,
           orderName: order.name,

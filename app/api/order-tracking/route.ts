@@ -282,97 +282,73 @@ export async function GET(request: Request) {
       }
     }
 
-    // ── Analytics / Insights ──────────────────────────────────────────
-    const allOrders = Object.values(storeResults).flatMap((s) => s.orders);
-
-    // FAD% — First Attempt Delivery (delivered orders where dispatchCount === 1, meaning only one OFD attempt)
-    const deliveredWithDelhivery = allOrders.filter((o) => o.status === 'delivered' && o.dispatchCount != null);
-    const fadCount = deliveredWithDelhivery.filter((o) => (o.dispatchCount ?? 0) <= 1).length;
-    const fadPct = deliveredWithDelhivery.length > 0 ? Math.round(fadCount / deliveredWithDelhivery.length * 1000) / 10 : null;
-
-    // Avg delivery days — from order creation to delivery (using Delhivery deliveryDate)
-    const deliveryDays: number[] = [];
-    const codDeliveryDays: number[] = [];
-    const prepaidDeliveryDays: number[] = [];
-
-    for (const order of allOrders) {
-      if (order.status !== 'delivered') continue;
-      // Use Delhivery data if available
-      const awb = order.trackingNumber;
-      const dShip = awb ? delhiveryData.get(awb) : null;
-      if (dShip?.deliveryDate) {
-        const created = new Date(order.date + 'T00:00:00+05:30').getTime();
-        const delivered = new Date(dShip.deliveryDate).getTime();
-        const days = Math.max(0, Math.round((delivered - created) / DAY_MS));
-        if (days <= 30) { // filter outliers
-          deliveryDays.push(days);
-          if (order.paymentType === 'cod') codDeliveryDays.push(days);
-          else prepaidDeliveryDays.push(days);
-        }
-      }
-    }
-
+    // ── Analytics helper ──────────────────────────────────────────────
     const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 10) / 10 : null;
 
-    // NDR resolution rate — orders that had NDR but eventually delivered
-    const ndrOrders = allOrders.filter((o) => (o.ndrCount ?? 0) > 0);
-    const ndrResolved = ndrOrders.filter((o) => o.status === 'delivered').length;
-    const ndrResolutionRate = ndrOrders.length > 0 ? Math.round(ndrResolved / ndrOrders.length * 1000) / 10 : null;
+    function computeAnalytics(orders: ClassifiedOrder[]) {
+      const deliveredWithDelhivery = orders.filter((o) => o.status === 'delivered' && o.dispatchCount != null);
+      const fadCnt = deliveredWithDelhivery.filter((o) => (o.dispatchCount ?? 0) <= 1).length;
+      const fadPctVal = deliveredWithDelhivery.length > 0 ? Math.round(fadCnt / deliveredWithDelhivery.length * 1000) / 10 : null;
 
-    // Avg NDR attempts before delivery
-    const ndrDelivered = ndrOrders.filter((o) => o.status === 'delivered');
-    const avgNdrAttempts = ndrDelivered.length > 0
-      ? Math.round(ndrDelivered.reduce((s, o) => s + (o.ndrCount ?? 0), 0) / ndrDelivered.length * 10) / 10
-      : null;
+      const dDays: number[] = [];
+      const codDDays: number[] = [];
+      const prepaidDDays: number[] = [];
+      for (const order of orders) {
+        if (order.status !== 'delivered') continue;
+        const awb = order.trackingNumber;
+        const dShip = awb ? delhiveryData.get(awb) : null;
+        if (dShip?.deliveryDate) {
+          const created = new Date(order.date + 'T00:00:00+05:30').getTime();
+          const delivered = new Date(dShip.deliveryDate).getTime();
+          const days = Math.max(0, Math.round((delivered - created) / DAY_MS));
+          if (days <= 30) {
+            dDays.push(days);
+            if (order.paymentType === 'cod') codDDays.push(days);
+            else prepaidDDays.push(days);
+          }
+        }
+      }
 
-    // All COD-focused analytics (prepaid already tracked in finance)
-    const codOrders = allOrders.filter((o) => o.paymentType === 'cod');
+      const ndrOrd = orders.filter((o) => (o.ndrCount ?? 0) > 0);
+      const ndrRes = ndrOrd.filter((o) => o.status === 'delivered').length;
+      const ndrDel = ndrOrd.filter((o) => o.status === 'delivered');
+      const codOrd = orders.filter((o) => o.paymentType === 'cod');
 
-    // COD value at risk (RTO + NDR COD orders)
-    const atRiskValue = codOrders
-      .filter((o) => o.status === 'rto_in_transit' || o.status === 'rto' || o.status === 'attempted')
-      .reduce((s, o) => s + o.amount, 0);
+      return {
+        fadPct: fadPctVal,
+        fadCount: fadCnt,
+        fadTotal: deliveredWithDelhivery.length,
+        avgDeliveryDays: avg(dDays),
+        avgCodDeliveryDays: avg(codDDays),
+        avgPrepaidDeliveryDays: avg(prepaidDDays),
+        ndrResolutionRate: ndrOrd.length > 0 ? Math.round(ndrRes / ndrOrd.length * 1000) / 10 : null,
+        avgNdrAttempts: ndrDel.length > 0 ? Math.round(ndrDel.reduce((s, o) => s + (o.ndrCount ?? 0), 0) / ndrDel.length * 10) / 10 : null,
+        totalNdrOrders: ndrOrd.length,
+        atRiskValue: codOrd.filter((o) => o.status === 'rto_in_transit' || o.status === 'rto' || o.status === 'attempted').reduce((s, o) => s + o.amount, 0),
+        codPendingDelivery: codOrd.filter((o) => o.status === 'in_transit' || o.status === 'out_for_delivery').reduce((s, o) => s + o.amount, 0),
+        codDeliveredAmount: codOrd.filter((o) => o.status === 'delivered').reduce((s, o) => s + o.amount, 0),
+        totalRevenue: codOrd.reduce((s, o) => s + o.amount, 0),
+        deliveredRevenue: codOrd.filter((o) => o.status === 'delivered').reduce((s, o) => s + o.amount, 0),
+        lostRevenue: codOrd.filter((o) => o.status === 'rto' || o.status === 'cancelled').reduce((s, o) => s + o.amount, 0),
+      };
+    }
 
-    // COD amount pending delivery (in-transit + OFD)
-    const codPendingDelivery = codOrders
-      .filter((o) => o.status === 'in_transit' || o.status === 'out_for_delivery')
-      .reduce((s, o) => s + o.amount, 0);
+    // Combined analytics
+    const allOrders = Object.values(storeResults).flatMap((s) => s.orders);
+    const analytics = computeAnalytics(allOrders);
 
-    // COD delivered — awaiting bank deposit (~7-8 day delay)
-    const codDeliveredAmount = codOrders
-      .filter((o) => o.status === 'delivered')
-      .reduce((s, o) => s + o.amount, 0);
-
-    // COD revenue pipeline (total COD order value)
-    const codTotalRevenue = codOrders.reduce((s, o) => s + o.amount, 0);
-    const codLostRevenue = codOrders
-      .filter((o) => o.status === 'rto' || o.status === 'cancelled')
-      .reduce((s, o) => s + o.amount, 0);
-
-    const analytics = {
-      fadPct,
-      fadCount,
-      fadTotal: deliveredWithDelhivery.length,
-      avgDeliveryDays: avg(deliveryDays),
-      avgCodDeliveryDays: avg(codDeliveryDays),
-      avgPrepaidDeliveryDays: avg(prepaidDeliveryDays),
-      ndrResolutionRate,
-      avgNdrAttempts,
-      totalNdrOrders: ndrOrders.length,
-      atRiskValue,
-      codPendingDelivery,
-      codDeliveredAmount,
-      // COD-only revenue pipeline
-      totalRevenue: codTotalRevenue,
-      deliveredRevenue: codDeliveredAmount,
-      lostRevenue: codLostRevenue,
-    };
+    // Per-store analytics
+    const storeAnalytics: Record<string, ReturnType<typeof computeAnalytics>> = {};
+    for (const [name, store] of Object.entries(storeResults)) {
+      storeAnalytics[name] = computeAnalytics(store.orders);
+    }
 
     return NextResponse.json({
       success: true,
       stores: storeResults,
       combined,
       analytics,
+      storeAnalytics,
       storeErrors: errors,
       delhiveryEnabled: delhiveryAvailable,
       rangeStart: createdAtMin,

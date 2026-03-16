@@ -38,6 +38,7 @@ export interface DelhiveryShipment {
   deliveryDate: string | null;
   firstAttemptDate: string | null;
   expectedReturnDate: string | null;
+  codAmount: number;         // Actual COD amount collected/to-be-collected
   ndrCount: number;          // Number of failed delivery events
   dispatchCount: number;     // Actual out-for-delivery attempts (from scans)
   orderType: string;         // "COD" | "Pre-paid"
@@ -252,6 +253,7 @@ export async function trackShipments(awbs: string[]): Promise<Map<string, Delhiv
           deliveryDate: s.DeliveryDate ?? null,
           firstAttemptDate: s.FirstAttemptDate ?? null,
           expectedReturnDate: s.ExpectedReturnDate ?? null,
+          codAmount: s.CODAmount ?? 0,
           ndrCount,
           dispatchCount,
           orderType: s.OrderType ?? '',

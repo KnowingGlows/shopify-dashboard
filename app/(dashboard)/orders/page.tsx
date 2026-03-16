@@ -168,6 +168,7 @@ export default function LogisticsPage() {
   const [stores, setStores] = useState<Record<string, StoreData>>({});
   const [combined, setCombined] = useState<StoreTotals | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [storeAnalytics, setStoreAnalytics] = useState<Record<string, Analytics>>({});
   const [activeStore, setActiveStore] = useState<string>('all');
   const [showRangeDropdown, setShowRangeDropdown] = useState(false);
 
@@ -187,6 +188,7 @@ export default function LogisticsPage() {
         setStores(data.stores ?? {});
         setCombined(data.combined ?? null);
         setAnalytics(data.analytics ?? null);
+        setStoreAnalytics(data.storeAnalytics ?? {});
         const storeNames = Object.keys(data.stores ?? {});
         if (activeStore !== 'all' && !storeNames.includes(activeStore) && storeNames.length > 0) {
           setActiveStore('all');
@@ -245,7 +247,7 @@ export default function LogisticsPage() {
 
   const storeNames = Object.keys(stores);
   const fulfilledTotal = (t?.delivered ?? 0) + (t?.rto ?? 0) + (t?.rtoInTransit ?? 0) + (t?.attempted ?? 0);
-  const a = analytics;
+  const a = activeStore === 'all' ? analytics : (storeAnalytics[activeStore] ?? null);
 
   return (
     <div className="min-h-screen px-4 py-6 md:px-8 md:py-8">
