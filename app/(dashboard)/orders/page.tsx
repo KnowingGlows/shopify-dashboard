@@ -50,7 +50,6 @@ interface Analytics {
   atRiskValue: number;
   codPendingDelivery: number;
   codDeliveredAmount: number;
-  prepaidDeliveredAmount: number;
   totalRevenue: number;
   deliveredRevenue: number;
   lostRevenue: number;
@@ -363,12 +362,12 @@ export default function LogisticsPage() {
                   <InsightCard label="NDR Resolution" value={a.ndrResolutionRate} suffix="%"
                     icon={Zap} color="text-amber-400" delay={0.22}
                     sub={a.totalNdrOrders > 0 ? `${a.totalNdrOrders} NDR orders · ${a.avgNdrAttempts ?? 0} avg attempts` : 'No NDRs'} />
-                  <InsightCard label="Value at Risk" value={a.atRiskValue > 0 ? formatINR(a.atRiskValue) : '₹0'}
+                  <InsightCard label="COD at Risk" value={a.atRiskValue > 0 ? formatINR(a.atRiskValue) : '₹0'}
                     icon={ShieldAlert} color="text-red-400" delay={0.24}
-                    sub="RTO + NDR order value" />
-                  <InsightCard label="COD Pending" value={a.codPendingDelivery > 0 ? formatINR(a.codPendingDelivery) : '₹0'}
+                    sub="RTO + NDR COD value" />
+                  <InsightCard label="COD in Transit" value={a.codPendingDelivery > 0 ? formatINR(a.codPendingDelivery) : '₹0'}
                     icon={Wallet} color="text-amber-400" delay={0.26}
-                    sub="In transit COD value" />
+                    sub="Pending delivery" />
                   <InsightCard label="COD Delivered" value={a.codDeliveredAmount > 0 ? formatINR(a.codDeliveredAmount) : '₹0'}
                     icon={BadgeDollarSign} color="text-emerald-400" delay={0.28}
                     sub="Awaiting bank deposit (~7d)" />
@@ -381,26 +380,26 @@ export default function LogisticsPage() {
               <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
                 className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4"
               >
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">Revenue Pipeline</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">COD Revenue Pipeline</p>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <div>
-                    <p className="text-[10px] text-muted-foreground/60">Total Order Value</p>
+                    <p className="text-[10px] text-muted-foreground/60">Total COD Value</p>
                     <p className="text-lg font-bold text-foreground">{formatINR(a.totalRevenue)}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground/60">Delivered Revenue</p>
+                    <p className="text-[10px] text-muted-foreground/60">Delivered</p>
                     <p className="text-lg font-bold text-emerald-400">{formatINR(a.deliveredRevenue)}</p>
-                    <p className="text-[9px] text-muted-foreground/50">{pct(a.deliveredRevenue, a.totalRevenue)} realized</p>
+                    <p className="text-[9px] text-muted-foreground/50">{pct(a.deliveredRevenue, a.totalRevenue)} — awaiting bank deposit</p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground/60">In Pipeline</p>
-                    <p className="text-lg font-bold text-blue-400">{formatINR(a.codPendingDelivery + a.prepaidDeliveredAmount)}</p>
-                    <p className="text-[9px] text-muted-foreground/50">Pending delivery + prepaid</p>
+                    <p className="text-[10px] text-muted-foreground/60">In Transit</p>
+                    <p className="text-lg font-bold text-blue-400">{formatINR(a.codPendingDelivery)}</p>
+                    <p className="text-[9px] text-muted-foreground/50">Pending delivery</p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground/60">Lost to RTO</p>
                     <p className="text-lg font-bold text-red-400">{formatINR(a.lostRevenue)}</p>
-                    <p className="text-[9px] text-muted-foreground/50">{pct(a.lostRevenue, a.totalRevenue)} of total</p>
+                    <p className="text-[9px] text-muted-foreground/50">{pct(a.lostRevenue, a.totalRevenue)} of COD</p>
                   </div>
                 </div>
 

@@ -94,16 +94,17 @@ function classifyDelhiveryStatus(shipment: {
   const instructions = (shipment.Status?.Instructions ?? '').toLowerCase();
   const statusCode = (shipment.Status?.StatusCode ?? '').toUpperCase();
 
-  // Delivered
-  if (statusType === 'DL' || status === 'delivered') return 'delivered';
-  if (shipment.DeliveryDate) return 'delivered';
-
+  // RTO checks FIRST — must come before delivered check
   // RTO completed (returned to origin)
   if (shipment.ReturnedDate) return 'rto_delivered';
 
   // RTO in transit
   if (shipment.ReverseInTransit || statusType === 'RT') return 'rto_in_transit';
   if (shipment.RTOStartedDate && !shipment.ReturnedDate) return 'rto_in_transit';
+
+  // Delivered (only if NOT an RTO)
+  if (statusType === 'DL' || status === 'delivered') return 'delivered';
+  if (shipment.DeliveryDate) return 'delivered';
 
   // NDR / delivery attempted — check current status
   const isNdrInstruction =

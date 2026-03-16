@@ -323,24 +323,28 @@ export async function GET(request: Request) {
       ? Math.round(ndrDelivered.reduce((s, o) => s + (o.ndrCount ?? 0), 0) / ndrDelivered.length * 10) / 10
       : null;
 
-    // Shipment value at risk (in-transit RTO + attempted orders value)
-    const atRiskValue = allOrders
+    // All COD-focused analytics (prepaid already tracked in finance)
+    const codOrders = allOrders.filter((o) => o.paymentType === 'cod');
+
+    // COD value at risk (RTO + NDR COD orders)
+    const atRiskValue = codOrders
       .filter((o) => o.status === 'rto_in_transit' || o.status === 'rto' || o.status === 'attempted')
       .reduce((s, o) => s + o.amount, 0);
 
-    // COD amount pending delivery (in-transit + OFD COD orders)
-    const codPendingDelivery = allOrders
-      .filter((o) => o.paymentType === 'cod' && (o.status === 'in_transit' || o.status === 'out_for_delivery'))
+    // COD amount pending delivery (in-transit + OFD)
+    const codPendingDelivery = codOrders
+      .filter((o) => o.status === 'in_transit' || o.status === 'out_for_delivery')
       .reduce((s, o) => s + o.amount, 0);
 
-    // COD amount delivered but pending bank deposit (delivered COD × 7-8 day delay)
-    const codDeliveredAmount = allOrders
-      .filter((o) => o.paymentType === 'cod' && o.status === 'delivered')
+    // COD delivered — awaiting bank deposit (~7-8 day delay)
+    const codDeliveredAmount = codOrders
+      .filter((o) => o.status === 'delivered')
       .reduce((s, o) => s + o.amount, 0);
 
-    // Prepaid delivered (already in bank)
-    const prepaidDeliveredAmount = allOrders
-      .filter((o) => o.paymentType === 'prepaid' && o.status === 'delivered')
+    // COD revenue pipeline (total COD order value)
+    const codTotalRevenue = codOrders.reduce((s, o) => s + o.amount, 0);
+    const codLostRevenue = codOrders
+      .filter((o) => o.status === 'rto' || o.status === 'cancelled')
       .reduce((s, o) => s + o.amount, 0);
 
     const analytics = {
@@ -356,11 +360,10 @@ export async function GET(request: Request) {
       atRiskValue,
       codPendingDelivery,
       codDeliveredAmount,
-      prepaidDeliveredAmount,
-      // Revenue breakdown
-      totalRevenue: allOrders.reduce((s, o) => s + o.amount, 0),
-      deliveredRevenue: allOrders.filter((o) => o.status === 'delivered').reduce((s, o) => s + o.amount, 0),
-      lostRevenue: allOrders.filter((o) => o.status === 'rto' || o.status === 'cancelled').reduce((s, o) => s + o.amount, 0),
+      // COD-only revenue pipeline
+      totalRevenue: codTotalRevenue,
+      deliveredRevenue: codDeliveredAmount,
+      lostRevenue: codLostRevenue,
     };
 
     return NextResponse.json({
