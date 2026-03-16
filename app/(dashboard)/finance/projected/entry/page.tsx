@@ -8,6 +8,7 @@ import {
   BanknoteIcon, Truck, CreditCard, Plus, X,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
+import { DatePicker } from '@/components/date-picker';
 import { useAuth } from '@/components/auth-provider';
 import { formatINR } from '@/lib/currency-converter';
 
@@ -241,7 +242,7 @@ export default function FinanceEntryPage() {
           <Calculator className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">Daily P&L</h2>
           <div className="ml-auto">
-            <input type="date" value={dailyDate} onChange={(e) => setDailyDate(e.target.value)} className="form-input text-[12px] py-1" />
+            <DatePicker value={dailyDate} onChange={(d) => setDailyDate(d)} compact />
           </div>
         </div>
 
@@ -577,11 +578,9 @@ function MissedIncomeModal({ onClose, onAdd }: {
             </div>
             <div>
               <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">Date</label>
-              <input
-                type="date"
+              <DatePicker
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-emerald-500/50 focus:outline-none transition"
+                onChange={(d) => setDate(d)}
               />
             </div>
           </div>
@@ -609,12 +608,10 @@ function MissedIncomeModal({ onClose, onAdd }: {
                 >
                   <div className="mt-3">
                     <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">End Date</label>
-                    <input
-                      type="date"
+                    <DatePicker
                       value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
+                      onChange={(d) => setEndDate(d)}
                       min={date}
-                      className="w-full max-w-[200px] rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-emerald-500/50 focus:outline-none transition"
                     />
                   </div>
                 </motion.div>

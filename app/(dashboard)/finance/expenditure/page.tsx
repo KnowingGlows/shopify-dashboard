@@ -9,6 +9,7 @@ import {
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
+import { DatePicker } from '@/components/date-picker';
 import { formatINR } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -749,11 +750,9 @@ function AddExpenseModal({ onClose, onAdd }: {
             </div>
             <div>
               <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">Date</label>
-              <input
-                type="date"
+              <DatePicker
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-primary/50 focus:outline-none transition"
+                onChange={(d) => setDate(d)}
               />
             </div>
           </div>
@@ -793,12 +792,10 @@ function AddExpenseModal({ onClose, onAdd }: {
               >
                 <div className="mt-1">
                   <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2 block">End Date</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
+                    onChange={(d) => setEndDate(d)}
                     min={date}
-                    className="w-full max-w-[200px] rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-[13px] text-foreground focus:border-primary/50 focus:outline-none transition"
                   />
                 </div>
               </motion.div>

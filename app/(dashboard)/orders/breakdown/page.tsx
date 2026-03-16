@@ -8,6 +8,7 @@ import {
   Calendar, ChevronDown, ChevronLeft, Loader2, Store, Clock, ShieldAlert,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DatePicker } from '@/components/date-picker';
 import { formatINR } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -195,11 +196,9 @@ export default function BreakdownPage() {
             </div>
             {range === 'custom' && (
               <motion.div initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2">
-                <input type="date" value={customStart} max={todayStr} onChange={(e) => setCustomStart(e.target.value)}
-                  className="rounded-lg border border-border bg-card/60 px-2.5 py-1.5 text-sm text-foreground backdrop-blur-sm" />
+                <DatePicker value={customStart} max={todayStr} onChange={(d) => setCustomStart(d)} compact />
                 <span className="text-muted-foreground text-xs">to</span>
-                <input type="date" value={customEnd} max={todayStr} onChange={(e) => setCustomEnd(e.target.value)}
-                  className="rounded-lg border border-border bg-card/60 px-2.5 py-1.5 text-sm text-foreground backdrop-blur-sm" />
+                <DatePicker value={customEnd} max={todayStr} onChange={(d) => setCustomEnd(d)} compact />
               </motion.div>
             )}
           </div>

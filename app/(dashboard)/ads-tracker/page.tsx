@@ -53,8 +53,10 @@ function groupByProduct(entries: AdsTrackerEntry[], registeredProducts: string[]
     const hitRate = decided > 0 ? Math.round((winners / decided) * 100) : 0;
     const lastUpdated = batches.reduce((latest, b) => b.updatedAt > latest ? b.updatedAt : latest, '');
 
-    // Find latest batch and compute timeline
-    const sorted = [...batches].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Find latest launched batch (Testing or beyond) and compute timeline
+    const launchedStatuses = ['Testing', 'Winner', 'Loser', 'Scaled'];
+    const launchedBatches = batches.filter((b) => launchedStatuses.includes(b.creativeBatchResult));
+    const sorted = [...launchedBatches].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     const latestBatch = sorted[0] || null;
     const daysSinceLastBatch = latestBatch ? Math.floor((now - new Date(latestBatch.createdAt).getTime()) / 86400000) : -1;
     const nextBatchDue = daysSinceLastBatch >= 7;

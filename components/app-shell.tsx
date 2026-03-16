@@ -38,7 +38,7 @@ const navItems: NavItem[] = [
   { href: '/finance/projected/planning', label: 'Planning', icon: ClipboardList, section: 'core', parent: '/finance/projected' },
   { href: '/finance/projected/entries', label: 'Entries', icon: List, section: 'core', parent: '/finance/projected' },
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'core' },
-  { href: '/transactions', label: 'Transactions', icon: Wallet, section: 'core' },
+  { href: '/transactions', label: 'Transactions', icon: Wallet, section: 'core', parent: '/finance' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
   { href: '/ads-tracker', label: 'OPS Ads', icon: Megaphone, section: 'marketing' },

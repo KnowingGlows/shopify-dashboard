@@ -289,9 +289,11 @@ export async function GET(request: Request) {
     const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 10) / 10 : null;
 
     function computeAnalytics(orders: ClassifiedOrder[]) {
-      const deliveredWithDelhivery = orders.filter((o) => o.status === 'delivered' && o.dispatchCount != null);
-      const fadCnt = deliveredWithDelhivery.filter((o) => (o.dispatchCount ?? 0) <= 1).length;
-      const fadPctVal = deliveredWithDelhivery.length > 0 ? Math.round(fadCnt / deliveredWithDelhivery.length * 1000) / 10 : null;
+      // FAD = orders delivered on first attempt / all orders that were attempted for delivery
+      const attemptedStatuses: DeliveryStatus[] = ['delivered', 'attempted', 'rto', 'rto_in_transit'];
+      const allAttempted = orders.filter((o) => attemptedStatuses.includes(o.status) && o.dispatchCount != null);
+      const fadCnt = allAttempted.filter((o) => o.status === 'delivered' && (o.dispatchCount ?? 0) <= 1).length;
+      const fadPctVal = allAttempted.length > 0 ? Math.round(fadCnt / allAttempted.length * 1000) / 10 : null;
 
       const dDays: number[] = [];
       const codDDays: number[] = [];
@@ -320,7 +322,7 @@ export async function GET(request: Request) {
       return {
         fadPct: fadPctVal,
         fadCount: fadCnt,
-        fadTotal: deliveredWithDelhivery.length,
+        fadTotal: allAttempted.length,
         avgDeliveryDays: avg(dDays),
         avgCodDeliveryDays: avg(codDDays),
         avgPrepaidDeliveryDays: avg(prepaidDDays),

@@ -9,6 +9,7 @@ import {
   Send, Pencil, Package, Box, Megaphone, FileSearch,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
+import { DatePicker } from '@/components/date-picker';
 import { useAuth } from '@/components/auth-provider';
 import { cn } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority, TaskLinkedEntity, TaskComment } from '@/types/shopify';
@@ -817,11 +818,9 @@ function TaskModal({
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Due Date</label>
-              <input
-                type="date"
+              <DatePicker
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full rounded-lg border border-border bg-white/[0.03] px-3 py-2 text-sm text-foreground focus:border-primary/50 focus:outline-none"
+                onChange={(d) => setDueDate(d)}
               />
             </div>
           </div>
@@ -1076,11 +1075,9 @@ function TaskDetailDrawer({
             {/* Due date */}
             <div className="rounded-lg border border-border bg-white/[0.02] p-3">
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Due Date</p>
-              <input
-                type="date"
+              <DatePicker
                 value={task.dueDate}
-                onChange={(e) => onUpdate({ dueDate: e.target.value })}
-                className="w-full bg-transparent text-sm font-medium text-foreground focus:outline-none"
+                onChange={(d) => onUpdate({ dueDate: d })}
               />
             </div>
           </div>

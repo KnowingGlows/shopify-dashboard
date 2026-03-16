@@ -8,6 +8,7 @@ import {
   BanknoteIcon, CreditCard, TrendingUp, Receipt, Repeat,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
+import { DatePicker } from '@/components/date-picker';
 import { useAuth } from '@/components/auth-provider';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -135,15 +136,11 @@ export default function ActualEntryPage() {
           <h1 className="text-base font-semibold text-foreground">Daily Entry</h1>
           <p className="text-[11px] text-muted-foreground/60">Record actual money in &amp; out</p>
         </div>
-        <div className="flex items-center gap-2 rounded-xl border border-border/50 bg-card/80 px-3 py-2">
-          <Calendar className="h-3.5 w-3.5 text-muted-foreground/50" />
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="bg-transparent text-[12px] font-medium text-foreground outline-none [color-scheme:dark]"
-          />
-        </div>
+        <DatePicker
+          value={date}
+          onChange={(d) => setDate(d)}
+          compact
+        />
       </div>
 
       {/* Date chip */}
@@ -155,11 +152,17 @@ export default function ActualEntryPage() {
 
       {/* Tab Switch */}
       <div className="relative flex items-center rounded-2xl border border-border/50 bg-card/50 p-1 backdrop-blur-sm">
-        <motion.div
-          className={`absolute inset-y-1 rounded-xl transition-colors ${activeTab === 'income' ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'}`}
-          animate={{ left: activeTab === 'income' ? '4px' : '50%', right: activeTab === 'income' ? '50%' : '4px' }}
-          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        />
+        {['income', 'expense'].map((tab) => (
+          tab === activeTab && (
+            <motion.div
+              key="tab-bg"
+              layoutId="entry-tab"
+              className={`absolute inset-y-1 w-[calc(50%-4px)] rounded-xl ${tab === 'income' ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-red-500/10 border border-red-500/20'}`}
+              style={{ left: tab === 'income' ? '4px' : 'calc(50%)' }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            />
+          )
+        ))}
         <button
           onClick={() => setActiveTab('income')}
           className={`relative z-10 flex-1 flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-[13px] font-semibold transition ${
@@ -264,12 +267,11 @@ export default function ActualEntryPage() {
                   <div className="flex items-center gap-3 rounded-xl border border-border/40 bg-card/60 p-3">
                     <Calendar className="h-3.5 w-3.5 text-muted-foreground/40" />
                     <span className="text-[11px] text-muted-foreground/60">End date</span>
-                    <input
-                      type="date"
+                    <DatePicker
                       value={incomeEndDate}
-                      onChange={(e) => setIncomeEndDate(e.target.value)}
+                      onChange={(d) => setIncomeEndDate(d)}
                       min={date}
-                      className="bg-transparent text-[12px] font-medium text-foreground outline-none [color-scheme:dark]"
+                      compact
                     />
                   </div>
                 </motion.div>

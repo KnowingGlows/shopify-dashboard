@@ -155,11 +155,13 @@ export default function ProductTrackerPage() {
   const droppedCount = entries.filter((e) => e.productStage === 'Dropped').length;
   const hitRate = droppedCount === 0 && winnersCount === 0 ? 0 : droppedCount === 0 ? 100 : Math.round((winnersCount / (winnersCount + droppedCount)) * 100);
 
-  // Products tested this month
+  // Products tested this month (only if stage is Testing Ads, Winner, or Dropped)
+  const TESTED_STAGES = ['Testing Ads', 'Winner - Moved To OPS', 'Dropped'];
   const testedThisMonth = useMemo(() => {
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    return entries.filter((e) => (e.createdAt ?? '').startsWith(monthStr)).length;
+    return entries.filter((e) => (e.createdAt ?? '').startsWith(monthStr) && TESTED_STAGES.includes(e.productStage)).length;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries]);
 
   // Total spent

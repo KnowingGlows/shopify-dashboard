@@ -8,6 +8,7 @@ import {
   ShoppingCart, TrendingUp, Package, Megaphone, Wrench, Users, Repeat, Receipt,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
+import { DatePicker } from '@/components/date-picker';
 import { formatINR } from '@/lib/currency-converter';
 
 interface PlannedExpense {
@@ -220,15 +221,10 @@ export default function ProjectedPlanningPage() {
                 </div>
                 <div>
                   <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Planned Date</label>
-                  <div className="flex items-center gap-2 rounded-xl border border-border/40 bg-background/40 px-3 py-3">
-                    <Calendar className="h-3.5 w-3.5 text-muted-foreground/40" />
-                    <input
-                      type="date"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                      className="bg-transparent text-[12px] font-medium text-foreground outline-none [color-scheme:dark]"
-                    />
-                  </div>
+                  <DatePicker
+                    value={date}
+                    onChange={(d) => setDate(d)}
+                  />
                 </div>
               </div>
 

@@ -5,15 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   RefreshCw, Loader2, DollarSign, Wallet, Plus,
-  X, ArrowRight, Clock, Calendar, Store,
+  X, ArrowRight, Calendar,
   TrendingDown, TrendingUp,
   ArrowDown, BanknoteIcon, Settings2,
-  Check, ToggleLeft, ToggleRight, ShieldCheck, Truck, AlertTriangle,
+  Check, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar } from 'recharts';
-import { cn } from '@/lib/utils';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,29 +51,6 @@ interface IncomeEntry {
   amount: number;
   date: string;
   endDate?: string;
-}
-
-interface CodDayDeposit {
-  confirmed: number;
-  projected: number;
-  total: number;
-}
-
-interface CodStoreProjection {
-  storeName: string;
-  dailyDelivered: Record<string, number>;
-  avgDailyDelivered: number;
-  projectedDeposits: Record<string, CodDayDeposit>;
-  totalConfirmed: number;
-  totalProjected: number;
-}
-
-interface CodProjectionData {
-  stores: Record<string, CodStoreProjection>;
-  combined: {
-    dailyProjections: Record<string, CodDayDeposit>;
-    summary: { totalConfirmed: number; totalProjected: number };
-  };
 }
 
 interface CODWeek {
@@ -131,9 +107,6 @@ export default function ProjectedFinancePage() {
   const [income, setIncome] = useState<IncomeEntry[]>([]);
   const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
   const [plannedExpenses, setPlannedExpenses] = useState<Array<{ id: string; category: string; description: string; amount: number; date: string }>>([]);
-  const [codProjection, setCodProjection] = useState<CodProjectionData | null>(null);
-  const [codLoading, setCodLoading] = useState(true);
-  const [codStore, setCodStore] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -159,15 +132,6 @@ export default function ProjectedFinancePage() {
       setIncome(data.income ?? []);
       setPlannedExpenses(plannedData.planned ?? []);
       setLoading(false);
-
-      // Fetch COD projection separately (slow — hits Delhivery API)
-      setCodLoading(true);
-      try {
-        const codRes = await fetch(`/api/cod-projection?days=${days}`);
-        const codData = await codRes.json();
-        if (codData.success) setCodProjection(codData);
-      } catch { /* silent */ }
-      finally { setCodLoading(false); }
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,40 +148,6 @@ export default function ProjectedFinancePage() {
     if (dateRange === '90d') return 90;
     return 14;
   }, [dateRange]);
-
-  // ── COD Projection data ──────────────────────────────────────────────
-  const codChartData = useMemo(() => {
-    if (!codProjection) return [];
-    const source = codStore === 'all'
-      ? codProjection.combined.dailyProjections
-      : codProjection.stores[codStore]?.projectedDeposits ?? {};
-    return Object.entries(source)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, d]) => ({
-        date,
-        label: fmtMonthDay(date),
-        Confirmed: d.confirmed,
-        Projected: d.projected,
-        total: d.total,
-      }));
-  }, [codProjection, codStore]);
-
-  const codSummary = useMemo(() => {
-    if (!codProjection) return null;
-    if (codStore === 'all') return codProjection.combined.summary;
-    const s = codProjection.stores[codStore];
-    return s ? { totalConfirmed: s.totalConfirmed, totalProjected: s.totalProjected } : null;
-  }, [codProjection, codStore]);
-
-  const codStoreNames = useMemo(() => {
-    if (!codProjection) return [];
-    return Object.keys(codProjection.stores);
-  }, [codProjection]);
-
-  const codStoreSummary = useMemo(() => {
-    if (!codProjection || codStore !== 'all') return null;
-    return codProjection.stores;
-  }, [codProjection, codStore]);
 
   // Build daily outflow map from PLANNED expenses only
   const dailyOutflows = useMemo(() => {
@@ -364,169 +294,6 @@ export default function ProjectedFinancePage() {
           </StaggerContainer>
         );
       })()}
-
-      {/* ═══ COD Cashflow Projection (Delhivery-powered) ═══ */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card">
-          <div className="p-6 space-y-4">
-            {/* Header */}
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <BanknoteIcon className="h-5 w-5 text-emerald-400" />
-                  <h2 className="text-base font-semibold text-foreground">COD Bank Deposits</h2>
-                </div>
-                <p className="text-[10px] text-muted-foreground/60">Projected daily deposits from Delhivery COD · D+2 remittance</p>
-              </div>
-              {codSummary && (
-                <div className="text-right">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Projected</p>
-                  <p className="text-3xl font-bold text-emerald-400 tabular-nums">
-                    <AnimatedNumber value={codSummary.totalProjected} formatter={formatINR} />
-                  </p>
-                  {codSummary.totalConfirmed > 0 && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      <span className="text-emerald-400">{formatINR(codSummary.totalConfirmed)}</span> confirmed
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Store Tabs */}
-            {codStoreNames.length > 1 && (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                <button onClick={() => setCodStore('all')}
-                  className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition whitespace-nowrap',
-                    codStore === 'all' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'border border-border bg-card/40 text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  <Store className="h-3 w-3" /> All Stores
-                </button>
-                {codStoreNames.map((name) => (
-                  <button key={name} onClick={() => setCodStore(name)}
-                    className={cn('rounded-lg px-3 py-1.5 text-[11px] font-medium transition whitespace-nowrap',
-                      codStore === name ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'border border-border bg-card/40 text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Legend */}
-            <div className="flex items-center gap-4 text-[9px]">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />Confirmed (delivered, awaiting remittance)</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" />Projected (based on 7-day avg)</span>
-            </div>
-
-            {/* Stacked Bar Chart */}
-            {codLoading ? (
-              <div className="h-56 flex flex-col items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-emerald-400 mb-2" />
-                <p className="text-[11px] text-muted-foreground/50">Fetching Delhivery tracking data...</p>
-              </div>
-            ) : codChartData.length > 0 ? (
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={codChartData} margin={{ top: 8, right: 4, left: -10, bottom: 24 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                    <XAxis
-                      dataKey="label"
-                      interval={chartDays <= 14 ? 0 : chartDays <= 30 ? 1 : 6}
-                      tick={({ x, y, payload }) => {
-                        const isToday = payload.value === fmtMonthDay(todayStr);
-                        return (
-                          <text x={x as number} y={(y as number) + 14} textAnchor="middle"
-                            fontSize={chartDays <= 14 ? 10 : 8}
-                            fontWeight={isToday ? 700 : 400}
-                            fill={isToday ? '#a78bfa' : '#71717a'}
-                          >{payload.value}</text>
-                        );
-                      }}
-                      axisLine={false} tickLine={false}
-                    />
-                    <YAxis tick={{ fill: '#71717a', fontSize: 9 }} axisLine={false} tickLine={false}
-                      tickFormatter={(v) => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)} />
-                    <Tooltip
-                      content={({ active, payload, label }) => {
-                        if (!active || !payload?.length) return null;
-                        const total = payload.reduce((s, p) => s + ((p.value as number) ?? 0), 0);
-                        const orders = (payload[0]?.payload as Record<string, number>)?.orders ?? 0;
-                        return (
-                          <div className="rounded-lg border border-border bg-[#0c0c0e]/95 px-3 py-2 shadow-xl backdrop-blur-sm text-[11px]">
-                            <p className="font-medium text-muted-foreground mb-1">{label} · {orders} orders</p>
-                            <p className="text-[13px] font-bold text-emerald-400 mb-1">{formatINR(total)}</p>
-                            {payload.map((p) => (
-                              (p.value as number) > 0 && (
-                                <div key={p.name} className="flex items-center gap-1.5">
-                                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: p.color as string }} />
-                                  <span className="text-muted-foreground">{p.name}:</span>
-                                  <span className="text-foreground font-medium">{formatINR(p.value as number)}</span>
-                                </div>
-                              )
-                            ))}
-                          </div>
-                        );
-                      }}
-                    />
-                    <Bar dataKey="Confirmed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} animationDuration={800} />
-                    <Bar dataKey="Projected" stackId="a" fill="#3b82f6" radius={[3, 3, 0, 0]} animationDuration={800} animationBegin={200} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="h-40 flex flex-col items-center justify-center text-center">
-                <Clock className="h-6 w-6 text-muted-foreground/20 mb-2" />
-                <p className="text-[12px] text-muted-foreground/50">No COD orders in pipeline</p>
-              </div>
-            )}
-
-            {/* Per-store summary when viewing all */}
-            {codStore === 'all' && codStoreSummary && Object.keys(codStoreSummary).length > 1 && (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                {Object.values(codStoreSummary).map((s) => (
-                  <button
-                    key={s.storeName}
-                    onClick={() => setCodStore(s.storeName)}
-                    className="rounded-xl border border-border/50 bg-card/30 p-3 text-left transition hover:bg-card/60 hover:border-border space-y-1"
-                  >
-                    <p className="text-[10px] font-medium text-muted-foreground truncate">{s.storeName}</p>
-                    <p className="text-lg font-bold text-emerald-400">{formatINR(s.totalProjected)}</p>
-                    <div className="flex items-center gap-2 text-[9px] text-muted-foreground/60">
-                      <span>{formatINR(s.avgDailyDelivered)}/day avg</span>
-                      <span>· {formatINR(s.totalConfirmed)} confirmed</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Single store metrics */}
-            {codStore !== 'all' && codProjection?.stores[codStore] && (() => {
-              const ss = codProjection.stores[codStore];
-              return (
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {([
-                    { label: 'Confirmed', value: formatINR(ss.totalConfirmed), icon: ShieldCheck, color: 'text-emerald-400' },
-                    { label: 'Avg Daily COD', value: formatINR(ss.avgDailyDelivered), icon: TrendingUp, color: 'text-blue-400' },
-                    { label: 'Total Projected', value: formatINR(ss.totalProjected), icon: Truck, color: 'text-cyan-400' },
-                  ]).map(({ label, value, icon: Icon, color }) => (
-                    <div key={label} className="rounded-xl border border-border/50 bg-card/30 p-3 space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <Icon className={cn('h-3 w-3', color)} />
-                        <p className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</p>
-                      </div>
-                      <p className={cn('text-lg font-bold', color)}>{value}</p>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      </motion.div>
 
       {/* ═══ Spending Power ═══ */}
       {spending && spending.projectedDeposit > 0 && (() => {

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   Package, Truck, CheckCircle2, AlertTriangle, RotateCcw, XCircle,
-  Calendar, ChevronDown, ChevronRight, Loader2, Store, ArrowUpRight,
+  Calendar, ChevronDown, ChevronRight, Loader2, Store,
   Clock, ShieldAlert, Target, Timer, Wallet, TrendingUp, BadgeDollarSign,
   Zap, BarChart3,
 } from 'lucide-react';
@@ -14,6 +14,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, CartesianGrid,
 } from 'recharts';
 import { cn } from '@/lib/utils';
+import { DatePicker } from '@/components/date-picker';
 import { formatINR } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -291,11 +292,9 @@ export default function LogisticsPage() {
             </div>
             {range === 'custom' && (
               <motion.div initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2">
-                <input type="date" value={customStart} max={todayStr} onChange={(e) => setCustomStart(e.target.value)}
-                  className="rounded-lg border border-border bg-card/60 px-2.5 py-1.5 text-sm text-foreground backdrop-blur-sm" />
+                <DatePicker value={customStart} max={todayStr} onChange={(d) => setCustomStart(d)} compact />
                 <span className="text-muted-foreground text-xs">to</span>
-                <input type="date" value={customEnd} max={todayStr} onChange={(e) => setCustomEnd(e.target.value)}
-                  className="rounded-lg border border-border bg-card/60 px-2.5 py-1.5 text-sm text-foreground backdrop-blur-sm" />
+                <DatePicker value={customEnd} max={todayStr} onChange={(d) => setCustomEnd(d)} compact />
               </motion.div>
             )}
           </div>
@@ -337,17 +336,24 @@ export default function LogisticsPage() {
 
             {/* ─── Primary Metrics ───────────────────────────────────── */}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <InsightCard label="Total Orders" value={t.total} icon={Package}
-                color="text-violet-400" delay={0} sub={`${t.cod} COD · ${t.prepaid} Prepaid`} />
               <InsightCard label="Delivery Rate" value={pctNum(t.delivered, fulfilledTotal || t.total)}
-                suffix="%" icon={CheckCircle2} color="text-emerald-400" delay={0.04}
+                suffix="%" icon={CheckCircle2} color="text-emerald-400" delay={0}
                 sub={`${t.delivered} of ${fulfilledTotal || t.total} delivered`} />
-              <InsightCard label="COD Ratio" value={pctNum(t.cod, t.total)}
-                suffix="%" icon={ArrowUpRight} color="text-blue-400" delay={0.08}
-                sub={`COD delivery: ${pct(t.codDelivered, t.cod)}`} />
               <InsightCard label="RTO Rate" value={pctNum(t.rto + t.rtoInTransit, fulfilledTotal || t.total)}
-                suffix="%" icon={RotateCcw} color="text-red-400" delay={0.12}
+                suffix="%" icon={RotateCcw} color="text-red-400" delay={0.04}
                 sub={`${t.rto + t.rtoInTransit} returns`} />
+              <InsightCard label="FAD Rate" value={a?.fadPct ?? null}
+                suffix="%" icon={Target} color="text-emerald-400" delay={0.08}
+                sub={a && a.fadTotal > 0 ? `${a.fadCount} of ${a.fadTotal} first-attempt` : 'No data'} />
+              <InsightCard label="NDR Resolution" value={a?.ndrResolutionRate ?? null}
+                suffix="%" icon={Zap} color="text-amber-400" delay={0.12}
+                sub={a && a.totalNdrOrders > 0 ? `${a.totalNdrOrders} NDR orders` : 'No NDRs'} />
+            </div>
+
+            {/* ─── Secondary Metrics ──────────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+              <InsightCard label="Total Orders" value={t.total} icon={Package}
+                color="text-violet-400" delay={0.14} sub={`${t.cod} COD · ${t.prepaid} Prepaid`} />
             </div>
 
             {/* ─── Delivery Intelligence ─────────────────────────────── */}

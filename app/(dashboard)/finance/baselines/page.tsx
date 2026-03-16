@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronUp, Calendar,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
+import { DatePicker } from '@/components/date-picker';
 import { formatINR } from '@/lib/currency-converter';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -329,9 +330,10 @@ function InlineEditRow({
         className="w-24 shrink-0 bg-transparent text-[13px] text-foreground text-right tabular-nums placeholder:text-muted-foreground/30 outline-none border-b border-primary/20 pb-0.5"
         onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
       />
-      <input value={dueDate} onChange={(e) => onDueDateChange(e.target.value)} type="date"
-        className="w-[130px] shrink-0 bg-transparent text-[12px] text-foreground tabular-nums outline-none border-b border-primary/20 pb-0.5"
-        onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+      <DatePicker
+        value={dueDate}
+        onChange={(d) => onDueDateChange(d)}
+        compact
       />
       <button type="button" onClick={onSave} disabled={saving || !label.trim() || !amount}
         className="shrink-0 rounded-md bg-primary/20 text-primary px-3 py-1.5 text-[11px] font-medium hover:bg-primary/30 transition disabled:opacity-40">
