@@ -86,6 +86,8 @@ function classifyDelhiveryStatus(shipment: {
   RTOStartedDate?: string | null;
   ReturnedDate?: string | null;
   DeliveryDate?: string | null;
+  Scans?: Array<{ ScanDetail?: { Scan?: string; StatusCode?: string; Instructions?: string } }>;
+  DispatchCount?: number;
 }): DelhiveryStatus {
   const status = shipment.Status?.Status?.toLowerCase() ?? '';
   const statusType = shipment.Status?.StatusType ?? '';
@@ -103,8 +105,8 @@ function classifyDelhiveryStatus(shipment: {
   if (shipment.ReverseInTransit || statusType === 'RT') return 'rto_in_transit';
   if (shipment.RTOStartedDate && !shipment.ReturnedDate) return 'rto_in_transit';
 
-  // NDR / delivery attempted
-  if (statusType === 'UD' && (
+  // NDR / delivery attempted — check current status
+  const isNdrInstruction =
     instructions.includes('not delivered') ||
     instructions.includes('undelivered') ||
     instructions.includes('delivery attempted') ||
@@ -112,12 +114,39 @@ function classifyDelhiveryStatus(shipment: {
     instructions.includes('address issue') ||
     instructions.includes('customer not available') ||
     instructions.includes('otp not received') ||
+    instructions.includes('cancellation') ||
+    instructions.includes('rejected') ||
+    instructions.includes('refused') ||
+    instructions.includes('no client instructions') ||
+    statusCode.startsWith('EOD-') ||
     statusCode.startsWith('CR-') ||
-    statusCode.startsWith('UD-')
-  )) return 'ndr';
+    statusCode.startsWith('UD-');
+
+  if (isNdrInstruction) return 'ndr';
+
+  // Check if the last meaningful scan was a failed delivery (Pending after Dispatched)
+  const scans = shipment.Scans ?? [];
+  if (scans.length >= 2) {
+    const lastScan = scans[scans.length - 1]?.ScanDetail;
+    const prevScan = scans[scans.length - 2]?.ScanDetail;
+    if (lastScan?.Scan?.toLowerCase() === 'pending' && prevScan?.Scan?.toLowerCase() === 'dispatched') {
+      return 'ndr';
+    }
+  }
+
+  // Check scan history for any NDR that hasn't been resolved (not yet re-dispatched or delivered)
+  let hasNdr = false;
+  for (let i = 0; i < scans.length; i++) {
+    const sd = scans[i].ScanDetail;
+    const code = (sd?.StatusCode ?? '').toUpperCase();
+    if (code.startsWith('EOD-') || code.startsWith('CR-') || code.startsWith('UD-')) hasNdr = true;
+  }
+  // If there's an NDR after the last dispatch, the order is in NDR state
+  if (hasNdr && status === 'pending') return 'ndr';
 
   // Out for delivery
-  if (instructions.includes('out for delivery') || statusCode === 'X-DEX' || instructions.includes('dispatched to consignee')) {
+  if (status === 'dispatched' || instructions.includes('out for delivery') || statusCode === 'X-DEX' ||
+      statusCode.startsWith('X-DDD') || instructions.includes('dispatched to consignee')) {
     return 'out_for_delivery';
   }
 
@@ -166,18 +195,44 @@ export async function trackShipments(awbs: string[]): Promise<Map<string, Delhiv
         const s = item.Shipment;
         if (!s?.AWB) continue;
 
-        // Count NDR attempts from scans
+        // Count NDR attempts from scans — look at status codes and instructions
         let ndrCount = 0;
-        for (const scan of (s.Scans ?? [])) {
-          const inst = (scan.ScanDetail?.Instructions ?? '').toLowerCase();
-          if (inst.includes('not delivered') || inst.includes('undelivered') || inst.includes('delivery attempted')) {
+        const scans = s.Scans ?? [];
+        for (let si = 0; si < scans.length; si++) {
+          const sd = scans[si].ScanDetail;
+          const inst = (sd?.Instructions ?? '').toLowerCase();
+          const code = (sd?.StatusCode ?? '').toUpperCase();
+          const scanType = (sd?.Scan ?? '').toLowerCase();
+
+          // EOD codes = end of day reasons (failed delivery)
+          // ST- codes = status calls to consignee during delivery
+          // CR- codes = customer refused
+          // UD- codes = undelivered
+          // Pending after Dispatched = failed delivery attempt
+          if (
+            code.startsWith('EOD-') ||
+            code.startsWith('CR-') ||
+            code.startsWith('UD-') ||
+            inst.includes('not delivered') ||
+            inst.includes('undelivered') ||
+            inst.includes('delivery attempted') ||
+            inst.includes('consignee refused') ||
+            inst.includes('address issue') ||
+            inst.includes('customer not available') ||
+            inst.includes('otp not received') ||
+            inst.includes('cancellation') ||
+            inst.includes('no client instructions to reattempt') ||
+            inst.includes('rejected') ||
+            inst.includes('refused') ||
+            (scanType === 'pending' && si > 0 && (scans[si - 1]?.ScanDetail?.Scan ?? '').toLowerCase() === 'dispatched')
+          ) {
             ndrCount++;
           }
         }
 
         results.set(s.AWB, {
           awb: s.AWB,
-          status: classifyDelhiveryStatus(s),
+          status: classifyDelhiveryStatus({ ...s, Scans: s.Scans }),
           statusRaw: s.Status?.Status ?? '',
           statusType: s.Status?.StatusType ?? '',
           instructions: s.Status?.Instructions ?? '',
