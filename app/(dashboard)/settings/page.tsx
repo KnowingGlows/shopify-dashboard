@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  KeyRound, RefreshCw, Settings, Store,
+  KeyRound, RefreshCw, Settings, Store, Truck,
   Check, Loader2, AlertCircle, Pencil, Trash2, ChevronDown, Eye, EyeOff, Plus,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
@@ -34,6 +34,32 @@ export default function SettingsPage() {
   const [deletingStore, setDeletingStore] = useState<string | null>(null);
   const [expandedStore, setExpandedStore] = useState<string | null>(null);
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
+  const [delhiveryToken, setDelhiveryToken] = useState('');
+  const [delhiveryStatus, setDelhiveryStatus] = useState<{ type: 'idle' | 'saving' | 'success' | 'error'; message?: string }>({ type: 'idle' });
+  const [showDelhiveryToken, setShowDelhiveryToken] = useState(false);
+
+  const loadDelhiveryToken = async () => {
+    try {
+      const res = await fetch('/api/settings?key=delhivery');
+      const data = await res.json();
+      if (data.apiToken) setDelhiveryToken(data.apiToken);
+    } catch { /* silent */ }
+  };
+
+  const saveDelhiveryToken = async () => {
+    setDelhiveryStatus({ type: 'saving' });
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'delhivery', apiToken: delhiveryToken.trim() }),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+      setDelhiveryStatus({ type: 'success', message: 'Delhivery API token saved.' });
+    } catch {
+      setDelhiveryStatus({ type: 'error', message: 'Failed to save token.' });
+    }
+  };
 
   const loadStores = async () => {
     try {
@@ -50,7 +76,7 @@ export default function SettingsPage() {
     }
   };
 
-  useEffect(() => { loadStores(); }, []);
+  useEffect(() => { loadStores(); loadDelhiveryToken(); }, []);
 
   const handleStoreSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -355,6 +381,79 @@ export default function SettingsPage() {
             ))}
           </StaggerContainer>
         )}
+      </motion.div>
+
+      {/* Delhivery Integration */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <Truck className="h-3.5 w-3.5 text-primary" />
+          <div>
+            <h2 className="text-sm font-medium text-foreground">Delhivery Tracking</h2>
+            <p className="text-[10px] text-muted-foreground">API token for real-time shipment tracking via Delhivery</p>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <FormField label="API Token">
+            <div className="flex items-center gap-2">
+              <input
+                type={showDelhiveryToken ? 'text' : 'password'}
+                value={delhiveryToken}
+                onChange={(e) => setDelhiveryToken(e.target.value)}
+                placeholder="Delhivery API token"
+                className="form-input flex-1"
+                autoComplete="off"
+              />
+              <button
+                onClick={() => setShowDelhiveryToken(!showDelhiveryToken)}
+                className="rounded-lg border border-border bg-card px-2.5 py-2 text-muted-foreground hover:bg-accent transition"
+              >
+                {showDelhiveryToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </FormField>
+
+          <button
+            onClick={saveDelhiveryToken}
+            disabled={!delhiveryToken.trim() || delhiveryStatus.type === 'saving'}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+          >
+            {delhiveryStatus.type === 'saving' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
+            Save Token
+          </button>
+
+          <AnimatePresence>
+            {delhiveryStatus.type !== 'idle' && delhiveryStatus.type !== 'saving' && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className={`rounded-lg border px-3 py-2 flex items-center gap-2 ${
+                  delhiveryStatus.type === 'success'
+                    ? 'border-emerald-500/30 bg-emerald-500/5'
+                    : 'border-red-500/30 bg-red-500/5'
+                }`}
+              >
+                {delhiveryStatus.type === 'success' ? (
+                  <Check className="h-3 w-3 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
+                )}
+                <p className={`text-[11px] ${delhiveryStatus.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {delhiveryStatus.message}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <p className="text-[10px] text-muted-foreground/60">
+            Find your token at Delhivery Dashboard → Settings → API Credentials. Used for order tracking on the Orders page.
+          </p>
+        </div>
       </motion.div>
     </PageTransition>
   );

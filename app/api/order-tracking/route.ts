@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchAllStoresOrders } from '@/lib/shopify-api';
+import { trackShipments, mapDelhiveryToOrderStatus, getDelhiveryToken, type DelhiveryShipment } from '@/lib/delhivery';
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -28,9 +29,17 @@ interface ClassifiedOrder {
   trackingNumber?: string;
   note?: string;
   customerName?: string;
+  // Delhivery enrichment
+  delhiveryStatus?: string;
+  delhiveryInstructions?: string;
+  delhiveryLocation?: string;
+  ndrCount?: number;
+  rtoStartedDate?: string;
+  firstAttemptDate?: string;
 }
 
-function classifyOrderStatus(order: {
+// Fallback classification when Delhivery is not available
+function classifyFromShopify(order: {
   cancelled_at?: string | null;
   fulfillment_status: string | null;
   tags?: string;
@@ -38,8 +47,6 @@ function classifyOrderStatus(order: {
   fulfillments?: Array<{
     status: string;
     shipment_status?: string | null;
-    tracking_company?: string | null;
-    tracking_number?: string | null;
   }>;
 }): DeliveryStatus {
   if (order.cancelled_at) return 'cancelled';
@@ -47,14 +54,14 @@ function classifyOrderStatus(order: {
   const tags = (order.tags ?? '').toLowerCase();
   const note = (order.note ?? '').toLowerCase();
 
-  // Check order notes first — Delhivery/shipping partners update these
+  // Check order notes first
   if (note.includes('in transit for return') || note.includes('rto in transit') || note.includes('in transit to origin')) return 'rto_in_transit';
   if (note.includes('return to origin') || note.includes('rto initiated') || note.includes('rto')) return 'rto';
   if (note.includes('ndr') || note.includes('undelivered') || note.includes('delivery attempted') || note.includes('not delivered')) return 'attempted';
   if (note.includes('delivered')) return 'delivered';
   if (note.includes('out for delivery')) return 'out_for_delivery';
 
-  // Check tags — Indian shipping partners (Shiprocket, Delhivery, etc.) also update these
+  // Check tags
   if (tags.includes('rto-in-transit') || tags.includes('rto in transit') || tags.includes('rto_in_transit')) return 'rto_in_transit';
   if (tags.includes('rto') || tags.includes('return to origin')) return 'rto';
   if (tags.includes('delivered')) return 'delivered';
@@ -62,14 +69,13 @@ function classifyOrderStatus(order: {
   if (tags.includes('in transit') || tags.includes('in-transit') || tags.includes('in_transit')) return 'in_transit';
   if (tags.includes('attempted') || tags.includes('undelivered') || tags.includes('ndr')) return 'attempted';
 
-  // Fallback to fulfillment data
+  // Fulfillment data
   if (!order.fulfillment_status || order.fulfillment_status === 'null') return 'unfulfilled';
 
   const fulfillment = order.fulfillments?.[0];
   if (!fulfillment) {
     return order.fulfillment_status === 'fulfilled' ? 'delivered' : 'unfulfilled';
   }
-
   if (fulfillment.status === 'cancelled') return 'cancelled';
 
   const shipment = fulfillment.shipment_status?.toLowerCase() ?? '';
@@ -78,9 +84,7 @@ function classifyOrderStatus(order: {
   if (shipment === 'in_transit' || shipment === 'confirmed') return 'in_transit';
   if (shipment === 'failure' || shipment === 'attempted_delivery') return 'attempted';
 
-  // If fulfilled but no shipment status, assume delivered
   if (order.fulfillment_status === 'fulfilled') return 'delivered';
-
   return 'in_transit';
 }
 
@@ -129,34 +133,46 @@ export async function GET(request: Request) {
       createdAtMax,
     });
 
-    // Classify each order per store
+    // ── Collect AWBs from fulfilled orders ──────────────────────────
+    const awbToOrderKey = new Map<string, string[]>(); // AWB → [storeName:orderId, ...]
+    for (const { storeName, orders } of ordersData) {
+      for (const order of orders) {
+        const awb = order.fulfillments?.[0]?.tracking_number;
+        if (awb && order.fulfillment_status === 'fulfilled') {
+          const key = `${storeName}:${order.id}`;
+          if (!awbToOrderKey.has(awb)) awbToOrderKey.set(awb, []);
+          awbToOrderKey.get(awb)!.push(key);
+        }
+      }
+    }
+
+    // ── Query Delhivery for real-time statuses ──────────────────────
+    let delhiveryData = new Map<string, DelhiveryShipment>();
+    let delhiveryAvailable = false;
+
+    const token = await getDelhiveryToken();
+    if (token && awbToOrderKey.size > 0) {
+      try {
+        delhiveryData = await trackShipments(Array.from(awbToOrderKey.keys()));
+        delhiveryAvailable = true;
+      } catch (error) {
+        console.error('Delhivery tracking failed, falling back to Shopify:', error);
+      }
+    }
+
+    // ── Classify orders ─────────────────────────────────────────────
     const storeResults: Record<string, {
       storeName: string;
       orders: ClassifiedOrder[];
       totals: {
-        total: number;
-        cod: number;
-        prepaid: number;
-        delivered: number;
-        codDelivered: number;
-        inTransit: number;
-        outForDelivery: number;
-        rto: number;
-        rtoInTransit: number;
-        unfulfilled: number;
-        cancelled: number;
-        attempted: number;
+        total: number; cod: number; prepaid: number; delivered: number; codDelivered: number;
+        inTransit: number; outForDelivery: number; rto: number; rtoInTransit: number;
+        unfulfilled: number; cancelled: number; attempted: number;
       };
       dailyBreakdown: Record<string, {
-        total: number;
-        cod: number;
-        prepaid: number;
-        delivered: number;
-        codDelivered: number;
-        inTransit: number;
-        rto: number;
-        rtoInTransit: number;
-        attempted: number;
+        total: number; cod: number; prepaid: number; delivered: number;
+        codDelivered: number; inTransit: number; rto: number;
+        rtoInTransit: number; attempted: number;
       }>;
     }> = {};
 
@@ -176,12 +192,25 @@ export async function GET(request: Request) {
       for (const order of orders) {
         const isCOD = order.financial_status === 'pending';
         const paymentType = isCOD ? 'cod' : 'prepaid';
-        const status = classifyOrderStatus(order);
         const amount = parseFloat(order.total_price) || 0;
         const dateStr = toISTDateStr(new Date(order.created_at));
         const fulfillment = order.fulfillments?.[0];
+        const awb = fulfillment?.tracking_number ?? undefined;
 
-        classified.push({
+        // Use Delhivery status if available, otherwise fall back to Shopify
+        let status: DeliveryStatus;
+        let dShipment: DelhiveryShipment | undefined;
+
+        if (awb && delhiveryAvailable && delhiveryData.has(awb)) {
+          dShipment = delhiveryData.get(awb)!;
+          status = mapDelhiveryToOrderStatus(dShipment.status) as DeliveryStatus;
+          // Cancelled orders stay cancelled regardless of Delhivery
+          if (order.cancelled_at) status = 'cancelled';
+        } else {
+          status = classifyFromShopify(order);
+        }
+
+        const classifiedOrder: ClassifiedOrder = {
           id: order.id,
           name: order.name,
           date: dateStr,
@@ -189,13 +218,26 @@ export async function GET(request: Request) {
           paymentType,
           status,
           trackingCompany: fulfillment?.tracking_company ?? undefined,
-          trackingNumber: fulfillment?.tracking_number ?? undefined,
+          trackingNumber: awb,
           note: order.note ?? undefined,
           customerName: order.customer
             ? `${order.customer.first_name ?? ''} ${order.customer.last_name ?? ''}`.trim()
             : undefined,
-        });
+        };
 
+        // Enrich with Delhivery data
+        if (dShipment) {
+          classifiedOrder.delhiveryStatus = dShipment.statusRaw;
+          classifiedOrder.delhiveryInstructions = dShipment.instructions;
+          classifiedOrder.delhiveryLocation = dShipment.location;
+          classifiedOrder.ndrCount = dShipment.ndrCount;
+          classifiedOrder.rtoStartedDate = dShipment.rtoStartedDate ?? undefined;
+          classifiedOrder.firstAttemptDate = dShipment.firstAttemptDate ?? undefined;
+        }
+
+        classified.push(classifiedOrder);
+
+        // Aggregate totals
         totals.total++;
         if (isCOD) totals.cod++; else totals.prepaid++;
         if (status === 'delivered') { totals.delivered++; if (isCOD) totals.codDelivered++; }
@@ -243,6 +285,7 @@ export async function GET(request: Request) {
       stores: storeResults,
       combined,
       storeErrors: errors,
+      delhiveryEnabled: delhiveryAvailable,
       rangeStart: createdAtMin,
       rangeEnd: createdAtMax,
     });

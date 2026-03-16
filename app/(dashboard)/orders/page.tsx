@@ -30,6 +30,13 @@ interface ClassifiedOrder {
   trackingNumber?: string;
   note?: string;
   customerName?: string;
+  // Delhivery enrichment
+  delhiveryStatus?: string;
+  delhiveryInstructions?: string;
+  delhiveryLocation?: string;
+  ndrCount?: number;
+  rtoStartedDate?: string;
+  firstAttemptDate?: string;
 }
 
 interface StoreTotals {
@@ -706,10 +713,30 @@ export default function OrderTrackingPage() {
                                   {order.customerName && (
                                     <span className="text-[11px] text-muted-foreground truncate max-w-[150px]">{order.customerName}</span>
                                   )}
+                                  {order.trackingNumber && (
+                                    <span className="text-[10px] text-muted-foreground/60 font-mono">AWB: {order.trackingNumber}</span>
+                                  )}
                                   {order.trackingCompany && (
                                     <span className="text-[10px] text-muted-foreground/60">{order.trackingCompany}</span>
                                   )}
-                                  {(order.status === 'rto' || order.status === 'rto_in_transit' || order.status === 'attempted') && order.note && (
+                                  {/* Delhivery enrichment */}
+                                  {order.delhiveryInstructions && (
+                                    <span className="w-full text-[11px] text-blue-400/80 mt-0.5">
+                                      {order.delhiveryInstructions}
+                                      {order.delhiveryLocation && <span className="text-muted-foreground/50"> · {order.delhiveryLocation}</span>}
+                                    </span>
+                                  )}
+                                  {(order.ndrCount ?? 0) > 0 && (
+                                    <span className="text-[10px] font-medium text-amber-400 bg-amber-500/10 rounded-full px-2 py-0.5">
+                                      {order.ndrCount} delivery attempt{order.ndrCount !== 1 ? 's' : ''}
+                                    </span>
+                                  )}
+                                  {order.rtoStartedDate && (
+                                    <span className="text-[10px] text-red-400/70">
+                                      RTO since {new Date(order.rtoStartedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                    </span>
+                                  )}
+                                  {(order.status === 'rto' || order.status === 'rto_in_transit' || order.status === 'attempted') && order.note && !order.delhiveryInstructions && (
                                     <span className="w-full text-[11px] text-orange-400/80 italic mt-0.5">
                                       Note: {order.note}
                                     </span>
