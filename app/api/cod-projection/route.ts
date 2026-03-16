@@ -146,6 +146,21 @@ export async function GET(request: Request) {
       }
     }
 
+    // ── Debug stats ────────────────────────────────────────────────────
+    const debugStats = {
+      totalOrders: ordersData.reduce((s, d) => s + d.orders.length, 0),
+      codOrders: ordersData.reduce((s, d) => s + d.orders.filter(o => o.financial_status === 'pending').length, 0),
+      fulfilledCod: ordersData.reduce((s, d) => s + d.orders.filter(o => o.financial_status === 'pending' && o.fulfillment_status === 'fulfilled').length, 0),
+      awbCount: awbMap.size,
+      delhiveryTracked: delhiveryData.size,
+      delhiveryDelivered: Array.from(delhiveryData.values()).filter(s => s.deliveryDate).length,
+      delhiveryDeliveredDL: Array.from(delhiveryData.values()).filter(s => s.statusType === 'DL').length,
+      sampleDelivered: Array.from(delhiveryData.values()).filter(s => s.deliveryDate).slice(0, 3).map(s => ({
+        awb: s.awb, status: s.status, deliveryDate: s.deliveryDate?.substring(0, 10), cod: s.codAmount, ref: s.referenceNo,
+      })),
+    };
+    console.log('COD Projection Debug:', JSON.stringify(debugStats));
+
     // ── Per-store historical metrics ──────────────────────────────────
     // Calculate avg delivery days and delivery rate per store
     const storeMetrics: Record<string, {
@@ -386,6 +401,7 @@ export async function GET(request: Request) {
       today: todayStr,
       projectionDays,
       remittanceDays: REMITTANCE_DAYS,
+      debug: debugStats,
       stores: storeProjections,
       combined: {
         dailyProjections: combinedDaily,
