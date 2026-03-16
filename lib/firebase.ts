@@ -72,4 +72,5 @@ export const COLLECTIONS = {
   ADS_PRODUCTS: 'ads_products',
   CHAT_MESSAGES: 'chat_messages',
   BANK_TRANSACTIONS: 'bank_transactions',
+  LOGISTICS_CACHE: 'logistics_cache',
 } as const;

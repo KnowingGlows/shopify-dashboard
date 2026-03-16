@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchAllStoresOrders } from '@/lib/shopify-api';
 import { trackShipments, mapDelhiveryToOrderStatus, getDelhiveryToken, type DelhiveryShipment } from '@/lib/delhivery';
+import { getFirestore, COLLECTIONS } from '@/lib/firebase';
 
 export const maxDuration = 60;
 
@@ -343,6 +344,39 @@ export async function GET(request: Request) {
     const storeAnalytics: Record<string, ReturnType<typeof computeAnalytics>> = {};
     for (const [name, store] of Object.entries(storeResults)) {
       storeAnalytics[name] = computeAnalytics(store.orders);
+    }
+
+    // ── Cache to Firestore for COD projection ─────────────────────────
+    // Save per-store daily delivered COD + analytics so projection page
+    // can read without making any Shopify/Delhivery calls
+    try {
+      const db = getFirestore();
+      if (db) {
+        const todayIST = toISTDateStr(new Date());
+        // Build daily delivered COD per store
+        const perStoreDailyDelivered: Record<string, Record<string, number>> = {};
+        for (const [name, store] of Object.entries(storeResults)) {
+          const dailyDel: Record<string, number> = {};
+          for (const order of store.orders) {
+            if (order.status !== 'delivered') continue;
+            if (order.paymentType !== 'cod') continue;
+            dailyDel[order.date] = (dailyDel[order.date] ?? 0) + order.amount;
+          }
+          perStoreDailyDelivered[name] = dailyDel;
+        }
+
+        await db.collection(COLLECTIONS.LOGISTICS_CACHE).doc('latest').set({
+          updatedAt: Date.now(),
+          date: todayIST,
+          range: { start: createdAtMin, end: createdAtMax },
+          perStoreDailyDelivered,
+          storeAnalytics,
+          combined,
+          analytics,
+        }, { merge: false });
+      }
+    } catch (e) {
+      console.error('Failed to cache logistics data:', e);
     }
 
     return NextResponse.json({
