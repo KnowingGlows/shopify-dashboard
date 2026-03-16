@@ -354,13 +354,24 @@ export async function GET(request: Request) {
       if (db) {
         const todayIST = toISTDateStr(new Date());
         // Build daily delivered COD per store
+        // Use Delhivery orderType to identify COD (Shopify changes pending→paid after remittance)
         const perStoreDailyDelivered: Record<string, Record<string, number>> = {};
         for (const [name, store] of Object.entries(storeResults)) {
           const dailyDel: Record<string, number> = {};
           for (const order of store.orders) {
             if (order.status !== 'delivered') continue;
-            if (order.paymentType !== 'cod') continue;
-            dailyDel[order.date] = (dailyDel[order.date] ?? 0) + order.amount;
+            const awb = order.trackingNumber;
+            const dShip = awb ? delhiveryData.get(awb) : null;
+            // COD check: use Delhivery orderType if available, else Shopify paymentType
+            const isCOD = dShip ? dShip.orderType === 'COD' : order.paymentType === 'cod';
+            if (!isCOD) continue;
+            // Use Delhivery codAmount if available, else order amount
+            const amount = (dShip && dShip.codAmount > 0) ? dShip.codAmount : order.amount;
+            // Use Delhivery delivery date for accurate remittance calculation
+            const deliveryDate = dShip?.deliveryDate
+              ? toISTDateStr(new Date(dShip.deliveryDate))
+              : order.date;
+            dailyDel[deliveryDate] = (dailyDel[deliveryDate] ?? 0) + amount;
           }
           perStoreDailyDelivered[name] = dailyDel;
         }
