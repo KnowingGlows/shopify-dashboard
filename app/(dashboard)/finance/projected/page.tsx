@@ -5,14 +5,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   RefreshCw, Loader2, DollarSign, Wallet, Plus,
-  X, ArrowRight, Clock, Calendar,
+  X, ArrowRight, Clock, Calendar, Store,
   TrendingDown, TrendingUp,
   ArrowDown, BanknoteIcon, Settings2,
-  Check, ToggleLeft, ToggleRight,
+  Check, ToggleLeft, ToggleRight, ShieldCheck, Truck, AlertTriangle,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar } from 'recharts';
+import { cn } from '@/lib/utils';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,38 @@ interface IncomeEntry {
   amount: number;
   date: string;
   endDate?: string;
+}
+
+interface CodDailyProjection {
+  date: string;
+  confirmed: number;
+  highConf: number;
+  mediumConf: number;
+  lowConf: number;
+  total: number;
+  orderCount: number;
+}
+
+interface CodStoreProjection {
+  storeName: string;
+  dailyProjections: Record<string, CodDailyProjection>;
+  summary: {
+    totalConfirmed: number;
+    totalProjected: number;
+    totalOrders: number;
+    avgDeliveryDays: number | null;
+    deliveryRate: number;
+    ndrResolutionRate: number;
+  };
+}
+
+interface CodProjectionData {
+  stores: Record<string, CodStoreProjection>;
+  combined: {
+    dailyProjections: Record<string, CodDailyProjection>;
+    summary: { totalConfirmed: number; totalProjected: number; totalOrders: number };
+  };
+  remittanceDays: number;
 }
 
 interface CODWeek {
@@ -107,6 +140,8 @@ export default function ProjectedFinancePage() {
   const [income, setIncome] = useState<IncomeEntry[]>([]);
   const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
   const [plannedExpenses, setPlannedExpenses] = useState<Array<{ id: string; category: string; description: string; amount: number; date: string }>>([]);
+  const [codProjection, setCodProjection] = useState<CodProjectionData | null>(null);
+  const [codStore, setCodStore] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -117,11 +152,12 @@ export default function ProjectedFinancePage() {
   const fetchAll = useCallback(async () => {
     try {
       const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
-      const [res, plannedRes] = await Promise.all([
+      const [res, plannedRes, codRes] = await Promise.all([
         fetch(`/api/finance?action=combined&days=${days}`),
         fetch('/api/finance?action=planned'),
+        fetch(`/api/cod-projection?days=${days}`),
       ]);
-      const [data, plannedData] = await Promise.all([res.json(), plannedRes.json()]);
+      const [data, plannedData, codData] = await Promise.all([res.json(), plannedRes.json(), codRes.json()]);
       setSummary(data.summary);
       setCodWeeks(data.codWeeks ?? []);
       setSpending(data.spending);
@@ -130,6 +166,7 @@ export default function ProjectedFinancePage() {
       setExpenses(data.expenses ?? []);
       setIncome(data.income ?? []);
       setPlannedExpenses(plannedData.planned ?? []);
+      if (codData.success) setCodProjection(codData);
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -146,6 +183,42 @@ export default function ProjectedFinancePage() {
     if (dateRange === '90d') return 90;
     return 14;
   }, [dateRange]);
+
+  // ── COD Projection data ──────────────────────────────────────────────
+  const codChartData = useMemo(() => {
+    if (!codProjection) return [];
+    const source = codStore === 'all'
+      ? codProjection.combined.dailyProjections
+      : codProjection.stores[codStore]?.dailyProjections ?? {};
+    return Object.values(source)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((d) => ({
+        date: d.date,
+        label: fmtMonthDay(d.date),
+        Confirmed: d.confirmed,
+        'High Conf': d.highConf,
+        'Medium Conf': d.mediumConf,
+        'Low Conf': d.lowConf,
+        total: d.total,
+        orders: d.orderCount,
+      }));
+  }, [codProjection, codStore]);
+
+  const codSummary = useMemo(() => {
+    if (!codProjection) return null;
+    if (codStore === 'all') return codProjection.combined.summary;
+    return codProjection.stores[codStore]?.summary ?? null;
+  }, [codProjection, codStore]);
+
+  const codStoreNames = useMemo(() => {
+    if (!codProjection) return [];
+    return Object.keys(codProjection.stores);
+  }, [codProjection]);
+
+  const codStoreSummary = useMemo(() => {
+    if (!codProjection || codStore !== 'all') return null;
+    return codProjection.stores;
+  }, [codProjection, codStore]);
 
   // Build daily outflow map from PLANNED expenses only
   const dailyOutflows = useMemo(() => {
@@ -293,81 +366,168 @@ export default function ProjectedFinancePage() {
         );
       })()}
 
-      {/* ═══ Projected Cash-In ═══ */}
+      {/* ═══ COD Cashflow Projection (Delhivery-powered) ═══ */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        {(() => {
-          const hasData = totalInflow > 0 || (currentWeek && currentWeek.codRevenue > 0);
-          if (!hasData) return (
-            <div className="rounded-xl border border-border bg-card px-4 py-8 text-center">
-              <Clock className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
-              <p className="text-[12px] text-muted-foreground">No inflow data yet. Enter daily P&L data to see projections.</p>
-            </div>
-          );
-          return (
-          <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <BanknoteIcon className="h-5 w-5 text-emerald-400" />
-                    <h2 className="text-base font-semibold text-foreground">Projected Cash-In</h2>
-                  </div>
+        <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.06] via-card to-card">
+          <div className="p-6 space-y-4">
+            {/* Header */}
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <BanknoteIcon className="h-5 w-5 text-emerald-400" />
+                  <h2 className="text-base font-semibold text-foreground">COD Bank Deposits</h2>
                 </div>
+                <p className="text-[10px] text-muted-foreground/60">Projected daily deposits from Delhivery COD · D+2 remittance</p>
+              </div>
+              {codSummary && (
                 <div className="text-right">
                   <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Projected</p>
                   <p className="text-3xl font-bold text-emerald-400 tabular-nums">
-                    <AnimatedNumber value={totalInflow} formatter={formatINR} />
+                    <AnimatedNumber value={codSummary.totalProjected} formatter={formatINR} />
                   </p>
+                  {codSummary.totalConfirmed > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      <span className="text-emerald-400">{formatINR(codSummary.totalConfirmed)}</span> confirmed
+                    </p>
+                  )}
                 </div>
-              </div>
-
-              <div>
-                {inflowChartData.length > 0 ? (
-                  <div className="h-52">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={inflowChartData} margin={{ top: 8, right: 20, left: 20, bottom: 24 }}>
-                        <defs>
-                          <linearGradient id="depositGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.35} />
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
-                          </linearGradient>
-                        </defs>
-                        <XAxis
-                          dataKey="label"
-                          interval={chartDays <= 30 ? 0 : 6}
-                          tick={({ x, y, payload }) => (
-                            <text
-                              x={x as number} y={(y as number) + 14}
-                              textAnchor="middle"
-                              fontSize={chartDays <= 14 ? 10 : chartDays <= 30 ? 8 : 9}
-                              fontWeight={payload.value === fmtMonthDay(todayStr) ? 700 : 500}
-                              fill={payload.value === fmtMonthDay(todayStr) ? '#a78bfa' : '#9ca3af'}
-                            >
-                              {payload.value}
-                            </text>
-                          )}
-                          axisLine={false}
-                          tickLine={false}
-                        />
-                        <Tooltip
-                          content={({ active, payload }) => active && payload?.length ? (
-                            <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
-                              <span className="text-muted-foreground text-[10px] mr-1.5">Projected</span>{formatINR(payload[0].value as number)}
-                            </div>
-                          ) : null}
-                        />
-                        <Area type="monotone" dataKey="deposit" stroke="#10b981" strokeWidth={1.5} fill="url(#depositGrad)" dot={false} activeDot={{ r: 3, fill: '#10b981' }} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="h-40 flex items-center justify-center text-[11px] text-muted-foreground/40">No data yet</div>
-                )}
-              </div>
+              )}
             </div>
+
+            {/* Store Tabs */}
+            {codStoreNames.length > 1 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                <button onClick={() => setCodStore('all')}
+                  className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition whitespace-nowrap',
+                    codStore === 'all' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'border border-border bg-card/40 text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Store className="h-3 w-3" /> All Stores
+                </button>
+                {codStoreNames.map((name) => (
+                  <button key={name} onClick={() => setCodStore(name)}
+                    className={cn('rounded-lg px-3 py-1.5 text-[11px] font-medium transition whitespace-nowrap',
+                      codStore === name ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'border border-border bg-card/40 text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Confidence legend */}
+            <div className="flex items-center gap-4 text-[9px]">
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />Confirmed (delivered)</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-cyan-500" />High (out for delivery)</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-500" />Medium (in transit)</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500/60" />Low (NDR)</span>
+            </div>
+
+            {/* Stacked Bar Chart */}
+            {codChartData.length > 0 ? (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={codChartData} margin={{ top: 8, right: 4, left: -10, bottom: 24 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                    <XAxis
+                      dataKey="label"
+                      interval={chartDays <= 14 ? 0 : chartDays <= 30 ? 1 : 6}
+                      tick={({ x, y, payload }) => {
+                        const isToday = payload.value === fmtMonthDay(todayStr);
+                        return (
+                          <text x={x as number} y={(y as number) + 14} textAnchor="middle"
+                            fontSize={chartDays <= 14 ? 10 : 8}
+                            fontWeight={isToday ? 700 : 400}
+                            fill={isToday ? '#a78bfa' : '#71717a'}
+                          >{payload.value}</text>
+                        );
+                      }}
+                      axisLine={false} tickLine={false}
+                    />
+                    <YAxis tick={{ fill: '#71717a', fontSize: 9 }} axisLine={false} tickLine={false}
+                      tickFormatter={(v) => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)} />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        const total = payload.reduce((s, p) => s + ((p.value as number) ?? 0), 0);
+                        const orders = (payload[0]?.payload as Record<string, number>)?.orders ?? 0;
+                        return (
+                          <div className="rounded-lg border border-border bg-[#0c0c0e]/95 px-3 py-2 shadow-xl backdrop-blur-sm text-[11px]">
+                            <p className="font-medium text-muted-foreground mb-1">{label} · {orders} orders</p>
+                            <p className="text-[13px] font-bold text-emerald-400 mb-1">{formatINR(total)}</p>
+                            {payload.map((p) => (
+                              (p.value as number) > 0 && (
+                                <div key={p.name} className="flex items-center gap-1.5">
+                                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: p.color as string }} />
+                                  <span className="text-muted-foreground">{p.name}:</span>
+                                  <span className="text-foreground font-medium">{formatINR(p.value as number)}</span>
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar dataKey="Confirmed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} animationDuration={800} />
+                    <Bar dataKey="High Conf" stackId="a" fill="#06b6d4" radius={[0, 0, 0, 0]} animationDuration={800} animationBegin={100} />
+                    <Bar dataKey="Medium Conf" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} animationDuration={800} animationBegin={200} />
+                    <Bar dataKey="Low Conf" stackId="a" fill="#d97706" radius={[3, 3, 0, 0]} animationDuration={800} animationBegin={300} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-40 flex flex-col items-center justify-center text-center">
+                <Clock className="h-6 w-6 text-muted-foreground/20 mb-2" />
+                <p className="text-[12px] text-muted-foreground/50">No COD orders in pipeline</p>
+              </div>
+            )}
+
+            {/* Per-store summary when viewing all */}
+            {codStore === 'all' && codStoreSummary && Object.keys(codStoreSummary).length > 1 && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {Object.values(codStoreSummary).map((s) => (
+                  <button
+                    key={s.storeName}
+                    onClick={() => setCodStore(s.storeName)}
+                    className="rounded-xl border border-border/50 bg-card/30 p-3 text-left transition hover:bg-card/60 hover:border-border space-y-1"
+                  >
+                    <p className="text-[10px] font-medium text-muted-foreground truncate">{s.storeName}</p>
+                    <p className="text-lg font-bold text-emerald-400">{formatINR(s.summary.totalProjected)}</p>
+                    <div className="flex items-center gap-2 text-[9px] text-muted-foreground/60">
+                      <span>{s.summary.totalOrders} orders</span>
+                      {s.summary.avgDeliveryDays && <span>· {s.summary.avgDeliveryDays}d avg</span>}
+                      <span>· {s.summary.deliveryRate}% del</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Single store metrics */}
+            {codStore !== 'all' && codProjection?.stores[codStore]?.summary && (() => {
+              const ss = codProjection.stores[codStore].summary;
+              return (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {([
+                    { label: 'Confirmed', value: formatINR(ss.totalConfirmed), icon: ShieldCheck, color: 'text-emerald-400' },
+                    { label: 'Avg Delivery', value: ss.avgDeliveryDays ? `${ss.avgDeliveryDays}d` : '—', icon: Truck, color: 'text-blue-400' },
+                    { label: 'Delivery Rate', value: `${ss.deliveryRate}%`, icon: TrendingUp, color: 'text-cyan-400' },
+                    { label: 'NDR Resolution', value: `${ss.ndrResolutionRate}%`, icon: AlertTriangle, color: 'text-amber-400' },
+                  ]).map(({ label, value, icon: Icon, color }) => (
+                    <div key={label} className="rounded-xl border border-border/50 bg-card/30 p-3 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Icon className={cn('h-3 w-3', color)} />
+                        <p className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</p>
+                      </div>
+                      <p className={cn('text-lg font-bold', color)}>{value}</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
-          );
-        })()}
+        </div>
       </motion.div>
 
       {/* ═══ Spending Power ═══ */}

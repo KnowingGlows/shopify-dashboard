@@ -38,7 +38,8 @@ export interface DelhiveryShipment {
   deliveryDate: string | null;
   firstAttemptDate: string | null;
   expectedReturnDate: string | null;
-  ndrCount: number;          // Number of delivery attempts
+  ndrCount: number;          // Number of failed delivery events
+  dispatchCount: number;     // Actual out-for-delivery attempts (from scans)
   orderType: string;         // "COD" | "Pre-paid"
   referenceNo: string;       // Shopify order number
   origin: string;
@@ -231,6 +232,12 @@ export async function trackShipments(awbs: string[]): Promise<Map<string, Delhiv
           }
         }
 
+        // Count actual out-for-delivery attempts from scans
+        let dispatchCount = 0;
+        for (const scan of scans) {
+          if ((scan.ScanDetail?.Scan ?? '').toLowerCase() === 'dispatched') dispatchCount++;
+        }
+
         results.set(s.AWB, {
           awb: s.AWB,
           status: classifyDelhiveryStatus({ ...s, Scans: s.Scans }),
@@ -246,6 +253,7 @@ export async function trackShipments(awbs: string[]): Promise<Map<string, Delhiv
           firstAttemptDate: s.FirstAttemptDate ?? null,
           expectedReturnDate: s.ExpectedReturnDate ?? null,
           ndrCount,
+          dispatchCount,
           orderType: s.OrderType ?? '',
           referenceNo: s.ReferenceNo ?? '',
           origin: s.Origin ?? '',

@@ -34,6 +34,7 @@ interface ClassifiedOrder {
   delhiveryInstructions?: string;
   delhiveryLocation?: string;
   ndrCount?: number;
+  dispatchCount?: number;
   rtoStartedDate?: string;
   firstAttemptDate?: string;
 }
@@ -231,6 +232,7 @@ export async function GET(request: Request) {
           classifiedOrder.delhiveryInstructions = dShipment.instructions;
           classifiedOrder.delhiveryLocation = dShipment.location;
           classifiedOrder.ndrCount = dShipment.ndrCount;
+          classifiedOrder.dispatchCount = dShipment.dispatchCount;
           classifiedOrder.rtoStartedDate = dShipment.rtoStartedDate ?? undefined;
           classifiedOrder.firstAttemptDate = dShipment.firstAttemptDate ?? undefined;
         }
@@ -283,9 +285,9 @@ export async function GET(request: Request) {
     // ── Analytics / Insights ──────────────────────────────────────────
     const allOrders = Object.values(storeResults).flatMap((s) => s.orders);
 
-    // FAD% — First Attempt Delivery (delivered orders where firstAttemptDate == deliveryDate or ndrCount == 0)
-    const deliveredWithDelhivery = allOrders.filter((o) => o.status === 'delivered' && o.firstAttemptDate);
-    const fadCount = deliveredWithDelhivery.filter((o) => (o.ndrCount ?? 0) === 0).length;
+    // FAD% — First Attempt Delivery (delivered orders where dispatchCount === 1, meaning only one OFD attempt)
+    const deliveredWithDelhivery = allOrders.filter((o) => o.status === 'delivered' && o.dispatchCount != null);
+    const fadCount = deliveredWithDelhivery.filter((o) => (o.dispatchCount ?? 0) <= 1).length;
     const fadPct = deliveredWithDelhivery.length > 0 ? Math.round(fadCount / deliveredWithDelhivery.length * 1000) / 10 : null;
 
     // Avg delivery days — from order creation to delivery (using Delhivery deliveryDate)
