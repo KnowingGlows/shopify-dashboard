@@ -3,6 +3,8 @@ import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchAllStoresOrders } from '@/lib/shopify-api';
 import { trackShipments, mapDelhiveryToOrderStatus, getDelhiveryToken, type DelhiveryShipment } from '@/lib/delhivery';
 
+export const maxDuration = 60;
+
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 

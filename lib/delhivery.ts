@@ -262,7 +262,7 @@ export async function trackShipments(awbs: string[]): Promise<Map<string, Delhiv
     batches.push(awbs.slice(i, i + BATCH_SIZE));
   }
 
-  const CONCURRENCY = 3;
+  const CONCURRENCY = 5;
   for (let i = 0; i < batches.length; i += CONCURRENCY) {
     const chunk = batches.slice(i, i + CONCURRENCY);
     const batchResults = await Promise.all(chunk.map((b) => fetchBatch(token, b)));

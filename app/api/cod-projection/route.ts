@@ -3,6 +3,8 @@ import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchAllStoresOrders } from '@/lib/shopify-api';
 import { trackShipments, getDelhiveryToken, type DelhiveryShipment } from '@/lib/delhivery';
 
+export const maxDuration = 60; // Allow up to 60s on Vercel Pro
+
 /**
  * COD Cashflow Projection API
  *
@@ -124,10 +126,11 @@ export async function GET(request: Request) {
 
     const { ordersData } = await fetchAllStoresOrders(stores, { createdAtMin, createdAtMax });
 
-    // ── Collect AWBs (all fulfilled orders — we'll use Delhivery OrderType to filter COD) ──
+    // ── Collect AWBs (all fulfilled, Delhivery will tell us which are COD) ──
     const awbMap = new Map<string, { storeName: string; orderId: string }>();
     for (const { storeName, orders } of ordersData) {
       for (const order of orders) {
+        if (order.cancelled_at) continue;
         const awb = order.fulfillments?.[0]?.tracking_number;
         if (awb && order.fulfillment_status === 'fulfilled') {
           awbMap.set(awb, { storeName, orderId: order.id });
