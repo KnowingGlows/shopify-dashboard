@@ -280,10 +280,94 @@ export async function GET(request: Request) {
       }
     }
 
+    // ── Analytics / Insights ──────────────────────────────────────────
+    const allOrders = Object.values(storeResults).flatMap((s) => s.orders);
+
+    // FAD% — First Attempt Delivery (delivered orders where firstAttemptDate == deliveryDate or ndrCount == 0)
+    const deliveredWithDelhivery = allOrders.filter((o) => o.status === 'delivered' && o.firstAttemptDate);
+    const fadCount = deliveredWithDelhivery.filter((o) => (o.ndrCount ?? 0) === 0).length;
+    const fadPct = deliveredWithDelhivery.length > 0 ? Math.round(fadCount / deliveredWithDelhivery.length * 1000) / 10 : null;
+
+    // Avg delivery days — from order creation to delivery (using Delhivery deliveryDate)
+    const deliveryDays: number[] = [];
+    const codDeliveryDays: number[] = [];
+    const prepaidDeliveryDays: number[] = [];
+
+    for (const order of allOrders) {
+      if (order.status !== 'delivered') continue;
+      // Use Delhivery data if available
+      const awb = order.trackingNumber;
+      const dShip = awb ? delhiveryData.get(awb) : null;
+      if (dShip?.deliveryDate) {
+        const created = new Date(order.date + 'T00:00:00+05:30').getTime();
+        const delivered = new Date(dShip.deliveryDate).getTime();
+        const days = Math.max(0, Math.round((delivered - created) / DAY_MS));
+        if (days <= 30) { // filter outliers
+          deliveryDays.push(days);
+          if (order.paymentType === 'cod') codDeliveryDays.push(days);
+          else prepaidDeliveryDays.push(days);
+        }
+      }
+    }
+
+    const avg = (arr: number[]) => arr.length > 0 ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 10) / 10 : null;
+
+    // NDR resolution rate — orders that had NDR but eventually delivered
+    const ndrOrders = allOrders.filter((o) => (o.ndrCount ?? 0) > 0);
+    const ndrResolved = ndrOrders.filter((o) => o.status === 'delivered').length;
+    const ndrResolutionRate = ndrOrders.length > 0 ? Math.round(ndrResolved / ndrOrders.length * 1000) / 10 : null;
+
+    // Avg NDR attempts before delivery
+    const ndrDelivered = ndrOrders.filter((o) => o.status === 'delivered');
+    const avgNdrAttempts = ndrDelivered.length > 0
+      ? Math.round(ndrDelivered.reduce((s, o) => s + (o.ndrCount ?? 0), 0) / ndrDelivered.length * 10) / 10
+      : null;
+
+    // Shipment value at risk (in-transit RTO + attempted orders value)
+    const atRiskValue = allOrders
+      .filter((o) => o.status === 'rto_in_transit' || o.status === 'rto' || o.status === 'attempted')
+      .reduce((s, o) => s + o.amount, 0);
+
+    // COD amount pending delivery (in-transit + OFD COD orders)
+    const codPendingDelivery = allOrders
+      .filter((o) => o.paymentType === 'cod' && (o.status === 'in_transit' || o.status === 'out_for_delivery'))
+      .reduce((s, o) => s + o.amount, 0);
+
+    // COD amount delivered but pending bank deposit (delivered COD × 7-8 day delay)
+    const codDeliveredAmount = allOrders
+      .filter((o) => o.paymentType === 'cod' && o.status === 'delivered')
+      .reduce((s, o) => s + o.amount, 0);
+
+    // Prepaid delivered (already in bank)
+    const prepaidDeliveredAmount = allOrders
+      .filter((o) => o.paymentType === 'prepaid' && o.status === 'delivered')
+      .reduce((s, o) => s + o.amount, 0);
+
+    const analytics = {
+      fadPct,
+      fadCount,
+      fadTotal: deliveredWithDelhivery.length,
+      avgDeliveryDays: avg(deliveryDays),
+      avgCodDeliveryDays: avg(codDeliveryDays),
+      avgPrepaidDeliveryDays: avg(prepaidDeliveryDays),
+      ndrResolutionRate,
+      avgNdrAttempts,
+      totalNdrOrders: ndrOrders.length,
+      atRiskValue,
+      codPendingDelivery,
+      codDeliveredAmount,
+      prepaidDeliveredAmount,
+      // Revenue breakdown
+      totalRevenue: allOrders.reduce((s, o) => s + o.amount, 0),
+      deliveredRevenue: allOrders.filter((o) => o.status === 'delivered').reduce((s, o) => s + o.amount, 0),
+      lostRevenue: allOrders.filter((o) => o.status === 'rto' || o.status === 'cancelled').reduce((s, o) => s + o.amount, 0),
+    };
+
     return NextResponse.json({
       success: true,
       stores: storeResults,
       combined,
+      analytics,
       storeErrors: errors,
       delhiveryEnabled: delhiveryAvailable,
       rangeStart: createdAtMin,
