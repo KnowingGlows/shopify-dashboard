@@ -33,13 +33,13 @@ const RESULT_CONFIG: Record<string, { color: string; bg: string; icon: string }>
   Scaled: { color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30', icon: '🚀' },
 };
 
-function getBatchTimeline(createdAt: string) {
+function getBatchTimeline(startedAt: string) {
   const now = Date.now();
-  const created = new Date(createdAt).getTime();
-  const daysSince = Math.floor((now - created) / 86400000);
+  const started = new Date(startedAt).getTime();
+  const daysSince = Math.floor((now - started) / 86400000);
   const progress = Math.min(daysSince / 7, 1);
   const isComplete = daysSince >= 7;
-  const nextBatchDate = new Date(created + 7 * 86400000);
+  const nextBatchDate = new Date(started + 7 * 86400000);
   return { daysSince, progress, isComplete, nextBatchDate };
 }
 
@@ -179,11 +179,14 @@ export default function ProductAdsPage() {
   const decided = winners + losers;
   const hitRate = decided > 0 ? Math.round((winners / decided) * 100) : 0;
 
-  // Next batch timeline from latest entry
+  // Next batch timeline — only starts counting when a batch is marked as Testing
   const latestTimeline = useMemo(() => {
-    if (entries.length === 0) return null;
-    const sorted = [...entries].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    return getBatchTimeline(sorted[0].createdAt);
+    // Find most-recently-updated batch that has been marked as Testing (or beyond)
+    const activeBatches = entries.filter((e) => ['Testing', 'Winner', 'Loser', 'Scaled'].includes(e.creativeBatchResult));
+    if (activeBatches.length === 0) return null;
+    const sorted = [...activeBatches].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    // Use updatedAt as the countdown start (when the batch was marked as Testing)
+    return getBatchTimeline(sorted[0].updatedAt);
   }, [entries]);
 
   return (

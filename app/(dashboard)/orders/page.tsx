@@ -5,9 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
   Package, Truck, CheckCircle2, AlertTriangle, RotateCcw, XCircle,
-  Calendar, ChevronDown, ChevronRight, Loader2, Store,
+  Calendar, ChevronDown, Loader2, Store,
   Clock, ShieldAlert, Timer, Wallet,
-  BarChart3,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -98,6 +97,18 @@ function pctNum(num: number, den: number): number {
   return Math.round(num / den * 1000) / 10;
 }
 
+/** Returns the "decade" date range based on where (today - 7 days) falls */
+function getDecadeRange(): { start: string; end: string } {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+  const d7Str = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(sevenDaysAgo);
+  const [y, m, d] = d7Str.split('-').map(Number);
+  if (d <= 10) return { start: `${y}-${pad(m)}-01`, end: `${y}-${pad(m)}-10` };
+  if (d <= 20) return { start: `${y}-${pad(m)}-11`, end: `${y}-${pad(m)}-20` };
+  const lastDay = new Date(y, m, 0).getDate();
+  return { start: `${y}-${pad(m)}-21`, end: `${y}-${pad(m)}-${pad(lastDay)}` };
+}
+
 // ── Animated Number ──────────────────────────────────────────────────
 function AnimNum({ value, suffix = '' }: { value: number; suffix?: string }) {
   const [display, setDisplay] = useState(0);
@@ -147,9 +158,10 @@ function InsightCard({ label, value, suffix, sub, icon: Icon, color, delay }: {
 
 // ── Main Page ────────────────────────────────────────────────────────
 export default function LogisticsPage() {
-  const [range, setRange] = useState<DateRange>('7d');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const { start: initStart, end: initEnd } = getDecadeRange();
+  const [range, setRange] = useState<DateRange>('custom');
+  const [customStart, setCustomStart] = useState(initStart);
+  const [customEnd, setCustomEnd] = useState(initEnd);
   const [loading, setLoading] = useState(true);
   const [stores, setStores] = useState<Record<string, StoreData>>({});
   const [combined, setCombined] = useState<StoreTotals | null>(null);
@@ -435,21 +447,6 @@ export default function LogisticsPage() {
               </div>
             </motion.div>
 
-            {/* ─── Day-wise Link ──────────────────────────────────────── */}
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-              <Link href="/orders/breakdown"
-                className="flex items-center justify-between rounded-xl border border-border bg-card/60 backdrop-blur-sm px-4 py-3 transition hover:bg-card/80 group"
-              >
-                <div className="flex items-center gap-3">
-                  <BarChart3 className="h-4 w-4 text-primary" />
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Day-wise Breakdown</p>
-                    <p className="text-[11px] text-muted-foreground">View orders by date with charts & Delhivery tracking</p>
-                  </div>
-                </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground transition group-hover:text-primary group-hover:translate-x-0.5" />
-              </Link>
-            </motion.div>
 
           </div>
         )}

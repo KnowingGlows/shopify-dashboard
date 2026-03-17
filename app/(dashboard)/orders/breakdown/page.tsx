@@ -63,6 +63,17 @@ function pct(num: number, den: number): string {
   return (num / den * 100).toFixed(1) + '%';
 }
 
+function getDecadeRange(): { start: string; end: string } {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+  const d7Str = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(sevenDaysAgo);
+  const [y, m, d] = d7Str.split('-').map(Number);
+  if (d <= 10) return { start: `${y}-${pad(m)}-01`, end: `${y}-${pad(m)}-10` };
+  if (d <= 20) return { start: `${y}-${pad(m)}-11`, end: `${y}-${pad(m)}-20` };
+  const lastDay = new Date(y, m, 0).getDate();
+  return { start: `${y}-${pad(m)}-21`, end: `${y}-${pad(m)}-${pad(lastDay)}` };
+}
+
 function formatDateFull(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00+05:30').toLocaleDateString('en-IN', {
     timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', weekday: 'short',
@@ -80,9 +91,10 @@ function StatusBadge({ status }: { status: DeliveryStatus }) {
 }
 
 export default function BreakdownPage() {
-  const [range, setRange] = useState<DateRange>('7d');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const { start: initStart, end: initEnd } = getDecadeRange();
+  const [range, setRange] = useState<DateRange>('custom');
+  const [customStart, setCustomStart] = useState(initStart);
+  const [customEnd, setCustomEnd] = useState(initEnd);
   const [loading, setLoading] = useState(true);
   const [stores, setStores] = useState<Record<string, StoreData>>({});
   const [activeStore, setActiveStore] = useState<string>('all');

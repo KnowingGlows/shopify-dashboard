@@ -9,8 +9,11 @@ import {
   TrendingDown, TrendingUp,
   ArrowDown, BanknoteIcon, Settings2,
   Check, ToggleLeft, ToggleRight,
+  Save, Trash2,
+  ShoppingCart, Package, Megaphone, Wrench, Users, Repeat, Receipt,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
+import { DatePicker } from '@/components/date-picker';
 import { formatINR } from '@/lib/currency-converter';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
@@ -96,9 +99,47 @@ function fmtMonthDay(dateStr: string): string {
   return `${m}/${day}`;
 }
 
+// ── Planning constants ────────────────────────────────────────────────────────
+
+interface PlannedExpense {
+  id: string;
+  category: string;
+  description: string;
+  amount: number;
+  date: string;
+  createdAt: string;
+}
+
+const PLAN_CATEGORIES = [
+  { value: 'reinvestment', label: 'Reinvestment', icon: TrendingUp, color: 'violet' },
+  { value: 'inventory', label: 'Inventory Restock', icon: Package, color: 'orange' },
+  { value: 'marketing', label: 'Marketing / Ads', icon: Megaphone, color: 'pink' },
+  { value: 'product-testing', label: 'Product Testing', icon: ShoppingCart, color: 'emerald' },
+  { value: 'tools', label: 'Tools / Software', icon: Wrench, color: 'cyan' },
+  { value: 'hiring', label: 'Hiring / Team', icon: Users, color: 'blue' },
+  { value: 'recurring', label: 'Recurring Setup', icon: Repeat, color: 'amber' },
+  { value: 'other', label: 'Other', icon: Receipt, color: 'zinc' },
+];
+
+const CATEGORY_COLORS: Record<string, { text: string; bg: string; border: string }> = {
+  reinvestment: { text: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/30' },
+  inventory: { text: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
+  marketing: { text: 'text-pink-400', bg: 'bg-pink-500/10', border: 'border-pink-500/30' },
+  'product-testing': { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
+  tools: { text: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30' },
+  hiring: { text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
+  recurring: { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' },
+  other: { text: 'text-zinc-400', bg: 'bg-zinc-500/10', border: 'border-zinc-500/30' },
+};
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
+function getToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+}
+
 export default function ProjectedFinancePage() {
+  const [activeTab, setActiveTab] = useState<'projection' | 'planning'>('projection');
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [codWeeks, setCodWeeks] = useState<CODWeek[]>([]);
   const [spending, setSpending] = useState<SpendingPower | null>(null);
@@ -110,6 +151,17 @@ export default function ProjectedFinancePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+
+  // Planning tab state
+  const [planned, setPlanned] = useState<PlannedExpense[]>([]);
+  const [loadingPlanned, setLoadingPlanned] = useState(false);
+  const [showPlanForm, setShowPlanForm] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
+  const [planCategory, setPlanCategory] = useState('reinvestment');
+  const [planDescription, setPlanDescription] = useState('');
+  const [planAmount, setPlanAmount] = useState('');
+  const [planDate, setPlanDate] = useState(getToday());
 
   // Date range filter — 14d default (projection window)
   const [dateRange, setDateRange] = useState<'14d' | '30d' | '7d' | '90d'>('14d');
@@ -138,6 +190,51 @@ export default function ProjectedFinancePage() {
   }, [dateRange]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const fetchPlanned = useCallback(async () => {
+    setLoadingPlanned(true);
+    try {
+      const res = await fetch('/api/finance?action=planned');
+      const data = await res.json();
+      setPlanned(data.planned ?? []);
+    } catch { setPlanned([]); }
+    finally { setLoadingPlanned(false); }
+  }, []);
+
+  useEffect(() => { if (activeTab === 'planning') fetchPlanned(); }, [activeTab, fetchPlanned]);
+
+  const addPlanned = async () => {
+    if (!planAmount || !planCategory) return;
+    setSavingPlan(true);
+    try {
+      const res = await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add-planned', category: planCategory, description: planDescription, amount: Number(planAmount), date: planDate }),
+      });
+      const data = await res.json();
+      if (data.planned) {
+        setPlanned((prev) => [...prev, data.planned].sort((a, b) => a.date.localeCompare(b.date)));
+        setPlanDescription('');
+        setPlanAmount('');
+        setShowPlanForm(false);
+      }
+    } catch { /* fail silently */ }
+    finally { setSavingPlan(false); }
+  };
+
+  const deletePlanned = async (id: string) => {
+    setDeletingPlanId(id);
+    try {
+      await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-planned', id }),
+      });
+      setPlanned((prev) => prev.filter((p) => p.id !== id));
+    } catch { /* fail silently */ }
+    finally { setDeletingPlanId(null); }
+  };
 
   const todayStr = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()), []);
 
@@ -238,28 +335,63 @@ export default function ProjectedFinancePage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Projected Finance</h1>
-          <p className="text-[11px] text-muted-foreground">Forward-looking projections & planning</p>
+          <h1 className="text-lg font-semibold text-foreground">COD Projection</h1>
+          <p className="text-[11px] text-muted-foreground">Forward-looking projections & expense planning</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/finance/projected/entry"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary/90 px-4 py-2 text-[12px] font-medium text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:bg-primary hover:shadow-md hover:shadow-primary/25 active:scale-[0.97]"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Daily P&L
-          </Link>
-          <button
-            onClick={() => { setRefreshing(true); fetchAll(); }}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-[12px] font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
+          {activeTab === 'projection' && (
+            <>
+              <Link
+                href="/finance/projected/entry"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary/90 px-4 py-2 text-[12px] font-medium text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:bg-primary hover:shadow-md hover:shadow-primary/25 active:scale-[0.97]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Daily P&L
+              </Link>
+              <button
+                onClick={() => { setRefreshing(true); fetchAll(); }}
+                disabled={refreshing}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-[12px] font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </>
+          )}
+          {activeTab === 'planning' && (
+            <button
+              onClick={() => setShowPlanForm(!showPlanForm)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90 active:scale-[0.97] shadow-lg shadow-primary/20"
+            >
+              {showPlanForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+              {showPlanForm ? 'Cancel' : 'Plan Expense'}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Date Range Filter */}
+      {/* Tabs */}
+      <div className="flex items-center gap-1 rounded-xl border border-border bg-card/60 p-1 w-fit">
+        {([
+          { key: 'projection', label: 'COD Projection', icon: TrendingUp },
+          { key: 'planning', label: 'Expense Planning', icon: TrendingDown },
+        ] as const).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-medium transition-all ${
+              activeTab === key
+                ? 'bg-primary/15 text-primary border border-primary/25 shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Date Range Filter — projection tab only */}
+      {activeTab === 'projection' && (
       <div className="flex items-center gap-2 flex-wrap">
         <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
         {(['14d', '30d', '90d', '7d'] as const).map((range) => (
@@ -276,6 +408,10 @@ export default function ProjectedFinancePage() {
           </button>
         ))}
       </div>
+      )}
+
+      {/* ── Projection Tab ── */}
+      {activeTab === 'projection' && (<>
 
       {/* Key Metrics */}
       {(() => {
@@ -439,12 +575,12 @@ export default function ProjectedFinancePage() {
                 <p className="text-[10px] text-muted-foreground/60">Planned reinvestment & expenses</p>
               </div>
               <div className="flex items-center gap-3">
-                <Link
-                  href="/finance/projected/planning"
+                <button
+                  onClick={() => setActiveTab('planning')}
                   className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-medium text-primary transition hover:bg-primary/10"
                 >
                   Plan Expenses →
-                </Link>
+                </button>
                 {totalOutflow > 0 && (
                   <div className="text-right">
                     <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Planned</p>
@@ -498,9 +634,9 @@ export default function ProjectedFinancePage() {
               <div className="h-40 flex flex-col items-center justify-center text-center">
                 <ArrowDown className="h-6 w-6 text-muted-foreground/20 mb-2" />
                 <p className="text-[12px] text-muted-foreground/50">No expenses planned yet</p>
-                <Link href="/finance/projected/planning" className="text-[11px] text-primary hover:text-primary/80 mt-1 transition">
+                <button onClick={() => setActiveTab('planning')} className="text-[11px] text-primary hover:text-primary/80 mt-1 transition">
                   Plan your reinvestment →
-                </Link>
+                </button>
               </div>
             )}
           </div>
@@ -517,6 +653,183 @@ export default function ProjectedFinancePage() {
           />
         )}
       </AnimatePresence>
+
+      </>)}
+
+      {/* ── Planning Tab ── */}
+      <AnimatePresence mode="wait">
+      {activeTab === 'planning' && (
+        <motion.div key="planning" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.2 }} className="space-y-5">
+
+          {/* Planning Summary */}
+          {planned.length > 0 && (() => {
+            const total = planned.reduce((s, p) => s + p.amount, 0);
+            const byCategory: Record<string, number> = {};
+            for (const p of planned) byCategory[p.category] = (byCategory[p.category] ?? 0) + p.amount;
+            const topCategories = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-red-500/20 bg-gradient-to-br from-red-500/5 to-transparent px-4 py-3">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-1">Total Planned</p>
+                  <p className="text-2xl font-bold text-red-400 tabular-nums">{formatINR(total)}</p>
+                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">{planned.length} planned expense{planned.length !== 1 ? 's' : ''}</p>
+                </div>
+                {topCategories.slice(0, 3).map(([cat, amt]) => {
+                  const cfg = CATEGORY_COLORS[cat] ?? CATEGORY_COLORS.other;
+                  const catLabel = PLAN_CATEGORIES.find((c) => c.value === cat)?.label ?? cat;
+                  return (
+                    <div key={cat} className={`rounded-xl border ${cfg.border} ${cfg.bg} px-4 py-3`}>
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-1">{catLabel}</p>
+                      <p className={`text-xl font-bold tabular-nums ${cfg.text}`}>{formatINR(amt)}</p>
+                      <p className="text-[10px] text-muted-foreground/50 mt-0.5">{Math.round((amt / total) * 100)}% of total</p>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* Add Form */}
+          <AnimatePresence>
+            {showPlanForm && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                <div className="rounded-xl border border-primary/20 bg-card p-5 space-y-5">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                      <TrendingDown className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-semibold text-foreground">Plan an Expense</h2>
+                      <p className="text-[10px] text-muted-foreground">Where will this profit go?</p>
+                    </div>
+                  </div>
+
+                  {/* Category */}
+                  <div>
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2">Category</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                      {PLAN_CATEGORIES.map((cat) => {
+                        const Icon = cat.icon;
+                        const isActive = planCategory === cat.value;
+                        const cfg = CATEGORY_COLORS[cat.value];
+                        return (
+                          <button
+                            key={cat.value}
+                            onClick={() => setPlanCategory(cat.value)}
+                            className={`group flex flex-col items-center gap-1.5 rounded-xl px-3 py-3 text-center transition-all border ${
+                              isActive
+                                ? `${cfg.bg} ${cfg.border} ${cfg.text} shadow-sm`
+                                : 'border-border/40 text-muted-foreground hover:border-border hover:text-foreground hover:bg-accent/5'
+                            }`}
+                          >
+                            <Icon className={`h-4 w-4 transition ${isActive ? cfg.text : 'text-muted-foreground/50 group-hover:text-foreground'}`} />
+                            <span className="text-[10px] font-medium leading-tight">{cat.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Amount + Description + Date */}
+                  <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr_auto] gap-4">
+                    <div>
+                      <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Amount</label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] font-semibold text-primary/60">₹</span>
+                        <input
+                          type="number"
+                          value={planAmount}
+                          onChange={(e) => setPlanAmount(e.target.value)}
+                          placeholder="0"
+                          className="w-full rounded-xl border border-border/40 bg-background/40 pl-10 pr-4 py-3.5 text-[20px] font-semibold text-foreground tabular-nums placeholder:text-muted-foreground/20 focus:border-primary/40 focus:outline-none transition"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Description</label>
+                      <input
+                        type="text"
+                        value={planDescription}
+                        onChange={(e) => setPlanDescription(e.target.value)}
+                        placeholder="e.g. Restock Kairova bestseller — 500 units from supplier"
+                        className="w-full rounded-xl border border-border/40 bg-background/40 px-4 py-3.5 text-[13px] text-foreground placeholder:text-muted-foreground/30 focus:border-primary/40 focus:outline-none transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50 mb-2 block">Planned Date</label>
+                      <DatePicker value={planDate} onChange={(d) => setPlanDate(d)} />
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={addPlanned}
+                    disabled={savingPlan || !planAmount}
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-[13px] font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-all hover:bg-primary/90 active:scale-[0.97] disabled:opacity-40 disabled:shadow-none"
+                  >
+                    {savingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    Save Plan
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Planned List */}
+          {loadingPlanned ? (
+            <div className="flex items-center justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : planned.length === 0 ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-xl border border-dashed border-border bg-card/50 py-16 text-center">
+              <TrendingDown className="mx-auto h-8 w-8 text-muted-foreground/30 mb-3" />
+              <p className="text-sm text-muted-foreground">No expenses planned yet</p>
+              <p className="text-[11px] text-muted-foreground/60 mt-1">Plan how to reinvest your profits</p>
+            </motion.div>
+          ) : (
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <div className="grid grid-cols-[1fr_140px_120px_40px] sm:grid-cols-[1fr_160px_140px_120px_40px] gap-2 px-4 py-2 border-b border-border/50 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">
+                <span>Expense</span>
+                <span className="hidden sm:block">Category</span>
+                <span>Date</span>
+                <span className="text-right">Amount</span>
+                <span />
+              </div>
+              <StaggerContainer className="max-h-[600px] overflow-y-auto">
+                {planned.map((item) => {
+                  const cfg = CATEGORY_COLORS[item.category] ?? CATEGORY_COLORS.other;
+                  const catLabel = PLAN_CATEGORIES.find((c) => c.value === item.category)?.label ?? item.category;
+                  return (
+                    <StaggerItem key={item.id}>
+                      <div className="group grid grid-cols-[1fr_140px_120px_40px] sm:grid-cols-[1fr_160px_140px_120px_40px] gap-2 items-center px-4 py-3 border-b border-border/20 last:border-0 hover:bg-accent/5 transition">
+                        <div className="min-w-0 flex items-center gap-2">
+                          <div className={`h-2 w-2 rounded-full shrink-0 ${cfg.text.replace('text-', 'bg-').replace('-400', '-500')}`} />
+                          <span className="text-[12px] font-medium text-foreground truncate">{item.description || catLabel}</span>
+                        </div>
+                        <span className={`hidden sm:inline-flex items-center rounded-lg border px-2 py-0.5 text-[10px] font-semibold ${cfg.bg} ${cfg.border} ${cfg.text} w-fit`}>
+                          {catLabel}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground/60">
+                          {new Date(item.date + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        </span>
+                        <span className="text-[13px] font-semibold text-red-400 tabular-nums text-right">{formatINR(item.amount)}</span>
+                        <div className="flex justify-end opacity-0 group-hover:opacity-100 transition">
+                          <button
+                            onClick={() => deletePlanned(item.id)}
+                            disabled={deletingPlanId === item.id}
+                            className="rounded-md p-1 text-muted-foreground/40 hover:text-red-400 transition disabled:opacity-50"
+                          >
+                            {deletingPlanId === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                          </button>
+                        </div>
+                      </div>
+                    </StaggerItem>
+                  );
+                })}
+              </StaggerContainer>
+            </div>
+          )}
+        </motion.div>
+      )}
+      </AnimatePresence>
+
     </PageTransition>
   );
 }

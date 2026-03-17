@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, Loader2, ClipboardList, RefreshCw, Trash2,
   ChevronLeft, ChevronRight, CalendarDays, TrendingUp, Wallet, DollarSign,
-  ChevronDown, Save, Check,
+  ChevronDown, Save, Check, Receipt,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
@@ -34,6 +34,33 @@ interface FinanceDailyEntry {
 
 const ITEMS_PER_PAGE = 10;
 
+const INCOME_CATEGORY_LABELS: Record<string, string> = {
+  'cod-deposit': 'COD Deposit', 'prepaid-settlement': 'Prepaid Settlement',
+  'affiliate': 'Affiliate', 'refund-received': 'Refund', 'loan-received': 'Loan / Credit',
+  'marketplace': 'Marketplace', 'other-income': 'Other',
+};
+const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  'inventory': 'Inventory / COGS', 'supplier': 'Supplier Payment', 'shipping': 'Shipping',
+  'marketing': 'Marketing / Ads', 'returns': 'Returns / RTO', 'tools': 'Tools / Software',
+  'freelance': 'Freelance', 'other': 'Other',
+};
+function getCategoryLabel(type: 'income' | 'expense', value: string): string {
+  const map = type === 'income' ? INCOME_CATEGORY_LABELS : EXPENSE_CATEGORY_LABELS;
+  return map[value] ?? value;
+}
+
+interface TransactionEntry {
+  id: string;
+  type: 'income' | 'expense';
+  category: string;
+  description?: string;
+  amount: number;
+  date: string;
+  endDate?: string;
+  recurring?: boolean;
+  createdAt?: string;
+}
+
 function getMonthOptions(): Array<{ value: string; label: string }> {
   const months: Array<{ value: string; label: string }> = [{ value: 'all', label: 'All Time' }];
   const now = new Date();
@@ -47,6 +74,9 @@ function getMonthOptions(): Array<{ value: string; label: string }> {
 }
 
 export default function DailyEntriesPage() {
+  const [activeTab, setActiveTab] = useState<'pnl' | 'income' | 'expense'>('pnl');
+
+  // P&L state
   const [entries, setEntries] = useState<FinanceDailyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -58,6 +88,12 @@ export default function DailyEntriesPage() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
+  // Income / expense state
+  const [transactions, setTransactions] = useState<TransactionEntry[]>([]);
+  const [loadingTx, setLoadingTx] = useState(true);
+  const [deletingTx, setDeletingTx] = useState<string | null>(null);
+  const [txMonthFilter, setTxMonthFilter] = useState('all');
+
   const fetchEntries = useCallback(async () => {
     try {
       const res = await fetch('/api/finance?action=daily&start=2025-01-01');
@@ -67,7 +103,26 @@ export default function DailyEntriesPage() {
     finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => { fetchEntries(); }, [fetchEntries]);
+  const fetchTransactions = useCallback(async () => {
+    setLoadingTx(true);
+    try {
+      const res = await fetch('/api/finance?action=combined&range=365d');
+      const data = await res.json();
+      const items: TransactionEntry[] = [];
+      for (const inc of (data.income ?? [])) {
+        items.push({ id: inc.id, type: 'income', category: inc.category, description: inc.description, amount: inc.amount, date: inc.date, endDate: inc.endDate, createdAt: inc.createdAt });
+      }
+      for (const exp of (data.expenses ?? [])) {
+        if (exp.id?.includes('_recurring_')) continue; // skip virtual recurring
+        items.push({ id: exp.id, type: 'expense', category: exp.category, description: exp.description, amount: exp.amount, date: exp.date, endDate: exp.endDate, recurring: exp.recurring, createdAt: exp.createdAt });
+      }
+      items.sort((a, b) => (b.date).localeCompare(a.date));
+      setTransactions(items);
+    } catch { /* silently fail */ }
+    finally { setLoadingTx(false); }
+  }, []);
+
+  useEffect(() => { fetchEntries(); fetchTransactions(); }, [fetchEntries, fetchTransactions]);
 
   const handleDelete = async (date: string) => {
     if (!confirm(`Delete entry for ${date}? This cannot be undone.`)) return;
@@ -84,6 +139,21 @@ export default function DailyEntriesPage() {
       }
     } catch { /* silently fail */ }
     finally { setDeleting(null); }
+  };
+
+  const handleDeleteTransaction = async (tx: TransactionEntry) => {
+    if (!confirm(`Delete this ${tx.type} entry? (${getCategoryLabel(tx.type, tx.category)} — ${formatINR(tx.amount)})`)) return;
+    setDeletingTx(tx.id);
+    try {
+      const action = tx.type === 'income' ? 'delete-income' : 'delete-expense';
+      const res = await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, id: tx.id }),
+      });
+      if (res.ok) setTransactions((prev) => prev.filter((t) => t.id !== tx.id));
+    } catch { /* silently fail */ }
+    finally { setDeletingTx(null); }
   };
 
   const startEditing = (entry: FinanceDailyEntry) => {
@@ -184,6 +254,14 @@ export default function DailyEntriesPage() {
   );
   const editNetProfit = editTotals.grossProfit - Math.round(editTotals.adSpend * 1.14);
 
+  // Filter transactions by tab + month
+  const filteredTx = transactions.filter((t) => {
+    if (activeTab === 'income' && t.type !== 'income') return false;
+    if (activeTab === 'expense' && t.type !== 'expense') return false;
+    if (txMonthFilter !== 'all' && !t.date.startsWith(txMonthFilter)) return false;
+    return true;
+  });
+
   // Filter by month
   const filtered = monthFilter === 'all'
     ? entries
@@ -212,16 +290,16 @@ export default function DailyEntriesPage() {
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Daily Entries</h1>
-            <p className="text-[11px] text-muted-foreground">All recorded daily P&L entries</p>
+            <h1 className="text-lg font-semibold text-foreground">Finance Entries</h1>
+            <p className="text-[11px] text-muted-foreground">P&L, income & expense records</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">
             <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
             <select
-              value={monthFilter}
-              onChange={(e) => setMonthFilter(e.target.value)}
+              value={activeTab === 'pnl' ? monthFilter : txMonthFilter}
+              onChange={(e) => activeTab === 'pnl' ? setMonthFilter(e.target.value) : setTxMonthFilter(e.target.value)}
               className="form-input h-[34px] text-[12px] pr-8"
             >
               {monthOptions.map((opt) => (
@@ -230,7 +308,7 @@ export default function DailyEntriesPage() {
             </select>
           </div>
           <button
-            onClick={() => { setRefreshing(true); fetchEntries(); }}
+            onClick={() => { setRefreshing(true); fetchEntries(); fetchTransactions(); }}
             disabled={refreshing}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-[12px] font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
           >
@@ -240,6 +318,81 @@ export default function DailyEntriesPage() {
         </div>
       </div>
 
+      {/* Tab Switcher */}
+      <div className="flex items-center gap-1 rounded-xl border border-border/50 bg-card/40 p-1">
+        {([
+          { key: 'pnl', label: 'Daily P&L', icon: DollarSign },
+          { key: 'income', label: 'Income', icon: TrendingUp },
+          { key: 'expense', label: 'Expenses', icon: Receipt },
+        ] as const).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex items-center gap-1.5 flex-1 justify-center rounded-lg px-3 py-2 text-[12px] font-medium transition ${
+              activeTab === key ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />{label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Income / Expense entries ──────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {activeTab !== 'pnl' && (
+          <motion.div key={activeTab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}>
+            {loadingTx ? (
+              <div className="flex items-center justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : filteredTx.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border bg-card/50 py-14 text-center">
+                <Receipt className="mx-auto h-8 w-8 text-muted-foreground/30 mb-3" />
+                <p className="text-sm text-muted-foreground">No {activeTab === 'income' ? 'income' : 'expense'} entries</p>
+                <Link href="/finance/entry" className="text-[11px] text-primary/70 hover:text-primary mt-1 inline-block">Add from Enter Data →</Link>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border bg-card overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-border/50 flex items-center justify-between">
+                  <p className="text-[10px] text-muted-foreground">{filteredTx.length} entr{filteredTx.length === 1 ? 'y' : 'ies'}</p>
+                  <p className={`text-[12px] font-semibold tabular-nums ${activeTab === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {activeTab === 'income' ? '+' : '-'}{formatINR(filteredTx.reduce((s, t) => s + t.amount, 0))}
+                  </p>
+                </div>
+                <div className="divide-y divide-border/40">
+                  {filteredTx.map((tx) => (
+                    <motion.div layout key={tx.id} className="group flex items-center gap-3 px-4 py-3 hover:bg-accent/5 transition">
+                      <div className={`h-2 w-2 rounded-full shrink-0 ${tx.type === 'income' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-medium text-foreground">{getCategoryLabel(tx.type, tx.category)}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-[11px] text-muted-foreground/50">{tx.date}</span>
+                          {tx.endDate && tx.endDate !== tx.date && <span className="text-[11px] text-muted-foreground/40">→ {tx.endDate}</span>}
+                          {tx.recurring && <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-full px-1.5">recurring</span>}
+                          {tx.description && <span className="text-[11px] text-muted-foreground/40 truncate">{tx.description}</span>}
+                        </div>
+                      </div>
+                      <span className={`text-[13px] font-semibold tabular-nums shrink-0 ${tx.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {tx.type === 'income' ? '+' : '-'}{formatINR(tx.amount)}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteTransaction(tx)}
+                        disabled={deletingTx === tx.id}
+                        className="opacity-0 group-hover:opacity-100 rounded-md p-1.5 text-muted-foreground/40 hover:text-red-400 hover:bg-red-400/10 transition disabled:opacity-50"
+                      >
+                        {deletingTx === tx.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── P&L Entries ──────────────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {activeTab === 'pnl' && (
+          <motion.div key="pnl" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}>
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -448,6 +601,9 @@ export default function DailyEntriesPage() {
           <p className="text-[11px] text-muted-foreground">{filtered.length} entr{filtered.length === 1 ? 'y' : 'ies'}{monthFilter !== 'all' ? ' (filtered)' : ' total'}</p>
         </>
       )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </PageTransition>
   );
 }

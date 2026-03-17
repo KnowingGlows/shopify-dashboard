@@ -223,6 +223,8 @@ export async function POST(request: Request) {
         return saveSpendingConfig(body);
       case 'save-income':
         return saveIncome(body);
+      case 'delete-income':
+        return deleteIncome(body);
       case 'dismiss-reminder':
         return dismissReminder(body);
       case 'add-planned':
@@ -540,6 +542,15 @@ async function saveIncome(body: Record<string, unknown>) {
 
   await firestore.collection(COLLECTIONS.FINANCE_INCOME).doc(income.id as string).set(income);
   return NextResponse.json({ success: true, income });
+}
+
+async function deleteIncome(body: Record<string, unknown>) {
+  const firestore = db();
+  const id = body.id as string;
+  if (!id) return NextResponse.json({ error: 'ID is required.' }, { status: 400 });
+  if (!firestore) return NextResponse.json({ success: true });
+  await firestore.collection(COLLECTIONS.FINANCE_INCOME).doc(id).delete();
+  return NextResponse.json({ success: true });
 }
 
 function getWeekLabel(date: Date): string {

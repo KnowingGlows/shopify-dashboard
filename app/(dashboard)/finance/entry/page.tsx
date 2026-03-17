@@ -1,15 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
-  Loader2, Save, ArrowLeft, Calendar,
+  Loader2, Save, ArrowLeft, Calendar, Trash2,
   BanknoteIcon, CreditCard, TrendingUp, Receipt, Repeat,
 } from 'lucide-react';
-import { PageTransition } from '@/components/motion';
+import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 import { DatePicker } from '@/components/date-picker';
 import { useAuth } from '@/components/auth-provider';
+import { formatINR } from '@/lib/currency-converter';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,24 @@ const EXPENSE_CATEGORIES = [
   { value: 'other', label: 'Other', icon: Receipt, color: 'zinc' },
 ];
 
+const ALL_CATEGORIES = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+
+function getCategoryLabel(value: string): string {
+  return ALL_CATEGORIES.find((c) => c.value === value)?.label ?? value;
+}
+
+interface EntryItem {
+  id: string;
+  type: 'income' | 'expense';
+  category: string;
+  description?: string;
+  amount: number;
+  date: string;
+  endDate?: string;
+  recurring?: boolean;
+  createdAt?: string;
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function ActualEntryPage() {
@@ -65,6 +84,30 @@ export default function ActualEntryPage() {
   const [savingExpense, setSavingExpense] = useState(false);
   const [expenseStatus, setExpenseStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
+  // Entries list
+  const [entries, setEntries] = useState<EntryItem[]>([]);
+  const [loadingEntries, setLoadingEntries] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const fetchEntries = useCallback(async () => {
+    try {
+      const res = await fetch('/api/finance?action=combined&range=90d');
+      const data = await res.json();
+      const items: EntryItem[] = [];
+      for (const inc of (data.income ?? [])) {
+        items.push({ id: inc.id, type: 'income', category: inc.category, description: inc.description, amount: inc.amount, date: inc.date, endDate: inc.endDate, createdAt: inc.createdAt });
+      }
+      for (const exp of (data.expenses ?? [])) {
+        items.push({ id: exp.id, type: 'expense', category: exp.category, description: exp.description, amount: exp.amount, date: exp.date, endDate: exp.endDate, recurring: exp.recurring, createdAt: exp.createdAt });
+      }
+      items.sort((a, b) => (b.createdAt ?? b.date).localeCompare(a.createdAt ?? a.date));
+      setEntries(items);
+    } catch { /* silently fail */ }
+    finally { setLoadingEntries(false); }
+  }, []);
+
+  useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
   const handleSaveIncome = async () => {
     if (!incomeAmount || !incomeCategory) return;
     setSavingIncome(true);
@@ -84,7 +127,12 @@ export default function ActualEntryPage() {
         }),
       });
       if (res.ok) {
+        const data = await res.json();
         setIncomeStatus('saved');
+        // Add to local list
+        if (data.income) {
+          setEntries((prev) => [{ id: data.income.id, type: 'income', category: data.income.category, description: data.income.description, amount: data.income.amount, date: data.income.date, endDate: data.income.endDate, createdAt: data.income.createdAt }, ...prev]);
+        }
         setIncomeDescription('');
         setIncomeAmount('');
         setIncomeEndDate('');
@@ -113,7 +161,11 @@ export default function ActualEntryPage() {
         }),
       });
       if (res.ok) {
+        const data = await res.json();
         setExpenseStatus('saved');
+        if (data.expense) {
+          setEntries((prev) => [{ id: data.expense.id, type: 'expense', category: data.expense.category, description: data.expense.description, amount: data.expense.amount, date: data.expense.date, recurring: data.expense.recurring, createdAt: data.expense.createdAt }, ...prev]);
+        }
         setExpenseDescription('');
         setExpenseAmount('');
         setExpenseRecurring(false);
@@ -123,7 +175,27 @@ export default function ActualEntryPage() {
     finally { setSavingExpense(false); }
   };
 
+  const handleDeleteEntry = async (entry: EntryItem) => {
+    if (!confirm(`Delete this ${entry.type} entry? (${getCategoryLabel(entry.category)} - ${formatINR(entry.amount)})`)) return;
+    setDeletingId(entry.id);
+    try {
+      const action = entry.type === 'income' ? 'delete-income' : 'delete-expense';
+      const res = await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, id: entry.id }),
+      });
+      if (res.ok) {
+        setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+      }
+    } catch { /* silently fail */ }
+    finally { setDeletingId(null); }
+  };
+
   const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  // Filter entries by active tab
+  const filteredEntries = entries.filter((e) => e.type === activeTab);
 
   return (
     <PageTransition className="mx-auto max-w-5xl px-5 py-6 space-y-6">
@@ -413,6 +485,82 @@ export default function ActualEntryPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Recent Entries ──────────────────────────────────────────────────── */}
+      <div className="pt-2">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50">
+            Recent {activeTab === 'income' ? 'Income' : 'Expense'} Entries
+          </p>
+          <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+            {filteredEntries.length} entr{filteredEntries.length === 1 ? 'y' : 'ies'}
+          </span>
+        </div>
+
+        {loadingEntries ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/40" />
+          </div>
+        ) : filteredEntries.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="rounded-xl border border-dashed border-border/40 bg-card/30 py-10 text-center"
+          >
+            <p className="text-[12px] text-muted-foreground/40">No {activeTab} entries yet</p>
+          </motion.div>
+        ) : (
+          <StaggerContainer className="space-y-2">
+            {filteredEntries.map((entry) => (
+              <StaggerItem key={entry.id}>
+                <motion.div
+                  layout
+                  className="group flex items-center gap-3 rounded-xl border border-border/30 bg-card/40 px-4 py-3 hover:bg-card/60 transition"
+                >
+                  {/* Color dot */}
+                  <div className={`h-2 w-2 rounded-full shrink-0 ${entry.type === 'income' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+
+                  {/* Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-medium text-foreground">{getCategoryLabel(entry.category)}</span>
+                      {entry.recurring && (
+                        <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 text-[9px] font-medium text-amber-400">recurring</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[11px] text-muted-foreground/50">{entry.date}</span>
+                      {entry.endDate && entry.endDate !== entry.date && (
+                        <span className="text-[11px] text-muted-foreground/40">to {entry.endDate}</span>
+                      )}
+                      {entry.description && (
+                        <>
+                          <span className="text-muted-foreground/20">·</span>
+                          <span className="text-[11px] text-muted-foreground/40 truncate">{entry.description}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Amount */}
+                  <span className={`text-[13px] font-semibold tabular-nums shrink-0 ${entry.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {entry.type === 'income' ? '+' : '-'}{formatINR(entry.amount)}
+                  </span>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => handleDeleteEntry(entry)}
+                    disabled={deletingId === entry.id}
+                    className="rounded-lg p-1.5 text-muted-foreground/30 hover:text-red-400 hover:bg-red-400/10 transition opacity-0 group-hover:opacity-100 disabled:opacity-50 shrink-0"
+                  >
+                    {deletingId === entry.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  </button>
+                </motion.div>
+              </StaggerItem>
+            ))}
+          </StaggerContainer>
+        )}
+      </div>
     </PageTransition>
   );
 }
