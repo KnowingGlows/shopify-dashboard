@@ -147,6 +147,10 @@ export default function ProjectedFinancePage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [income, setIncome] = useState<IncomeEntry[]>([]);
   const [deliveryRates, setDeliveryRates] = useState<Record<string, number>>({});
+  const [deliveryDays, setDeliveryDays] = useState<Record<string, number>>({});
+  const [showDeliveryConfig, setShowDeliveryConfig] = useState(false);
+  const [editDeliveryDays, setEditDeliveryDays] = useState<Record<string, string>>({});
+  const [savingDelivery, setSavingDelivery] = useState(false);
   const [plannedExpenses, setPlannedExpenses] = useState<Array<{ id: string; category: string; description: string; amount: number; date: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -180,6 +184,7 @@ export default function ProjectedFinancePage() {
       setSpending(data.spending);
       setBaselines([...(data.baselines?.daily ?? []), ...(data.baselines?.monthly ?? [])]);
       setDeliveryRates(data.deliveryRates ?? {});
+      setDeliveryDays(data.deliveryDays ?? {});
       setExpenses(data.expenses ?? []);
       setIncome(data.income ?? []);
       setPlannedExpenses(plannedData.planned ?? []);
@@ -202,6 +207,25 @@ export default function ProjectedFinancePage() {
   }, []);
 
   useEffect(() => { if (activeTab === 'planning') fetchPlanned(); }, [activeTab, fetchPlanned]);
+
+  const saveDeliveryDaysConfig = async () => {
+    const days: Record<string, number> = {};
+    for (const [brand, val] of Object.entries(editDeliveryDays)) {
+      if (Number(val) > 0) days[brand] = Number(val);
+    }
+    setSavingDelivery(true);
+    try {
+      await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save-delivery-rates', days }),
+      });
+      setDeliveryDays(days);
+      setShowDeliveryConfig(false);
+      fetchAll();
+    } catch { /* ignore */ }
+    finally { setSavingDelivery(false); }
+  };
 
   const addPlanned = async () => {
     if (!planAmount || !planCategory) return;
@@ -294,16 +318,29 @@ export default function ProjectedFinancePage() {
   const currentWeek = codWeeks[0];
   const totalCODProjected = codWeeks.reduce((s, w) => s + w.projectedAmount, 0);
 
-  // Forward-looking inflow — COD deposits only (prepaid/income handled in Actual Finance)
+  // Forward-looking inflow — shift each sale to its projected deposit date
+  // depositDate = weekendAdjust(saleDate + brandDays[brand] + 2)
+  function clientWeekendAdjust(d: Date): Date {
+    const day = d.getDay();
+    if (day === 5) d.setDate(d.getDate() + 3); // Fri → Mon
+    else if (day === 6) d.setDate(d.getDate() + 3); // Sat → Tue
+    else if (day === 0) d.setDate(d.getDate() + 2); // Sun → Tue
+    return d;
+  }
   const inflowByDate: Record<string, number> = {};
   for (const entry of (d.dailyEntries ?? [])) {
     const codByBrand = entry.codSalesByBrand ?? {};
-    let deposit = 0;
     for (const [brand, amount] of Object.entries(codByBrand)) {
+      const val = Number(amount) || 0;
+      if (val <= 0) continue;
+      const delDays = (deliveryDays[brand] ?? 7) + 2;
+      const base = new Date(entry.date + 'T00:00:00+05:30');
+      base.setDate(base.getDate() + delDays);
+      const depositDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(clientWeekendAdjust(base));
       const rate = deliveryRates[brand] ?? 65;
-      deposit += Math.round(Number(amount) * (rate / 100));
+      const deposit = Math.round(val * (rate / 100));
+      if (deposit > 0) inflowByDate[depositDate] = (inflowByDate[depositDate] ?? 0) + deposit;
     }
-    if (deposit > 0) inflowByDate[entry.date] = (inflowByDate[entry.date] ?? 0) + deposit;
   }
 
   // Total COD collected (raw COD revenue before delivery rate)
@@ -312,11 +349,11 @@ export default function ProjectedFinancePage() {
     return s + Object.values(cod).reduce((a, v) => a + Number(v), 0);
   }, 0);
 
-  // Build inflow chart — today FORWARD for chartDays
+  // Build inflow chart — today FORWARD for chartDays (IST dates to match inflowByDate keys)
   const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
-    const dt = new Date(todayStr + 'T00:00:00');
+    const dt = new Date(todayStr + 'T00:00:00+05:30');
     dt.setDate(dt.getDate() + i);
-    const dateStr = dt.toISOString().split('T')[0];
+    const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
     return {
       date: dateStr,
       deposit: inflowByDate[dateStr] ?? 0,
@@ -430,6 +467,72 @@ export default function ProjectedFinancePage() {
           </StaggerContainer>
         );
       })()}
+
+      {/* ═══ Delivery Timeline Config ═══ */}
+      {Object.keys(deliveryRates).length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <div className="rounded-xl border border-border/50 bg-card/60">
+            <button
+              onClick={() => {
+                if (!showDeliveryConfig) {
+                  const init: Record<string, string> = {};
+                  for (const brand of Object.keys(deliveryRates)) {
+                    init[brand] = String(deliveryDays[brand] ?? 7);
+                  }
+                  setEditDeliveryDays(init);
+                }
+                setShowDeliveryConfig(!showDeliveryConfig);
+              }}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent/5 transition rounded-xl"
+            >
+              <div className="flex items-center gap-2">
+                <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-[12px] font-medium text-muted-foreground">COD Delivery Timeline</span>
+                <span className="text-[10px] text-muted-foreground/50">per store avg days</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {Object.entries(deliveryDays).map(([brand, days]) => (
+                  <span key={brand} className="text-[10px] font-medium text-primary/70">{brand}: {days}d</span>
+                ))}
+                <ArrowRight className={`h-3.5 w-3.5 text-muted-foreground/40 transition-transform ${showDeliveryConfig ? 'rotate-90' : ''}`} />
+              </div>
+            </button>
+            <AnimatePresence>
+              {showDeliveryConfig && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden border-t border-border/30">
+                  <div className="px-4 py-4 space-y-3">
+                    <p className="text-[10px] text-muted-foreground/60">Set the average delivery days for each store. Deposit = delivery days + 2 days (with weekend adjustment).</p>
+                    <div className="flex flex-wrap gap-4">
+                      {Object.keys(deliveryRates).map((brand) => (
+                        <div key={brand} className="flex items-center gap-2">
+                          <label className="text-[11px] font-medium text-foreground">{brand}</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={30}
+                            value={editDeliveryDays[brand] ?? '7'}
+                            onChange={(e) => setEditDeliveryDays((prev) => ({ ...prev, [brand]: e.target.value }))}
+                            className="w-16 rounded-lg border border-border/40 bg-background/60 px-2 py-1.5 text-[13px] font-semibold text-foreground text-center tabular-nums focus:border-primary/40 focus:outline-none transition"
+                          />
+                          <span className="text-[10px] text-muted-foreground">days</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={saveDeliveryDaysConfig}
+                      disabled={savingDelivery}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary/90 px-4 py-2 text-[11px] font-medium text-primary-foreground transition hover:bg-primary active:scale-[0.97] disabled:opacity-50"
+                    >
+                      {savingDelivery ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      Save
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </motion.div>
+      )}
 
       {/* ═══ Spending Power ═══ */}
       {spending && spending.projectedDeposit > 0 && (() => {

@@ -560,20 +560,42 @@ function getWeekLabel(date: Date): string {
   return `Week ${weekOfMonth}, ${monthNames[date.getMonth()]}`;
 }
 
+/**
+ * Adjust a projected deposit date for bank non-processing days.
+ * Friday → Monday, Saturday → Tuesday, Sunday → Tuesday
+ */
+function weekendAdjust(date: Date): Date {
+  const day = date.getDay(); // 0=Sun, 1=Mon … 5=Fri, 6=Sat
+  if (day === 5) date.setDate(date.getDate() + 3); // Fri → Mon
+  else if (day === 6) date.setDate(date.getDate() + 3); // Sat → Tue
+  else if (day === 0) date.setDate(date.getDate() + 2); // Sun → Tue
+  return date;
+}
+
 async function getDeliveryRates() {
   const firestore = db();
-  if (!firestore) return NextResponse.json({ rates: {} });
+  if (!firestore) return NextResponse.json({ rates: {}, days: {} });
   try {
     const doc = await firestore.collection(COLLECTIONS.SETTINGS).doc('delivery_rates').get();
-    return NextResponse.json({ rates: doc.exists ? (doc.data()?.rates ?? {}) : {} });
-  } catch { return NextResponse.json({ rates: {} }); }
+    const data = doc.exists ? doc.data() : {};
+    return NextResponse.json({ rates: data?.rates ?? {}, days: data?.days ?? {} });
+  } catch { return NextResponse.json({ rates: {}, days: {} }); }
 }
 
 async function saveDeliveryRates(body: Record<string, unknown>) {
   const firestore = db();
   const rates = (body.rates as Record<string, number>) ?? {};
+  const days = (body.days as Record<string, number>) ?? {};
   if (!firestore) return NextResponse.json({ success: true });
-  await firestore.collection(COLLECTIONS.SETTINGS).doc('delivery_rates').set({ rates, updatedAt: new Date().toISOString() });
+  // Merge with existing to avoid overwriting fields not sent
+  const existing = await firestore.collection(COLLECTIONS.SETTINGS).doc('delivery_rates').get().catch(() => null);
+  const existingData = existing?.exists ? existing.data() : {};
+  await firestore.collection(COLLECTIONS.SETTINGS).doc('delivery_rates').set({
+    ...existingData,
+    rates: { ...(existingData?.rates ?? {}), ...rates },
+    days: { ...(existingData?.days ?? {}), ...days },
+    updatedAt: new Date().toISOString(),
+  });
   invalidateSettingsCache('delivery_rates');
   return NextResponse.json({ success: true });
 }
@@ -996,8 +1018,8 @@ async function getCombinedFinanceData(params: URLSearchParams) {
 
   // ── STEP 1: Fetch all needed data in parallel (ONE read per collection) ──
   // For finance_daily, we need a wider range: summary needs startDate→endDate,
-  // but COD projections need entries from ~35 days ago (4 weeks + 7 day delay).
-  const codWideStart = getISTDate(new Date(todayDate.getTime() - 35 * 86400000));
+  // but COD projections need entries from up to ~40 days ago (delivery days + 2 per brand, max ~32d).
+  const codWideStart = getISTDate(new Date(todayDate.getTime() - 42 * 86400000));
   const effectiveStart = codWideStart < startDate ? codWideStart : startDate;
 
   const [dailySnap, baselinesSnap, expensesSnap, incomeSnap, inventorySnap, deliveryRatesData, spendingConfigData] = await Promise.all([
@@ -1006,7 +1028,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     firestore.collection(COLLECTIONS.FINANCE_EXPENSES).orderBy('createdAt', 'desc').get(),
     firestore.collection(COLLECTIONS.FINANCE_INCOME).get(),
     firestore.collection(COLLECTIONS.INVENTORY).get(),
-    getCachedSetting<{ rates?: Record<string, number> }>(firestore, 'delivery_rates', { rates: {} }),
+    getCachedSetting<{ rates?: Record<string, number>; days?: Record<string, number> }>(firestore, 'delivery_rates', { rates: {}, days: {} }),
     getCachedSetting<{ founderCutPct?: number; enabledItems?: Record<string, boolean> }>(firestore, 'spending_config', { founderCutPct: 50, enabledItems: { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true } }),
   ]);
 
@@ -1039,6 +1061,8 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allInventory = inventorySnap.docs.map((doc: any) => doc.data());
   const brandRates: Record<string, number> = deliveryRatesData.rates ?? {};
+  const brandDays: Record<string, number> = deliveryRatesData.days ?? {};
+  const defaultDeliveryDays = 7;
   const founderCutPct = spendingConfigData.founderCutPct ?? 50;
   const enabledItems = spendingConfigData.enabledItems ?? { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true };
   const defaultRate = 65;
@@ -1070,50 +1094,57 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const dailyBaselineTotal = dailyBaselines.reduce((s, b) => s + (Number(b.amount) || 0), 0);
   const monthlyBaselineTotal = monthlyBaselines.reduce((s, b) => s + (Number(b.amount) || 0), 0);
 
-  // ── STEP 3: COD projections (4 weeks, using same allDailyEntries) ──
-  // COD deposited 2 days after collection (with weekend adjustments)
-  const COD_DELAY_DAYS = 7;
-  const codWeeks: Array<{ weekLabel: string; startDate: string; endDate: string; projectedAmount: number; codRevenue: number; brandBreakdown: Record<string, number> }> = [];
+  // ── STEP 3: COD projections (4 weeks, deposit-by-date approach) ──
+  // For each daily entry, per brand: depositDate = weekendAdjust(saleDate + brandDays[brand] + 2)
+  // Then aggregate by week window.
 
+  // Build depositsByDate: date → { total projected deposit, codRevenue, per-brand breakdown }
+  const depositMap: Record<string, { projected: number; codRevenue: number; brands: Record<string, number> }> = {};
+  for (const entry of allDailyEntries) {
+    const saleDate = entry.date as string;
+    const codByBrand = entry.codSalesByBrand ?? {};
+    for (const [brand, rawAmount] of Object.entries(codByBrand)) {
+      const amount = Number(rawAmount) || 0;
+      if (amount <= 0) continue;
+      const delDays = (brandDays[brand] ?? defaultDeliveryDays) + 2;
+      const depositBase = new Date(saleDate + 'T00:00:00+05:30');
+      depositBase.setDate(depositBase.getDate() + delDays);
+      const depositDate = getISTDate(weekendAdjust(depositBase));
+      if (!depositMap[depositDate]) depositMap[depositDate] = { projected: 0, codRevenue: 0, brands: {} };
+      const rate = brandRates[brand] ?? defaultRate;
+      depositMap[depositDate].projected += Math.round(amount * (rate / 100));
+      depositMap[depositDate].codRevenue += amount;
+      depositMap[depositDate].brands[brand] = (depositMap[depositDate].brands[brand] ?? 0) + amount;
+    }
+  }
+
+  const codWeeks: Array<{ weekLabel: string; startDate: string; endDate: string; projectedAmount: number; codRevenue: number; brandBreakdown: Record<string, number> }> = [];
   for (let w = 0; w < 4; w++) {
     const weekStart = new Date(today + 'T00:00:00+05:30');
     weekStart.setDate(weekStart.getDate() + w * 7);
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 6);
+    const weekStartStr = getISTDate(weekStart);
+    const weekEndStr = getISTDate(weekEnd);
 
-    const salesStart = new Date(weekStart);
-    salesStart.setDate(salesStart.getDate() - COD_DELAY_DAYS);
-    const salesEnd = new Date(weekEnd);
-    salesEnd.setDate(salesEnd.getDate() - COD_DELAY_DAYS);
-
-    const salesStartStr = getISTDate(salesStart);
-    const salesEndStr = getISTDate(salesEnd);
-
+    let projectedAmount = 0;
     let codRevenue = 0;
     const brandBreakdown: Record<string, number> = {};
 
-    // Filter from in-memory data instead of querying Firestore again
-    for (const entry of allDailyEntries) {
-      if (entry.date >= salesStartStr && entry.date <= salesEndStr) {
-        const codByBrand = entry.codSalesByBrand ?? {};
-        for (const [brand, amount] of Object.entries(codByBrand)) {
-          const val = Number(amount) || 0;
-          brandBreakdown[brand] = (brandBreakdown[brand] ?? 0) + val;
-          codRevenue += val;
+    for (const [depositDate, info] of Object.entries(depositMap)) {
+      if (depositDate >= weekStartStr && depositDate <= weekEndStr) {
+        projectedAmount += info.projected;
+        codRevenue += info.codRevenue;
+        for (const [brand, amt] of Object.entries(info.brands)) {
+          brandBreakdown[brand] = (brandBreakdown[brand] ?? 0) + amt;
         }
       }
     }
 
-    let projectedAmount = 0;
-    for (const [brand, amount] of Object.entries(brandBreakdown)) {
-      const rate = brandRates[brand] ?? defaultRate;
-      projectedAmount += Math.round(amount * (rate / 100));
-    }
-
     codWeeks.push({
       weekLabel: getWeekLabel(weekStart),
-      startDate: getISTDate(weekStart),
-      endDate: getISTDate(weekEnd),
+      startDate: weekStartStr,
+      endDate: weekEndStr,
       projectedAmount,
       codRevenue,
       brandBreakdown,
@@ -1127,31 +1158,19 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const weekStartStr = getISTDate(weekStart);
   const weekEndStr = getISTDate(weekEnd);
 
-  // COD for this week's spending power
-  const spSalesStart = new Date(weekStart);
-  spSalesStart.setDate(spSalesStart.getDate() - COD_DELAY_DAYS);
-  const spSalesEnd = new Date(weekEnd);
-  spSalesEnd.setDate(spSalesEnd.getDate() - COD_DELAY_DAYS);
-  const spSalesStartStr = getISTDate(spSalesStart);
-  const spSalesEndStr = getISTDate(spSalesEnd);
-
+  // COD for this week's spending power — reuse depositMap from step 3
   let spCodRevenue = 0;
   let projectedDeposit = 0;
   const spBrandBreakdown: Record<string, number> = {};
 
-  for (const entry of allDailyEntries) {
-    if (entry.date >= spSalesStartStr && entry.date <= spSalesEndStr) {
-      const codByBrand = entry.codSalesByBrand ?? {};
-      for (const [brand, amount] of Object.entries(codByBrand)) {
-        const val = Number(amount) || 0;
-        spBrandBreakdown[brand] = (spBrandBreakdown[brand] ?? 0) + val;
-        spCodRevenue += val;
+  for (const [depositDate, info] of Object.entries(depositMap)) {
+    if (depositDate >= weekStartStr && depositDate <= weekEndStr) {
+      projectedDeposit += info.projected;
+      spCodRevenue += info.codRevenue;
+      for (const [brand, amt] of Object.entries(info.brands)) {
+        spBrandBreakdown[brand] = (spBrandBreakdown[brand] ?? 0) + amt;
       }
     }
-  }
-  for (const [brand, amount] of Object.entries(spBrandBreakdown)) {
-    const rate = brandRates[brand] ?? defaultRate;
-    projectedDeposit += Math.round(amount * (rate / 100));
   }
 
   // Prepaid settlements received this week (actual cash in bank)
@@ -1256,6 +1275,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     expenses: allExpenses,
     income: allIncome,
     deliveryRates: brandRates,
+    deliveryDays: brandDays,
   });
 }
 

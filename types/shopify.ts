@@ -118,12 +118,15 @@ export interface InventoryEntry {
   sku: string;
   currentStock: number;
   reorderLevel: number;
+  reorderQty: number;       // units to order per restock
   supplier: string;
   costPerUnit: number;
   status: string;
   store: string; // 'Kairova' | 'Mavric' | ''
   sourcingOrigin: string; // 'india' | 'china' | ''
   dailyAvgOrders: number; // rolling 7-day avg from dispatch logs
+  notes: string;            // free-text notes
+  lastRestockedDate: string; // YYYY-MM-DD when stock was last topped up
   createdAt: string;
   updatedAt: string;
 }

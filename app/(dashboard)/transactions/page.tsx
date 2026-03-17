@@ -151,6 +151,7 @@ export default function TransactionsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deduplicating, setDeduplicating] = useState(false);
   const [summary, setSummary] = useState({ total: 0, pending: 0, approved: 0, totalDebit: 0, totalCredit: 0 });
 
   const fetchTransactions = useCallback(async () => {
@@ -183,12 +184,15 @@ export default function TransactionsPage() {
     );
   }, [transactions, searchQuery]);
 
-  // Group by date
+  // Group by date, sorted within each day by createdAt desc (latest first)
   const groupedByDate = useMemo(() => {
     const map: Record<string, Transaction[]> = {};
     for (const t of filtered) {
       if (!map[t.date]) map[t.date] = [];
       map[t.date].push(t);
+    }
+    for (const txns of Object.values(map)) {
+      txns.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
     }
     return Object.entries(map).sort(([a], [b]) => b.localeCompare(a));
   }, [filtered]);
@@ -248,6 +252,21 @@ export default function TransactionsPage() {
       );
       setSelectedIds(new Set());
     } finally { setActionLoading(false); }
+  }
+
+  async function deleteDuplicates() {
+    setDeduplicating(true);
+    try {
+      const res = await fetch('/api/transactions?key=orbit-sms-ingest-2026', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deduplicate' }),
+      });
+      const data = await res.json();
+      if (data.success && data.deleted > 0) {
+        await fetchTransactions();
+      }
+    } finally { setDeduplicating(false); }
   }
 
   async function deleteAll() {
@@ -318,6 +337,18 @@ export default function TransactionsPage() {
               Refresh
             </button>
             {transactions.length > 0 && (
+              <>
+                <button
+                  onClick={deleteDuplicates}
+                  disabled={deduplicating}
+                  className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-400 transition hover:bg-amber-500/15 disabled:opacity-50"
+                  title="Remove duplicate transactions using reference numbers"
+                >
+                  {deduplicating
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Filter className="h-3.5 w-3.5" />}
+                  Delete Dupes
+                </button>
               <div className="relative">
                 <button
                   onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
@@ -354,6 +385,7 @@ export default function TransactionsPage() {
                   )}
                 </AnimatePresence>
               </div>
+              </>
             )}
           </div>
         </motion.div>
@@ -647,11 +679,16 @@ export default function TransactionsPage() {
                             onClick={() => setExpandedId(isExpanded ? null : txn.id)}
                             className="flex-1 min-w-0 text-left"
                           >
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-medium text-foreground truncate">
                                 {txn.merchant ?? (txn.type === 'debit' ? 'Debit' : 'Credit')}
                               </span>
                               <ModeBadge mode={txn.mode} />
+                              {txn.reference && (
+                                <span className="text-[10px] font-mono text-muted-foreground/50 truncate max-w-[80px]" title={txn.reference}>
+                                  #{txn.reference.slice(-8)}
+                                </span>
+                              )}
                               {txn.status !== 'pending' && (
                                 <StatusIcon className={cn('h-3 w-3', STATUS_META[txn.status].color)} />
                               )}

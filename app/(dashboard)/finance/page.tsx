@@ -69,15 +69,12 @@ export default function ActualFinancePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Date range filter — backward from yesterday
+  // Date range filter — backward from today
   const [dateRange, setDateRange] = useState<'14d' | '30d' | '7d' | '90d'>('14d');
 
-  const yesterdayStr = useMemo(() => {
-    const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-    const d = new Date(todayIST + 'T00:00:00+05:30');
-    d.setDate(d.getDate() - 1);
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
-  }, []);
+  const todayStr = useMemo(() =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()),
+  []);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -104,10 +101,10 @@ export default function ActualFinancePage() {
     return 14;
   }, [dateRange]);
 
-  // Filter entries up to yesterday (actual data only)
+  // Filter entries up to today
   const pastEntries = useMemo(() =>
-    dailyEntries.filter((e) => e.date <= yesterdayStr),
-  [dailyEntries, yesterdayStr]);
+    dailyEntries.filter((e) => e.date <= todayStr),
+  [dailyEntries, todayStr]);
 
   // ── Money In per day ──
   // COD deposits received (using bank deposit date = sale date + 7) + prepaid + income
@@ -127,7 +124,7 @@ export default function ActualFinancePage() {
         const depositDate = new Date(entry.date + 'T00:00:00+05:30');
         depositDate.setDate(depositDate.getDate() + 7);
         const ds = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(depositDate);
-        if (ds <= yesterdayStr) {
+        if (ds <= todayStr) {
           map[ds] = (map[ds] ?? 0) + deposit;
         }
       }
@@ -150,14 +147,14 @@ export default function ActualFinancePage() {
           const dt = new Date(start);
           dt.setDate(start.getDate() + j);
           const ds = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
-          if (ds <= yesterdayStr) map[ds] = (map[ds] ?? 0) + dailyAmount;
+          if (ds <= todayStr) map[ds] = (map[ds] ?? 0) + dailyAmount;
         }
-      } else if (incDate <= yesterdayStr) {
+      } else if (incDate <= todayStr) {
         map[incDate] = (map[incDate] ?? 0) + inc.amount;
       }
     }
     return map;
-  }, [pastEntries, income, deliveryRates, yesterdayStr]);
+  }, [pastEntries, income, deliveryRates, todayStr]);
 
   // ── Money Out per day ──
   const moneyOutByDate = useMemo(() => {
@@ -173,25 +170,25 @@ export default function ActualFinancePage() {
           const dt = new Date(start);
           dt.setDate(start.getDate() + j);
           const ds = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
-          if (ds <= yesterdayStr) map[ds] = (map[ds] ?? 0) + dailyAmount;
+          if (ds <= todayStr) map[ds] = (map[ds] ?? 0) + dailyAmount;
         }
-      } else if (exp.date <= yesterdayStr) {
+      } else if (exp.date <= todayStr) {
         map[exp.date] = (map[exp.date] ?? 0) + exp.amount;
       }
     }
     for (const b of baselines) {
-      if (b.type === 'monthly' && b.dueDate && b.isPaid && b.dueDate <= yesterdayStr) {
+      if (b.type === 'monthly' && b.dueDate && b.isPaid && b.dueDate <= todayStr) {
         map[b.dueDate] = (map[b.dueDate] ?? 0) + b.amount;
       }
     }
     return map;
-  }, [expenses, baselines, yesterdayStr]);
+  }, [expenses, baselines, todayStr]);
 
   // Build chart data — backward from yesterday
   const chartData = useMemo(() => {
     const days: Array<{ date: string; label: string; moneyIn: number; moneyOut: number; cashReserve: number }> = [];
     let runningReserve = 0;
-    const end = new Date(yesterdayStr + 'T00:00:00+05:30');
+    const end = new Date(todayStr + 'T00:00:00+05:30');
     for (let i = 0; i < chartDays; i++) {
       const dt = new Date(end);
       dt.setDate(end.getDate() - (chartDays - 1) + i);
@@ -208,7 +205,7 @@ export default function ActualFinancePage() {
       });
     }
     return days;
-  }, [yesterdayStr, chartDays, moneyInByDate, moneyOutByDate]);
+  }, [todayStr, chartDays, moneyInByDate, moneyOutByDate]);
 
   // Totals
   const totalMoneyIn = chartData.reduce((s, d) => s + d.moneyIn, 0);
@@ -232,7 +229,7 @@ export default function ActualFinancePage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">Finance</h1>
-          <p className="text-[11px] text-muted-foreground">Actual cashflow — up to yesterday</p>
+          <p className="text-[11px] text-muted-foreground">Actual cashflow — up to today</p>
         </div>
         <div className="flex items-center gap-2">
           <Link

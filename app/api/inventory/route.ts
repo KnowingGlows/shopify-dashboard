@@ -43,12 +43,15 @@ export async function GET(request: Request) {
         sku: data.sku ?? '',
         currentStock: data.currentStock ?? 0,
         reorderLevel: data.reorderLevel ?? 0,
+        reorderQty: data.reorderQty ?? 0,
         supplier: data.supplier ?? '',
         costPerUnit: data.costPerUnit ?? 0,
         status: data.status ?? '',
         store: data.store ?? '',
         sourcingOrigin: data.sourcingOrigin ?? '',
         dailyAvgOrders: data.dailyAvgOrders ?? 0,
+        notes: data.notes ?? '',
+        lastRestockedDate: data.lastRestockedDate ?? '',
         createdAt: data.createdAt ?? '',
         updatedAt: data.updatedAt ?? '',
       };
@@ -103,12 +106,15 @@ export async function POST(request: Request) {
       sku: body.sku ?? '',
       currentStock: Number(body.currentStock) || 0,
       reorderLevel: Number(body.reorderLevel) || 0,
+      reorderQty: Number(body.reorderQty) || 0,
       supplier: body.supplier ?? '',
       costPerUnit: Number(body.costPerUnit) || 0,
       status: body.status ?? '',
       store: body.store ?? '',
       sourcingOrigin: body.sourcingOrigin ?? '',
       dailyAvgOrders: 0,
+      notes: body.notes ?? '',
+      lastRestockedDate: body.lastRestockedDate ?? '',
       createdAt: now,
       updatedAt: now,
     };
@@ -229,11 +235,14 @@ export async function PATCH(request: Request) {
     if ('sku' in updates) sanitizedUpdates.sku = updates.sku ?? '';
     if ('currentStock' in updates) sanitizedUpdates.currentStock = Number(updates.currentStock) || 0;
     if ('reorderLevel' in updates) sanitizedUpdates.reorderLevel = Number(updates.reorderLevel) || 0;
+    if ('reorderQty' in updates) sanitizedUpdates.reorderQty = Number(updates.reorderQty) || 0;
     if ('supplier' in updates) sanitizedUpdates.supplier = updates.supplier ?? '';
     if ('costPerUnit' in updates) sanitizedUpdates.costPerUnit = Number(updates.costPerUnit) || 0;
     if ('status' in updates) sanitizedUpdates.status = updates.status ?? '';
     if ('store' in updates) sanitizedUpdates.store = updates.store ?? '';
     if ('sourcingOrigin' in updates) sanitizedUpdates.sourcingOrigin = updates.sourcingOrigin ?? '';
+    if ('notes' in updates) sanitizedUpdates.notes = updates.notes ?? '';
+    if ('lastRestockedDate' in updates) sanitizedUpdates.lastRestockedDate = updates.lastRestockedDate ?? '';
 
     const firestore = db();
     if (!firestore) {

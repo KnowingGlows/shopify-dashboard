@@ -257,11 +257,44 @@ export async function POST(request: Request) {
       const batchSize = 500;
       const docs = snap.docs;
       for (let i = 0; i < docs.length; i += batchSize) {
-        const batch = db.batch();
-        docs.slice(i, i + batchSize).forEach((doc) => batch.delete(doc.ref));
-        await batch.commit();
+        const batchOp = db.batch();
+        docs.slice(i, i + batchSize).forEach((doc) => batchOp.delete(doc.ref));
+        await batchOp.commit();
       }
       return NextResponse.json({ success: true, deleted: docs.length });
+    }
+
+    // ── Deduplicate ───────────────────────────────────────────────────
+    if (action === 'deduplicate') {
+      const snap = await db.collection(COLLECTIONS.BANK_TRANSACTIONS).orderBy('createdAt', 'asc').get();
+      const allDocs = snap.docs.map((doc) => ({ ...(doc.data() as StoredTransaction), id: doc.id }));
+
+      // Group by dedup key — keep first (oldest), delete rest
+      const seen = new Map<string, string>(); // key → first doc id
+      const toDelete: string[] = [];
+
+      for (const doc of allDocs) {
+        // Use reference if available, else use amount+date+type+account+mode as key
+        const key = doc.reference && doc.reference !== ''
+          ? `ref:${doc.reference}`
+          : `${doc.amount}|${doc.date}|${doc.type}|${doc.account}|${doc.mode}`;
+
+        if (seen.has(key)) {
+          toDelete.push(doc.id);
+        } else {
+          seen.set(key, doc.id);
+        }
+      }
+
+      if (toDelete.length > 0) {
+        for (let i = 0; i < toDelete.length; i += 500) {
+          const batchOp = db.batch();
+          toDelete.slice(i, i + 500).forEach((id) => batchOp.delete(db.collection(COLLECTIONS.BANK_TRANSACTIONS).doc(id)));
+          await batchOp.commit();
+        }
+      }
+
+      return NextResponse.json({ success: true, deleted: toDelete.length });
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
