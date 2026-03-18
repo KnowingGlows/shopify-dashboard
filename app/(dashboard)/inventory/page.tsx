@@ -643,7 +643,7 @@ export default function InventoryPage() {
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[1fr_75px_60px_75px_80px_75px_32px] gap-2 px-4 py-2.5 border-b border-border/50 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50 bg-card">
+          <div className="grid grid-cols-[1fr_75px_60px_75px_80px_75px_32px] gap-2 px-4 py-2.5 border-b border-border/50 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 bg-card">
             <span>Product</span>
             <span className="text-right">Stock</span>
             <span className="text-right">Avg/Day</span>
@@ -678,22 +678,22 @@ export default function InventoryPage() {
                     {/* Product */}
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        {cfg && <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${cfg.dot}`} />}
-                        <span className="text-[13px] font-medium text-foreground truncate">{entry.productName || 'Unnamed'}</span>
+                        {cfg && <span className={`h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />}
+                        <span className="text-sm font-semibold text-foreground truncate">{entry.productName || 'Unnamed'}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 mt-0.5 pl-3.5 flex-wrap">
+                      <div className="flex items-center gap-1.5 mt-1 pl-3.5 flex-wrap">
                         {storeCfg && (
-                          <span className={`text-[8px] font-semibold px-1 py-0.5 rounded-full border ${storeCfg.bg} ${storeCfg.color}`}>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${storeCfg.bg} ${storeCfg.color}`}>
                             {entry.store}
                           </span>
                         )}
                         {sourcing && (
-                          <span className={`text-[8px] font-semibold px-1 py-0.5 rounded border ${sourcing.bg} ${sourcing.color}`}>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${sourcing.bg} ${sourcing.color}`}>
                             {sourcing.label}
                           </span>
                         )}
                         {timeline.reorderDate && entry.dailyAvgOrders > 0 && (
-                          <span className={`text-[10px] font-semibold ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-muted-foreground/70'}`}>
+                          <span className={`text-[11px] font-bold tracking-tight ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-foreground/50'}`}>
                             {timeline.urgent ? '⚠ Order now' : `Reorder ${timeline.reorderDate}`}
                           </span>
                         )}
@@ -702,19 +702,19 @@ export default function InventoryPage() {
 
                     {/* Stock */}
                     <div className="text-right">
-                      <span className={`text-[13px] font-semibold tabular-nums ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-foreground'}`}>
+                      <span className={`text-sm font-bold tabular-nums ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-foreground'}`}>
                         {entry.currentStock}
                       </span>
                     </div>
 
                     {/* Avg/Day */}
-                    <span className="text-[12px] text-muted-foreground tabular-nums text-right">
+                    <span className="text-sm font-semibold text-foreground/70 tabular-nums text-right">
                       {entry.dailyAvgOrders > 0 ? entry.dailyAvgOrders : '—'}
                     </span>
 
                     {/* Days Left */}
                     <div className="text-right">
-                      <span className={`text-[12px] font-medium tabular-nums ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                      <span className={`text-sm font-bold tabular-nums ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-foreground/80'}`}>
                         {timeline.daysRemaining === Infinity ? '—' : `${timeline.daysRemaining}d`}
                       </span>
                     </div>
@@ -722,14 +722,14 @@ export default function InventoryPage() {
                     {/* Status */}
                     <div className="text-center">
                       {entry.status && cfg && (
-                        <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${cfg.bg} ${cfg.color}`}>
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${cfg.bg} ${cfg.color}`}>
                           {entry.status}
                         </span>
                       )}
                     </div>
 
                     {/* Value */}
-                    <span className="text-[11px] font-medium text-muted-foreground tabular-nums text-right">
+                    <span className="text-[12px] font-semibold text-foreground/70 tabular-nums text-right">
                       {entry.costPerUnit > 0 && entry.currentStock > 0 ? formatINR(entry.costPerUnit * entry.currentStock) : '—'}
                     </span>
 

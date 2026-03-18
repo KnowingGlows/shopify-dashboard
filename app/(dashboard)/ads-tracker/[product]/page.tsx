@@ -11,7 +11,6 @@ import {
 import { AdsTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 import { LinkChip } from '@/components/link-chip';
-import { formatINR } from '@/lib/currency-converter';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -62,8 +61,6 @@ export default function ProductAdsPage() {
   const [formBatch, setFormBatch] = useState('');
   const [formFolder, setFormFolder] = useState('');
   const [formType, setFormType] = useState('');
-  const [formSpend, setFormSpend] = useState('');
-  const [formRoas, setFormRoas] = useState('');
   const [formResult, setFormResult] = useState('');
 
   const fetchEntries = useCallback(async () => {
@@ -91,8 +88,7 @@ export default function ProductAdsPage() {
   }, []);
 
   const resetForm = () => {
-    setFormBatch(''); setFormFolder(''); setFormType('');
-    setFormSpend(''); setFormRoas(''); setFormResult('');
+    setFormBatch(''); setFormFolder(''); setFormType(''); setFormResult('');
   };
 
   const addBatch = async () => {
@@ -106,8 +102,6 @@ export default function ProductAdsPage() {
           batchName: formBatch || `Batch ${entries.length + 1}`,
           creativeFolderLink: formFolder,
           creativeType: formType,
-          dailyAdSpend: Number(formSpend) || 0,
-          weeklyRoas: Number(formRoas) || 0,
           creativeBatchResult: formResult,
         }),
       });
@@ -169,9 +163,6 @@ export default function ProductAdsPage() {
   };
 
   // Stats
-  const totalSpend = entries.reduce((s, e) => s + (e.dailyAdSpend ?? 0), 0);
-  const roasBatches = entries.filter((e) => e.weeklyRoas > 0);
-  const avgRoas = roasBatches.length > 0 ? roasBatches.reduce((s, e) => s + e.weeklyRoas, 0) / roasBatches.length : 0;
   const winners = entries.filter((e) => e.creativeBatchResult === 'Winner').length;
   const losers = entries.filter((e) => e.creativeBatchResult === 'Loser').length;
   const testing = entries.filter((e) => e.creativeBatchResult === 'Testing').length;
@@ -294,10 +285,8 @@ export default function ProductAdsPage() {
 
       {/* Performance Stats */}
       {entries.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Total Spend', value: formatINR(totalSpend), color: 'text-amber-400' },
-            { label: 'Avg ROAS', value: avgRoas > 0 ? `${avgRoas.toFixed(2)}x` : '—', color: avgRoas >= 2 ? 'text-emerald-400' : avgRoas >= 1 ? 'text-amber-400' : avgRoas > 0 ? 'text-red-400' : 'text-muted-foreground' },
             { label: 'Hit Rate', value: decided > 0 ? `${hitRate}%` : '—', color: hitRate >= 30 ? 'text-emerald-400' : hitRate > 0 ? 'text-amber-400' : 'text-muted-foreground', icon: true },
             { label: 'Winners', value: winners, color: 'text-emerald-400' },
             { label: 'Losers', value: losers, color: losers > 0 ? 'text-red-400' : 'text-muted-foreground' },
@@ -339,12 +328,6 @@ export default function ProductAdsPage() {
                   <select value={formType} onChange={(e) => setFormType(e.target.value)} className="form-input">
                     {CREATIVE_TYPES.map((t) => <option key={t} value={t}>{t || 'Select type...'}</option>)}
                   </select>
-                </FormField>
-                <FormField label="Daily Ad Spend (INR)">
-                  <input type="number" value={formSpend} onChange={(e) => setFormSpend(e.target.value)} placeholder="0" className="form-input" />
-                </FormField>
-                <FormField label="Weekly ROAS">
-                  <input type="number" value={formRoas} onChange={(e) => setFormRoas(e.target.value)} placeholder="0.00" step="0.01" className="form-input" />
                 </FormField>
                 <FormField label="Result">
                   <select value={formResult} onChange={(e) => setFormResult(e.target.value)} className="form-input">
@@ -434,10 +417,6 @@ export default function ProductAdsPage() {
                       {entry.creativeType && typeCfg && (
                         <span className={`inline-flex items-center rounded-lg border px-2.5 py-0.5 text-[10px] font-semibold ${typeCfg.bg} ${typeCfg.color}`}>{entry.creativeType}</span>
                       )}
-                      {entry.dailyAdSpend > 0 && <span className="text-xs font-medium text-amber-400 tabular-nums">{formatINR(entry.dailyAdSpend)}/d</span>}
-                      {entry.weeklyRoas > 0 && (
-                        <span className={`text-xs font-bold tabular-nums ${entry.weeklyRoas >= 2 ? 'text-emerald-400' : entry.weeklyRoas >= 1 ? 'text-amber-400' : 'text-red-400'}`}>{entry.weeklyRoas.toFixed(2)}x</span>
-                      )}
                       {entry.creativeBatchResult && resultCfg && (
                         <span className={`inline-flex items-center rounded-lg border px-2.5 py-0.5 text-[10px] font-semibold ${resultCfg.bg} ${resultCfg.color}`}>{entry.creativeBatchResult}</span>
                       )}
@@ -501,12 +480,6 @@ export default function ProductAdsPage() {
                             <select value={entry.creativeType} onChange={(e) => handleSelectChange(entry.id, 'creativeType', e.target.value)} className={`form-input ${typeCfg?.color ?? ''}`}>
                               {CREATIVE_TYPES.map((t) => <option key={t} value={t} className="bg-card text-foreground">{t || 'Select...'}</option>)}
                             </select>
-                          </FormField>
-                          <FormField label="Daily Spend (INR)">
-                            <input type="number" value={entry.dailyAdSpend || ''} onChange={(e) => updateLocalField(entry.id, 'dailyAdSpend', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={(e) => handleBlur(entry.id, 'dailyAdSpend', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0" className="form-input" />
-                          </FormField>
-                          <FormField label="Weekly ROAS">
-                            <input type="number" value={entry.weeklyRoas || ''} onChange={(e) => updateLocalField(entry.id, 'weeklyRoas', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={(e) => handleBlur(entry.id, 'weeklyRoas', e.target.value === '' ? 0 : Number(e.target.value))} placeholder="0.00" step="0.01" className="form-input" />
                           </FormField>
                           <FormField label="Batch Result">
                             <select value={entry.creativeBatchResult} onChange={(e) => handleSelectChange(entry.id, 'creativeBatchResult', e.target.value)} className={`form-input ${resultCfg?.color ?? ''}`}>

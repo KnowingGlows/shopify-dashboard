@@ -320,11 +320,10 @@ export async function GET(request: Request) {
       const ndrOrd = ndrWithDelhivery; // alias for clarity
       const ndrRes = ndrOrd.filter((o) => o.status === 'delivered').length;
       const ndrDel = ndrOrd.filter((o) => o.status === 'delivered');
-      // NDR rate = NDR orders / all orders Delhivery has data on (orders that left warehouse)
-      const ordersWithTracking = orders.filter((o) => o.ndrCount != null);
+      // NDR rate = orders with NDR events / all shipments attempted (delivered + attempted + rto + rto_in_transit)
       const allAttemptedOrders = orders.filter((o) => ['delivered', 'attempted', 'rto', 'rto_in_transit'].includes(o.status));
-      const ndrRatePct = ordersWithTracking.length > 0
-        ? Math.round(ndrOrd.length / ordersWithTracking.length * 1000) / 10
+      const ndrRatePct = allAttemptedOrders.length > 0
+        ? Math.round(ndrOrd.length / allAttemptedOrders.length * 1000) / 10
         : null;
       const codOrd = orders.filter((o) => o.paymentType === 'cod');
 
