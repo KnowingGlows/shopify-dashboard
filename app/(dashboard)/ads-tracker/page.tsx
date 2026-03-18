@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import {
-  Plus, Loader2, X, Megaphone, ArrowRight, Target, Clock, Flame, TrendingUp,
+  Plus, Loader2, X, Megaphone, ArrowRight, Target, Clock, Flame,
 } from 'lucide-react';
 import { AdsTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
@@ -272,13 +272,21 @@ export default function OpsAdsPage() {
                     {/* Stats Row */}
                     <div className="grid grid-cols-3 gap-3 mb-4">
                       <div>
-                        <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">Spend</p>
-                        <p className="text-sm font-semibold text-amber-400 tabular-nums mt-0.5">{formatINR(product.totalSpend)}</p>
+                        <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">Launch</p>
+                        <p className="text-sm font-semibold text-foreground tabular-nums mt-0.5">
+                          {product.latestBatch
+                            ? new Date(product.latestBatch.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                            : '—'}
+                        </p>
                       </div>
                       <div>
-                        <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">ROAS</p>
-                        <p className={`text-sm font-semibold tabular-nums mt-0.5 ${product.avgRoas >= 2 ? 'text-emerald-400' : product.avgRoas >= 1 ? 'text-amber-400' : product.avgRoas > 0 ? 'text-red-400' : 'text-muted-foreground/40'}`}>
-                          {product.avgRoas > 0 ? `${product.avgRoas.toFixed(1)}x` : '—'}
+                        <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">Next Batch</p>
+                        <p className={`text-sm font-semibold tabular-nums mt-0.5 ${product.nextBatchDue ? 'text-amber-400' : 'text-muted-foreground/70'}`}>
+                          {product.latestBatch ? (() => {
+                            const d = new Date(product.latestBatch.updatedAt);
+                            d.setDate(d.getDate() + 7);
+                            return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+                          })() : '—'}
                         </p>
                       </div>
                       <div>

@@ -74,13 +74,13 @@ export async function GET(request: Request) {
         ...doc.data(),
       })) as StoredTransaction[];
 
-      // Summary stats
+      // Summary stats — only approved transactions count toward financials
       const summary = {
         total: transactions.length,
         pending: transactions.filter((t) => t.status === 'pending').length,
         approved: transactions.filter((t) => t.status === 'approved').length,
-        totalDebit: transactions.filter((t) => t.type === 'debit' && t.status !== 'dismissed').reduce((s, t) => s + t.amount, 0),
-        totalCredit: transactions.filter((t) => t.type === 'credit' && t.status !== 'dismissed').reduce((s, t) => s + t.amount, 0),
+        totalDebit: transactions.filter((t) => t.type === 'debit' && t.status === 'approved').reduce((s, t) => s + t.amount, 0),
+        totalCredit: transactions.filter((t) => t.type === 'credit' && t.status === 'approved').reduce((s, t) => s + t.amount, 0),
       };
 
       return NextResponse.json({ success: true, transactions, summary });

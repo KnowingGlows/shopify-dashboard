@@ -197,10 +197,10 @@ export default function TransactionsPage() {
     return Object.entries(map).sort(([a], [b]) => b.localeCompare(a));
   }, [filtered]);
 
-  // Pie data for categories (debits only, non-dismissed)
+  // Pie data for categories (debits only, approved only)
   const categoryPie = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const t of transactions.filter((t) => t.type === 'debit' && t.status !== 'dismissed')) {
+    for (const t of transactions.filter((t) => t.type === 'debit' && t.status === 'approved')) {
       map[t.category] = (map[t.category] ?? 0) + t.amount;
     }
     return Object.entries(map)
@@ -208,10 +208,10 @@ export default function TransactionsPage() {
       .sort((a, b) => b.value - a.value);
   }, [transactions]);
 
-  // Daily spend bar chart
+  // Daily spend bar chart (approved only)
   const dailySpend = useMemo(() => {
     const map: Record<string, { debit: number; credit: number }> = {};
-    for (const t of transactions.filter((t) => t.status !== 'dismissed')) {
+    for (const t of transactions.filter((t) => t.status === 'approved')) {
       if (!map[t.date]) map[t.date] = { debit: 0, credit: 0 };
       if (t.type === 'debit') map[t.date].debit += t.amount;
       else map[t.date].credit += t.amount;

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Trash2, Loader2, Check, AlertTriangle,
   X, Box, Package, Clock, CalendarClock,
-  Ship, Store, Send, History, ChevronRight,
+  Ship, Send, History, ChevronRight,
   Search, Filter, RefreshCw, ArrowUp, FileText,
   TrendingDown, Layers,
 } from 'lucide-react';
@@ -271,8 +271,6 @@ export default function InventoryPage() {
   }).length;
   const outOfStockCount = entries.filter((e) => e.status === 'Out of Stock').length;
   const orderedCount = entries.filter((e) => e.status === 'Ordered').length;
-  const kairovaValue = entries.filter((e) => e.store === 'Kairova').reduce((s, e) => s + (e.costPerUnit || 0) * (e.currentStock || 0), 0);
-  const mavricValue = entries.filter((e) => e.store === 'Mavric').reduce((s, e) => s + (e.costPerUnit || 0) * (e.currentStock || 0), 0);
 
   // Reorder alerts
   const reorderAlerts = entries.filter((e) => {
@@ -330,22 +328,20 @@ export default function InventoryPage() {
       </div>
 
       {/* Stats */}
-      <StaggerContainer className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <StaggerContainer className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: 'Total Items', value: String(totalProducts), color: 'text-foreground', icon: <Layers className="h-3.5 w-3.5 text-muted-foreground" /> },
-          { label: 'Total Value', value: formatINR(totalValue), color: 'text-foreground', icon: <Package className="h-3.5 w-3.5 text-muted-foreground" /> },
-          { label: 'Kairova Value', value: formatINR(kairovaValue), color: 'text-violet-400', icon: <Store className="h-3.5 w-3.5 text-violet-400/60" /> },
-          { label: 'Mavric Value', value: formatINR(mavricValue), color: 'text-blue-400', icon: <Store className="h-3.5 w-3.5 text-blue-400/60" /> },
-          { label: 'Needs Reorder', value: String(lowStockCount), color: lowStockCount > 0 ? 'text-amber-400' : 'text-muted-foreground', icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-400/60" /> },
-          { label: 'Out of Stock', value: String(outOfStockCount + orderedCount > 0 ? `${outOfStockCount} (${orderedCount} ordered)` : outOfStockCount), color: outOfStockCount > 0 ? 'text-red-400' : 'text-muted-foreground', icon: <TrendingDown className="h-3.5 w-3.5 text-red-400/60" /> },
+          { label: 'Total Items', value: String(totalProducts), color: 'text-foreground', icon: <Layers className="h-4 w-4 text-muted-foreground" /> },
+          { label: 'Total Value', value: formatINR(totalValue), color: 'text-foreground', icon: <Package className="h-4 w-4 text-muted-foreground" /> },
+          { label: 'Needs Reorder', value: String(lowStockCount), color: lowStockCount > 0 ? 'text-amber-400' : 'text-muted-foreground', icon: <AlertTriangle className="h-4 w-4 text-amber-400/70" /> },
+          { label: 'Out of Stock', value: String(outOfStockCount > 0 ? `${outOfStockCount}${orderedCount > 0 ? ` (${orderedCount} ordered)` : ''}` : outOfStockCount), color: outOfStockCount > 0 ? 'text-red-400' : 'text-muted-foreground', icon: <TrendingDown className="h-4 w-4 text-red-400/70" /> },
         ].map((stat) => (
           <StaggerItem key={stat.label}>
-            <motion.div whileHover={{ y: -1 }} className="card-hover-glow rounded-lg border border-border bg-card px-3 py-2.5">
-              <div className="flex items-center justify-between mb-0.5">
-                <p className="relative z-10 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{stat.label}</p>
+            <motion.div whileHover={{ y: -1 }} className="card-hover-glow rounded-xl border border-border bg-card px-4 py-3.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{stat.label}</p>
                 {stat.icon}
               </div>
-              <p className={`relative z-10 text-[15px] font-semibold tabular-nums ${stat.color}`}>{stat.value}</p>
+              <p className={`relative z-10 text-xl font-bold tabular-nums ${stat.color}`}>{stat.value}</p>
             </motion.div>
           </StaggerItem>
         ))}
@@ -697,7 +693,7 @@ export default function InventoryPage() {
                           </span>
                         )}
                         {timeline.reorderDate && entry.dailyAvgOrders > 0 && (
-                          <span className={`text-[8px] ${timeline.urgent ? 'text-red-400' : 'text-muted-foreground/40'}`}>
+                          <span className={`text-[10px] font-semibold ${timeline.urgent ? 'text-red-400' : timeline.warning ? 'text-amber-400' : 'text-muted-foreground/70'}`}>
                             {timeline.urgent ? '⚠ Order now' : `Reorder ${timeline.reorderDate}`}
                           </span>
                         )}

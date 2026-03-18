@@ -31,15 +31,15 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: Home, section: 'core' },
   { href: '/orders', label: 'Logistics', icon: Truck, section: 'core' },
   { href: '/orders/breakdown', label: 'Breakdown', icon: BarChart3, section: 'core', parent: '/orders' },
-  { href: '/finance', label: 'Finance', icon: DollarSign, section: 'core' },
-  { href: '/finance/entry', label: 'Daily Entry', icon: PenLine, section: 'core', parent: '/finance' },
-  { href: '/finance/expenditure', label: 'Expenditure', icon: Receipt, section: 'core', parent: '/finance' },
-  { href: '/finance/entries', label: 'Entries', icon: List, section: 'core', parent: '/finance' },
-  { href: '/transactions', label: 'Transactions', icon: Wallet, section: 'core', parent: '/finance' },
-  { href: '/finance/projected', label: 'COD Projection', icon: TrendingUp, section: 'core' },
-  { href: '/finance/projected/entry', label: 'Daily P&L', icon: PenLine, section: 'core', parent: '/finance/projected' },
-  { href: '/finance/projected/entries', label: 'Entries', icon: List, section: 'core', parent: '/finance/projected' },
-  { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'core' },
+  { href: '/finance', label: 'Finance', icon: DollarSign, section: 'finance' },
+  { href: '/finance/entry', label: 'Daily Entry', icon: PenLine, section: 'finance', parent: '/finance' },
+  { href: '/finance/expenditure', label: 'Expenditure', icon: Receipt, section: 'finance', parent: '/finance' },
+  { href: '/finance/entries', label: 'Entries', icon: List, section: 'finance', parent: '/finance' },
+  { href: '/transactions', label: 'Transactions', icon: Wallet, section: 'finance', parent: '/finance' },
+  { href: '/finance/projected', label: 'COD Projection', icon: TrendingUp, section: 'finance' },
+  { href: '/finance/projected/entry', label: 'Daily P&L', icon: PenLine, section: 'finance', parent: '/finance/projected' },
+  { href: '/finance/projected/entries', label: 'Entries', icon: List, section: 'finance', parent: '/finance/projected' },
+  { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'finance' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
   { href: '/ads-tracker', label: 'OPS Ads', icon: Megaphone, section: 'marketing' },
@@ -108,6 +108,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
 
   const sections = [
     { key: 'core', label: null },
+    { key: 'finance', label: 'Finance' },
     { key: 'marketing', label: 'Marketing' },
     { key: 'ops', label: 'Operations' },
     { key: 'system', label: 'System' },
@@ -155,8 +156,8 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
               // /transactions is a Finance child but has a different path prefix
               const effectivePath = activePath === '/transactions' ? '/finance' : activePath;
               if (!effectivePath.startsWith(i.parent)) return false;
-              // Prevent /finance children from showing on standalone /finance/* routes
-              if (i.parent === '/finance' && (effectivePath.startsWith('/finance/projected') || effectivePath === '/finance/calculator')) return false;
+              // /finance sub-items only show when on /finance (not projected, not calculator)
+              if (i.parent === '/finance' && (effectivePath.startsWith('/finance/projected') || effectivePath.startsWith('/finance/calculator'))) return false;
             }
             return true;
           });

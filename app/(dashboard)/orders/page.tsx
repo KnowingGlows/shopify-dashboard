@@ -97,16 +97,15 @@ function pctNum(num: number, den: number): number {
   return Math.round(num / den * 1000) / 10;
 }
 
-/** Returns the "decade" date range based on where (today - 7 days) falls */
-function getDecadeRange(): { start: string; end: string } {
+/** Returns 1st of current month → today minus 7 days (orders placed 7+ days ago should be settled) */
+function getDefaultRange(): { start: string; end: string } {
   const pad = (n: number) => String(n).padStart(2, '0');
+  const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  const [y, m] = todayIST.split('-').map(Number);
+  const start = `${y}-${pad(m)}-01`;
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-  const d7Str = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(sevenDaysAgo);
-  const [y, m, d] = d7Str.split('-').map(Number);
-  if (d <= 10) return { start: `${y}-${pad(m)}-01`, end: `${y}-${pad(m)}-10` };
-  if (d <= 20) return { start: `${y}-${pad(m)}-11`, end: `${y}-${pad(m)}-20` };
-  const lastDay = new Date(y, m, 0).getDate();
-  return { start: `${y}-${pad(m)}-21`, end: `${y}-${pad(m)}-${pad(lastDay)}` };
+  const end = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(sevenDaysAgo);
+  return { start, end };
 }
 
 // ── Animated Number ──────────────────────────────────────────────────
@@ -158,7 +157,7 @@ function InsightCard({ label, value, suffix, sub, icon: Icon, color, delay }: {
 
 // ── Main Page ────────────────────────────────────────────────────────
 export default function LogisticsPage() {
-  const { start: initStart, end: initEnd } = getDecadeRange();
+  const { start: initStart, end: initEnd } = getDefaultRange();
   const [range, setRange] = useState<DateRange>('custom');
   const [customStart, setCustomStart] = useState(initStart);
   const [customEnd, setCustomEnd] = useState(initEnd);
