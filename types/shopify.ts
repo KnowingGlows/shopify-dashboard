@@ -96,6 +96,7 @@ export interface AdsTrackerEntry {
   dailyAdSpend: number;
   weeklyRoas: number;
   creativeBatchResult: string;
+  launchDate?: string;
   createdAt: string;
   updatedAt: string;
 }

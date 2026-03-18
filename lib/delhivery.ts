@@ -192,15 +192,13 @@ function parseShipment(s: any): DelhiveryShipment | null {
     const code = (sd?.StatusCode ?? '').toUpperCase();
     const scanType = (sd?.Scan ?? '').toLowerCase();
 
+    // Only count explicit Delhivery NDR scan codes + unambiguous delivery failure instructions
     if (
       code.startsWith('EOD-') || code.startsWith('CR-') || code.startsWith('UD-') ||
-      inst.includes('not delivered') || inst.includes('undelivered') ||
-      inst.includes('delivery attempted') || inst.includes('consignee refused') ||
-      inst.includes('address issue') || inst.includes('customer not available') ||
-      inst.includes('otp not received') || inst.includes('cancellation') ||
-      inst.includes('no client instructions to reattempt') ||
-      inst.includes('rejected') || inst.includes('refused') ||
-      (scanType === 'pending' && si > 0 && (scans[si - 1]?.ScanDetail?.Scan ?? '').toLowerCase() === 'dispatched')
+      inst.includes('delivery attempted') ||
+      inst.includes('consignee refused') ||
+      inst.includes('customer not available') ||
+      inst.includes('otp not received')
     ) {
       ndrCount++;
     }

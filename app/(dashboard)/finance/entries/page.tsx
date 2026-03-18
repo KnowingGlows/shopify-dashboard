@@ -74,7 +74,7 @@ function getMonthOptions(): Array<{ value: string; label: string }> {
 }
 
 export default function DailyEntriesPage() {
-  const [activeTab, setActiveTab] = useState<'pnl' | 'income' | 'expense'>('pnl');
+  const [activeTab, setActiveTab] = useState<'income' | 'expense'>('income');
 
   // P&L state
   const [entries, setEntries] = useState<FinanceDailyEntry[]>([]);
@@ -298,8 +298,8 @@ export default function DailyEntriesPage() {
           <div className="flex items-center gap-1.5">
             <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
             <select
-              value={activeTab === 'pnl' ? monthFilter : txMonthFilter}
-              onChange={(e) => activeTab === 'pnl' ? setMonthFilter(e.target.value) : setTxMonthFilter(e.target.value)}
+              value={txMonthFilter}
+              onChange={(e) => setTxMonthFilter(e.target.value)}
               className="form-input h-[34px] text-[12px] pr-8"
             >
               {monthOptions.map((opt) => (
@@ -321,7 +321,6 @@ export default function DailyEntriesPage() {
       {/* Tab Switcher */}
       <div className="flex items-center gap-1 rounded-xl border border-border/50 bg-card/40 p-1">
         {([
-          { key: 'pnl', label: 'Daily P&L', icon: DollarSign },
           { key: 'income', label: 'Income', icon: TrendingUp },
           { key: 'expense', label: 'Expenses', icon: Receipt },
         ] as const).map(({ key, label, icon: Icon }) => (
@@ -339,7 +338,7 @@ export default function DailyEntriesPage() {
 
       {/* ── Income / Expense entries ──────────────────────────────────── */}
       <AnimatePresence mode="wait">
-        {activeTab !== 'pnl' && (
+        {(
           <motion.div key={activeTab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}>
             {loadingTx ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
@@ -389,9 +388,9 @@ export default function DailyEntriesPage() {
         )}
       </AnimatePresence>
 
-      {/* ── P&L Entries ──────────────────────────────────────────────── */}
+      {/* ── P&L Entries (removed) ──────────────────────────────────── */}
       <AnimatePresence mode="wait">
-        {activeTab === 'pnl' && (
+        {false && (
           <motion.div key="pnl" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}>
       {loading ? (
         <div className="flex items-center justify-center py-16">

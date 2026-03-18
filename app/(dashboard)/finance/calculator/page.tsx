@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Calculator, Percent, Bookmark, Plus, X, Trash2 } from 'lucide-react';
+import { Calculator, Percent, Bookmark, Plus, X, Trash2 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 
@@ -103,9 +102,6 @@ export default function ProfitCalculatorPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link href="/finance" className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/30 transition">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
           <div>
             <h1 className="text-lg font-semibold text-foreground">Profit Calculator</h1>
             <p className="text-[11px] text-muted-foreground">Calculate ROI & profit margins for paid advertising</p>

@@ -32,6 +32,10 @@ const RESULT_CONFIG: Record<string, { color: string; bg: string; icon: string }>
   Scaled: { color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30', icon: '🚀' },
 };
 
+function getISTDateStr() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+}
+
 function getBatchTimeline(startedAt: string) {
   const now = Date.now();
   const started = new Date(startedAt).getTime();
@@ -62,6 +66,7 @@ export default function ProductAdsPage() {
   const [formFolder, setFormFolder] = useState('');
   const [formType, setFormType] = useState('');
   const [formResult, setFormResult] = useState('');
+  const [formLaunchDate, setFormLaunchDate] = useState(getISTDateStr);
 
   const fetchEntries = useCallback(async () => {
     try {
@@ -88,7 +93,7 @@ export default function ProductAdsPage() {
   }, []);
 
   const resetForm = () => {
-    setFormBatch(''); setFormFolder(''); setFormType(''); setFormResult('');
+    setFormBatch(''); setFormFolder(''); setFormType(''); setFormResult(''); setFormLaunchDate(getISTDateStr());
   };
 
   const addBatch = async () => {
@@ -103,6 +108,7 @@ export default function ProductAdsPage() {
           creativeFolderLink: formFolder,
           creativeType: formType,
           creativeBatchResult: formResult,
+          launchDate: formLaunchDate,
         }),
       });
       const data = await res.json();
@@ -176,8 +182,8 @@ export default function ProductAdsPage() {
     const activeBatches = entries.filter((e) => ['Testing', 'Winner', 'Loser', 'Scaled'].includes(e.creativeBatchResult));
     if (activeBatches.length === 0) return null;
     const sorted = [...activeBatches].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    // Use updatedAt as the countdown start (when the batch was marked as Testing)
-    return getBatchTimeline(sorted[0].updatedAt);
+    const latest = sorted[0];
+    return getBatchTimeline(latest.launchDate ?? latest.updatedAt);
   }, [entries]);
 
   return (
@@ -321,6 +327,9 @@ export default function ProductAdsPage() {
                 <FormField label="Batch Name">
                   <input type="text" value={formBatch} onChange={(e) => setFormBatch(e.target.value)} placeholder={`Batch ${entries.length + 1}`} className="form-input" autoFocus />
                 </FormField>
+                <FormField label="Launch Date">
+                  <input type="date" value={formLaunchDate} onChange={(e) => setFormLaunchDate(e.target.value)} className="form-input" />
+                </FormField>
                 <FormField label="Creative Folder">
                   <LinkChip value={formFolder} onChange={setFormFolder} placeholder="https://drive.google.com/..." />
                 </FormField>
@@ -362,7 +371,7 @@ export default function ProductAdsPage() {
             const typeCfg = TYPE_CONFIG[entry.creativeType];
             const resultCfg = RESULT_CONFIG[entry.creativeBatchResult];
             const isEditing = editingId === entry.id;
-            const timeline = getBatchTimeline(entry.createdAt);
+            const timeline = getBatchTimeline(entry.launchDate ?? entry.createdAt);
 
             return (
               <StaggerItem key={entry.id}>
@@ -473,6 +482,15 @@ export default function ProductAdsPage() {
 
                         {/* Edit fields */}
                         <div className="border-t border-border/50 px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          <FormField label="Launch Date">
+                            <input
+                              type="date"
+                              value={entry.launchDate ?? entry.createdAt.slice(0, 10)}
+                              onChange={(e) => updateLocalField(entry.id, 'launchDate', e.target.value)}
+                              onBlur={(e) => handleBlur(entry.id, 'launchDate', e.target.value)}
+                              className="form-input"
+                            />
+                          </FormField>
                           <FormField label="Creative Folder">
                             <LinkChip value={entry.creativeFolderLink} onChange={(val) => updateLocalField(entry.id, 'creativeFolderLink', val)} onBlur={(val) => handleBlur(entry.id, 'creativeFolderLink', val)} placeholder="https://..." />
                           </FormField>

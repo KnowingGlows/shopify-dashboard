@@ -175,10 +175,8 @@ export default function InventoryPage() {
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
   };
 
-  const saveEntry = async (id: string) => {
-    const entry = entries.find((e) => e.id === id);
-    if (!entry) return;
-    setSaveStatus((prev) => ({ ...prev, [id]: 'saving' }));
+  const saveEntryObject = async (entry: InventoryEntry) => {
+    setSaveStatus((prev) => ({ ...prev, [entry.id]: 'saving' }));
     try {
       const res = await fetch('/api/inventory', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -191,10 +189,16 @@ export default function InventoryPage() {
         }),
       });
       if (!res.ok) throw new Error();
-      setSaveStatus((prev) => ({ ...prev, [id]: 'saved' }));
-      if (saveTimeouts.current[id]) clearTimeout(saveTimeouts.current[id]);
-      saveTimeouts.current[id] = setTimeout(() => setSaveStatus((prev) => ({ ...prev, [id]: 'idle' })), 2000);
-    } catch { setSaveStatus((prev) => ({ ...prev, [id]: 'error' })); }
+      setSaveStatus((prev) => ({ ...prev, [entry.id]: 'saved' }));
+      if (saveTimeouts.current[entry.id]) clearTimeout(saveTimeouts.current[entry.id]);
+      saveTimeouts.current[entry.id] = setTimeout(() => setSaveStatus((prev) => ({ ...prev, [entry.id]: 'idle' })), 2000);
+    } catch { setSaveStatus((prev) => ({ ...prev, [entry.id]: 'error' })); }
+  };
+
+  const saveEntry = async (id: string) => {
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+    await saveEntryObject(entry);
   };
 
   const deleteEntry = async (id: string) => {
@@ -764,17 +768,17 @@ export default function InventoryPage() {
                               <input type="text" value={entry.productName} onChange={(e) => updateField(entry.id, 'productName', e.target.value)} onBlur={() => saveEntry(entry.id)} className="form-input text-[12px]" />
                             </FormField>
                             <FormField label="Store">
-                              <select value={entry.store} onChange={(e) => { updateField(entry.id, 'store', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className="form-input text-[12px]">
+                              <select value={entry.store} onChange={(e) => { const val = e.target.value; updateField(entry.id, 'store', val); saveEntryObject({ ...entry, store: val }); }} className="form-input text-[12px]">
                                 {storeOptions.map((s) => <option key={s} value={s}>{s || 'Select...'}</option>)}
                               </select>
                             </FormField>
                             <FormField label="Sourcing">
-                              <select value={entry.sourcingOrigin} onChange={(e) => { updateField(entry.id, 'sourcingOrigin', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className="form-input text-[12px]">
+                              <select value={entry.sourcingOrigin} onChange={(e) => { const val = e.target.value; updateField(entry.id, 'sourcingOrigin', val); saveEntryObject({ ...entry, sourcingOrigin: val }); }} className="form-input text-[12px]">
                                 {SOURCING_OPTIONS.map((s) => <option key={s} value={s}>{s ? SOURCING_CONFIG[s]?.label : 'Select...'}</option>)}
                               </select>
                             </FormField>
                             <FormField label="Status">
-                              <select value={entry.status} onChange={(e) => { updateField(entry.id, 'status', e.target.value); setTimeout(() => saveEntry(entry.id), 0); }} className={`form-input text-[12px] ${cfg?.color ?? ''}`}>
+                              <select value={entry.status} onChange={(e) => { const val = e.target.value; updateField(entry.id, 'status', val); saveEntryObject({ ...entry, status: val }); }} className={`form-input text-[12px] ${cfg?.color ?? ''}`}>
                                 {STATUS_OPTIONS.map((s) => <option key={s} value={s} className="bg-card text-foreground">{s || 'Select...'}</option>)}
                               </select>
                             </FormField>

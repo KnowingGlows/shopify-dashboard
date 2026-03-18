@@ -1022,7 +1022,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const codWideStart = getISTDate(new Date(todayDate.getTime() - 42 * 86400000));
   const effectiveStart = codWideStart < startDate ? codWideStart : startDate;
 
-  const [dailySnap, baselinesSnap, expensesSnap, incomeSnap, inventorySnap, deliveryRatesData, spendingConfigData] = await Promise.all([
+  const [dailySnap, baselinesSnap, expensesSnap, incomeSnap, inventorySnap, deliveryRatesData, spendingConfigData, approvedTxSnap] = await Promise.all([
     firestore.collection(COLLECTIONS.FINANCE_DAILY).where('date', '>=', effectiveStart).where('date', '<=', endDate).orderBy('date', 'desc').get(),
     firestore.collection(COLLECTIONS.FINANCE_BASELINES).get(),
     firestore.collection(COLLECTIONS.FINANCE_EXPENSES).orderBy('createdAt', 'desc').get(),
@@ -1030,6 +1030,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     firestore.collection(COLLECTIONS.INVENTORY).get(),
     getCachedSetting<{ rates?: Record<string, number>; days?: Record<string, number> }>(firestore, 'delivery_rates', { rates: {}, days: {} }),
     getCachedSetting<{ founderCutPct?: number; enabledItems?: Record<string, boolean> }>(firestore, 'spending_config', { founderCutPct: 50, enabledItems: { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true } }),
+    firestore.collection(COLLECTIONS.BANK_TRANSACTIONS).where('status', '==', 'approved').get(),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1057,7 +1058,40 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     }
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const allIncome = incomeSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
+  const manualIncome = incomeSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
+
+  // Merge approved bank transactions into income/expenses
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const approvedTxs = approvedTxSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+  const txIncome = approvedTxs
+    .filter((t: any) => t.type === 'credit')
+    .map((t: any) => ({
+      id: `tx_${t.id}`,
+      category: t.category ?? 'other-income',
+      description: t.description ?? t.note ?? '',
+      amount: t.amount,
+      date: t.date,
+      _fromTransaction: true,
+    }));
+  const txExpenses = approvedTxs
+    .filter((t: any) => t.type === 'debit')
+    .map((t: any) => ({
+      id: `tx_${t.id}`,
+      category: t.category ?? 'other',
+      description: t.description ?? t.note ?? '',
+      amount: t.amount,
+      date: t.date,
+      _fromTransaction: true,
+    }));
+
+  const allIncome = [...manualIncome, ...txIncome];
+  // Add tx expenses to allExpenses after it's built below
+  const txExpensesList = txExpenses;
+  // Merge approved debit transactions into expenses
+  for (const txExp of txExpensesList) {
+    allExpenses.push(txExp);
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allInventory = inventorySnap.docs.map((doc: any) => doc.data());
   const brandRates: Record<string, number> = deliveryRatesData.rates ?? {};
