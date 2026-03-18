@@ -314,18 +314,18 @@ export async function GET(request: Request) {
         }
       }
 
-      // NDR = orders with failed delivery attempts
-      // Uses 'attempted' status as primary signal; also includes Delhivery ndrCount > 0
-      const ndrByStatus = orders.filter((o) => o.status === 'attempted');
-      const ndrByDelhivery = orders.filter((o) => (o.ndrCount ?? 0) > 0 && o.status !== 'attempted');
-      const ndrOrd = [...ndrByStatus, ...ndrByDelhivery];
-      // NDR Recovery: Delhivery-tracked NDR orders that eventually delivered
+      // NDR = only orders where Delhivery explicitly recorded NDR attempts (ndrCount > 0)
+      // 'attempted' status alone is not used — it just means "currently undelivered", not NDR
       const ndrWithDelhivery = orders.filter((o) => (o.ndrCount ?? 0) > 0);
-      const ndrRes = ndrWithDelhivery.filter((o) => o.status === 'delivered').length;
-      const ndrDel = ndrWithDelhivery.filter((o) => o.status === 'delivered');
-      // NDR rate = failed delivery orders / all orders that left the warehouse
+      const ndrOrd = ndrWithDelhivery; // alias for clarity
+      const ndrRes = ndrOrd.filter((o) => o.status === 'delivered').length;
+      const ndrDel = ndrOrd.filter((o) => o.status === 'delivered');
+      // NDR rate = NDR orders / all orders Delhivery has data on (orders that left warehouse)
+      const ordersWithTracking = orders.filter((o) => o.ndrCount != null);
       const allAttemptedOrders = orders.filter((o) => ['delivered', 'attempted', 'rto', 'rto_in_transit'].includes(o.status));
-      const ndrRatePct = allAttemptedOrders.length > 0 ? Math.round(ndrOrd.length / allAttemptedOrders.length * 1000) / 10 : null;
+      const ndrRatePct = ordersWithTracking.length > 0
+        ? Math.round(ndrOrd.length / ordersWithTracking.length * 1000) / 10
+        : null;
       const codOrd = orders.filter((o) => o.paymentType === 'cod');
 
       return {
@@ -335,7 +335,7 @@ export async function GET(request: Request) {
         avgDeliveryDays: avg(dDays),
         avgCodDeliveryDays: avg(codDDays),
         avgPrepaidDeliveryDays: avg(prepaidDDays),
-        ndrResolutionRate: ndrWithDelhivery.length > 0 ? Math.round(ndrRes / ndrWithDelhivery.length * 1000) / 10 : null,
+        ndrResolutionRate: ndrOrd.length > 0 ? Math.round(ndrRes / ndrOrd.length * 1000) / 10 : null,
         ndrRate: ndrRatePct,
         ndrDeliveredCount: ndrRes,
         avgNdrAttempts: ndrDel.length > 0 ? Math.round(ndrDel.reduce((s, o) => s + (o.ndrCount ?? 0), 0) / ndrDel.length * 10) / 10 : null,

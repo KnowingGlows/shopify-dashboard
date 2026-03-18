@@ -249,7 +249,7 @@ export default function OpsAdsPage() {
                   <motion.div
                     whileHover={{ y: -3, scale: 1.01 }}
                     transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-                    className={`group rounded-xl border bg-card p-5 transition-all cursor-pointer ${
+                    className={`group rounded-xl border bg-card p-5 transition-all cursor-pointer flex flex-col h-full min-h-[200px] ${
                       isUrgent ? 'border-amber-500/30 shadow-lg shadow-amber-500/5' : 'border-border hover:border-primary/30'
                     }`}
                   >
@@ -301,7 +301,7 @@ export default function OpsAdsPage() {
                     </div>
 
                     {/* Result Badges */}
-                    <div className="flex items-center gap-1.5 mb-3">
+                    <div className="flex items-center gap-1.5 mb-3 flex-1">
                       {product.winners > 0 && <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">{product.winners}W</span>}
                       {product.losers > 0 && <span className="text-[10px] font-semibold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-md">{product.losers}L</span>}
                       {product.testing > 0 && <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md">{product.testing}T</span>}
@@ -310,7 +310,7 @@ export default function OpsAdsPage() {
 
                     {/* 7-Day Batch Timeline */}
                     {product.batches.length > 0 && product.daysSinceLastBatch >= 0 && (
-                      <div className="pt-3 border-t border-border/50">
+                      <div className="mt-auto pt-3 border-t border-border/50">
                         <div className="flex items-center justify-between mb-1.5">
                           <div className="flex items-center gap-1.5">
                             <Clock className="h-3 w-3 text-muted-foreground/50" />
