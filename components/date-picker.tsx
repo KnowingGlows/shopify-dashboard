@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -41,7 +42,7 @@ export function DatePicker({ value, onChange, max, min, placeholder = 'Select da
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ alignRight: boolean; openUp: boolean }>({ alignRight: false, openUp: false });
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; alignRight: boolean; openUp: boolean }>({ top: 0, left: 0, alignRight: false, openUp: false });
 
   // Parse current value or default to today
   const today = todayIST();
@@ -120,10 +121,12 @@ export function DatePicker({ value, onChange, max, min, placeholder = 'Select da
           if (!open && triggerRef.current) {
             const rect = triggerRef.current.getBoundingClientRect();
             const dropdownWidth = 280;
-            const dropdownHeight = 360; // approximate calendar height
+            const dropdownHeight = 360;
             const alignRight = rect.left + dropdownWidth > window.innerWidth - 8;
             const openUp = rect.bottom + dropdownHeight > window.innerHeight - 8 && rect.top - dropdownHeight > 8;
-            setDropdownPos({ alignRight, openUp });
+            const top = openUp ? rect.top - dropdownHeight - 4 : rect.bottom + 4;
+            const left = alignRight ? rect.right - dropdownWidth : rect.left;
+            setDropdownPos({ top, left, alignRight, openUp });
           }
           setOpen(!open);
         }}
@@ -137,7 +140,8 @@ export function DatePicker({ value, onChange, max, min, placeholder = 'Select da
         {value ? formatDisplay(value) : placeholder}
       </button>
 
-      {/* Dropdown */}
+      {/* Dropdown — rendered via portal to avoid overflow clipping */}
+      {typeof window !== 'undefined' && createPortal(
       <AnimatePresence>
         {open && (
           <motion.div
@@ -145,11 +149,8 @@ export function DatePicker({ value, onChange, max, min, placeholder = 'Select da
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: dropdownPos.openUp ? 4 : -4, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className={cn(
-              'absolute z-50 w-[280px] rounded-xl border border-border bg-[#0c0c0e] p-3 shadow-2xl',
-              dropdownPos.openUp ? 'bottom-full mb-1' : 'top-full mt-1',
-              dropdownPos.alignRight ? 'right-0' : 'left-0',
-            )}
+            className="fixed z-[9999] w-[280px] rounded-xl border border-border bg-[#0c0c0e] p-3 shadow-2xl"
+            style={{ top: dropdownPos.top, left: dropdownPos.left }}
           >
             {/* Month/Year Header */}
             <div className="flex items-center justify-between mb-3">
@@ -255,7 +256,9 @@ export function DatePicker({ value, onChange, max, min, placeholder = 'Select da
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+      )}
     </div>
   );
 }
