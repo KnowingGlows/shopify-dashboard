@@ -322,8 +322,10 @@ export async function GET(request: Request) {
         ? Math.round(currentNdrOrders.length / allAttemptedOrders.length * 1000) / 10
         : null;
 
-      // NDR Resolution: of orders that ever had a failed delivery scan (ndrCount > 0), what % got delivered?
-      const everNdrOrders = orders.filter((o) => (o.ndrCount ?? 0) > 0);
+      // NDR Resolution: orders that genuinely went through NDR (failed delivery + resolved status).
+      // Exclude in_transit/out_for_delivery — UD- scan codes fire on those too and inflate counts.
+      const resolvedStatuses: DeliveryStatus[] = ['delivered', 'attempted', 'rto', 'rto_in_transit'];
+      const everNdrOrders = orders.filter((o) => (o.ndrCount ?? 0) > 0 && resolvedStatuses.includes(o.status));
       const ndrOrd = everNdrOrders;
       const ndrRes = ndrOrd.filter((o) => o.status === 'delivered').length;
       const ndrDel = ndrOrd.filter((o) => o.status === 'delivered');
