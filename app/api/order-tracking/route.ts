@@ -322,11 +322,14 @@ export async function GET(request: Request) {
         ? Math.round(currentNdrOrders.length / allAttemptedOrders.length * 1000) / 10
         : null;
 
-      // NDR Resolution: orders that genuinely went through NDR (failed delivery + resolved status).
-      // Exclude in_transit/out_for_delivery — UD- scan codes fire on those too and inflate counts.
-      const resolvedStatuses: DeliveryStatus[] = ['delivered', 'attempted', 'rto', 'rto_in_transit'];
-      const everNdrOrders = orders.filter((o) => (o.ndrCount ?? 0) > 0 && resolvedStatuses.includes(o.status));
-      const ndrOrd = everNdrOrders;
+      // NDR Resolution: use dispatchCount as the ground truth for "went through NDR".
+      // dispatchCount >= 2 = re-dispatched after a failed attempt (definitive past NDR).
+      // status === 'attempted' = currently in NDR (dispatched once, failed, awaiting re-dispatch).
+      // EOD- scan codes fire on ALL undelivered shipments at end-of-day — completely unreliable.
+      const ndrOrd = orders.filter((o) =>
+        o.status === 'attempted' ||
+        ((o.dispatchCount ?? 0) >= 2 && ['delivered', 'rto', 'rto_in_transit'].includes(o.status))
+      );
       const ndrRes = ndrOrd.filter((o) => o.status === 'delivered').length;
       const ndrDel = ndrOrd.filter((o) => o.status === 'delivered');
       const codOrd = orders.filter((o) => o.paymentType === 'cod');
