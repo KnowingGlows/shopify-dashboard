@@ -283,20 +283,26 @@ export default function ProjectedFinancePage() {
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
   }, [startDate, endDate]);
 
-  // Build daily outflow map from PLANNED expenses only
+  // Build daily outflow map from planned + actual expenses
   const dailyOutflows = useMemo(() => {
-    const map: Record<string, number> = {};
+    const plannedMap: Record<string, number> = {};
+    const expenseMap: Record<string, number> = {};
     for (const p of plannedExpenses) {
       if (p.date >= startDate && p.date <= endDate) {
-        map[p.date] = (map[p.date] ?? 0) + p.amount;
+        plannedMap[p.date] = (plannedMap[p.date] ?? 0) + p.amount;
       }
     }
-    return map;
-  }, [plannedExpenses, startDate, endDate]);
+    for (const e of expenses) {
+      if (e.date >= startDate && e.date <= endDate) {
+        expenseMap[e.date] = (expenseMap[e.date] ?? 0) + e.amount;
+      }
+    }
+    return { plannedMap, expenseMap };
+  }, [plannedExpenses, expenses, startDate, endDate]);
 
   // Build outflow chart data — startDate → endDate from date picker
   const outflowDays = useMemo(() => {
-    const days: Array<{ date: string; label: string; planned: number }> = [];
+    const days: Array<{ date: string; label: string; planned: number; expense: number }> = [];
     const s = new Date(startDate + 'T00:00:00+05:30');
     for (let i = 0; i < chartDays; i++) {
       const dt = new Date(s);
@@ -305,7 +311,8 @@ export default function ProjectedFinancePage() {
       days.push({
         date: dateStr,
         label: fmtMonthDay(dateStr),
-        planned: dailyOutflows[dateStr] ?? 0,
+        planned: dailyOutflows.plannedMap[dateStr] ?? 0,
+        expense: dailyOutflows.expenseMap[dateStr] ?? 0,
       });
     }
     return days;
@@ -352,7 +359,7 @@ export default function ProjectedFinancePage() {
     return { date: dateStr, deposit: inflowByDate[dateStr] ?? 0, label: fmtMonthDay(dateStr) };
   }), [chartDays, startDate, inflowByDate]);
 
-  const totalOutflow = useMemo(() => outflowDays.reduce((s, od) => s + od.planned, 0), [outflowDays]);
+  const totalOutflow = useMemo(() => outflowDays.reduce((s, od) => s + od.planned + od.expense, 0), [outflowDays]);
   const totalInflow = useMemo(() => inflowChartData.reduce((s, d) => s + d.deposit, 0), [inflowChartData]);
   const pnlNetProfit = useMemo(() => d.totalGrossProfit - Math.round(d.totalAdSpend * 1.14), [d.totalGrossProfit, d.totalAdSpend]);
 
@@ -372,7 +379,7 @@ export default function ProjectedFinancePage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-lg font-semibold text-foreground">COD Projection</h1>
+          <h1 className="text-lg font-semibold text-foreground">Finance Projection</h1>
           <p className="text-[11px] text-muted-foreground">Forward-looking projections & expense planning</p>
         </div>
         <div className="flex items-center gap-2">
@@ -409,7 +416,7 @@ export default function ProjectedFinancePage() {
       {/* Tabs */}
       <div className="flex items-center gap-1 rounded-xl border border-border bg-card/60 p-1 w-fit">
         {([
-          { key: 'projection', label: 'COD Projection', icon: TrendingUp },
+          { key: 'projection', label: 'Finance Projection', icon: TrendingUp },
           { key: 'planning', label: 'Expense Planning', icon: TrendingDown },
         ] as const).map(({ key, label, icon: Icon }) => (
           <button
@@ -660,7 +667,7 @@ export default function ProjectedFinancePage() {
                   <ArrowDown className="h-5 w-5 text-red-400" />
                   <h2 className="text-base font-semibold text-foreground">Projected Cash Outflow</h2>
                 </div>
-                <p className="text-[10px] text-muted-foreground/60">Planned reinvestment & expenses</p>
+                <p className="text-[10px] text-muted-foreground/60">Expenses & planned reinvestment</p>
               </div>
               <div className="flex items-center gap-3">
                 <button
@@ -671,7 +678,7 @@ export default function ProjectedFinancePage() {
                 </button>
                 {totalOutflow > 0 && (
                   <div className="text-right">
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Planned</p>
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1">Total Outflow</p>
                     <p className="text-3xl font-bold tabular-nums text-red-400">
                       <AnimatedNumber value={totalOutflow} formatter={formatINR} />
                     </p>
@@ -688,6 +695,10 @@ export default function ProjectedFinancePage() {
                       <linearGradient id="plannedGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#ef4444" stopOpacity={0.35} />
                         <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
                     <XAxis
@@ -708,12 +719,20 @@ export default function ProjectedFinancePage() {
                       tickLine={false}
                     />
                     <Tooltip
-                      content={({ active, payload }) => active && payload?.length && (payload[0].value as number) > 0 ? (
-                        <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg">
-                          <span className="text-muted-foreground text-[10px] mr-1.5">Planned</span>{formatINR(payload[0].value as number)}
-                        </div>
-                      ) : null}
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const planned = (payload.find((p) => p.dataKey === 'planned')?.value as number) ?? 0;
+                        const expense = (payload.find((p) => p.dataKey === 'expense')?.value as number) ?? 0;
+                        if (planned === 0 && expense === 0) return null;
+                        return (
+                          <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-lg space-y-0.5">
+                            {expense > 0 && <div><span className="text-amber-400 text-[10px] mr-1.5">Expense</span>{formatINR(expense)}</div>}
+                            {planned > 0 && <div><span className="text-red-400 text-[10px] mr-1.5">Planned</span>{formatINR(planned)}</div>}
+                          </div>
+                        );
+                      }}
                     />
+                    <Area type="monotone" dataKey="expense" stroke="#f59e0b" strokeWidth={1.5} fill="url(#expenseGrad)" dot={false} activeDot={{ r: 3, fill: '#f59e0b' }} />
                     <Area type="monotone" dataKey="planned" stroke="#ef4444" strokeWidth={1.5} fill="url(#plannedGrad)" dot={false} activeDot={{ r: 3, fill: '#ef4444' }} />
                   </AreaChart>
                 </ResponsiveContainer>

@@ -36,7 +36,7 @@ const navItems: NavItem[] = [
   { href: '/finance/expenditure', label: 'Expenditure', icon: Receipt, section: 'finance', parent: '/finance' },
   { href: '/finance/entries', label: 'Entries', icon: List, section: 'finance', parent: '/finance' },
   { href: '/transactions', label: 'Transactions', icon: Wallet, section: 'finance', parent: '/finance' },
-  { href: '/finance/projected', label: 'COD Projection', icon: TrendingUp, section: 'finance' },
+  { href: '/finance/projected', label: 'Finance Projection', icon: TrendingUp, section: 'finance' },
   { href: '/finance/projected/entry', label: 'Daily P&L', icon: PenLine, section: 'finance', parent: '/finance/projected' },
   { href: '/finance/projected/entries', label: 'Entries', icon: List, section: 'finance', parent: '/finance/projected' },
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'finance' },
