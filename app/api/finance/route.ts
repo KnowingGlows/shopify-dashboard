@@ -1002,7 +1002,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const codWideStart = getISTDate(new Date(todayDate.getTime() - 42 * 86400000));
   const effectiveStart = codWideStart < startDate ? codWideStart : startDate;
 
-  const [dailySnap, baselinesSnap, expensesSnap, incomeSnap, inventorySnap, deliveryRatesData, spendingConfigData, approvedTxSnap] = await Promise.all([
+  const [dailySnap, baselinesSnap, expensesSnap, incomeSnap, inventorySnap, deliveryRatesData, spendingConfigData, approvedTxSnap, plannedSnap] = await Promise.all([
     firestore.collection(COLLECTIONS.FINANCE_DAILY).where('date', '>=', effectiveStart).where('date', '<=', endDate).orderBy('date', 'desc').get(),
     firestore.collection(COLLECTIONS.FINANCE_BASELINES).get(),
     firestore.collection(COLLECTIONS.FINANCE_EXPENSES).orderBy('createdAt', 'desc').get(),
@@ -1011,12 +1011,15 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     getCachedSetting<{ rates?: Record<string, number>; days?: Record<string, number> }>(firestore, 'delivery_rates', { rates: {}, days: {} }),
     getCachedSetting<{ founderCutPct?: number; enabledItems?: Record<string, boolean> }>(firestore, 'spending_config', { founderCutPct: 50, enabledItems: { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true } }),
     firestore.collection(COLLECTIONS.BANK_TRANSACTIONS).where('status', '==', 'approved').get(),
+    firestore.collection(COLLECTIONS.FINANCE_PLANNED).orderBy('date', 'asc').get(),
   ]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allDailyEntries = dailySnap.docs.map((doc: any) => doc.data());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allBaselines = baselinesSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allPlanned = plannedSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rawCombinedExpenses = expensesSnap.docs.map((doc: any) => ({ id: doc.data().id ?? doc.id, ...doc.data() }));
   // Expand recurring expenses for combined data
@@ -1184,35 +1187,8 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     }
   }
 
-  // Prepaid settlements received this week (actual cash in bank)
-  let weekPrepaid = 0;
-  for (const entry of allDailyEntries) {
-    if (entry.date >= weekStartStr && entry.date <= weekEndStr) {
-      weekPrepaid += Number(entry.prepaidSettlement) || 0;
-    }
-  }
-
-  // Income strictly within the selected range (prorate if spans broader period)
-  let weekIncome = 0;
-  for (const inc of allIncome) {
-    const incDate = inc.date ?? '';
-    const incEnd = inc.endDate ?? incDate;
-    if (incDate > weekEndStr || incEnd < weekStartStr) continue; // no overlap
-    const amount = Number(inc.amount) || 0;
-    if (incDate === incEnd || !inc.endDate) {
-      // Single-day income — only include if within range
-      if (incDate >= weekStartStr && incDate <= weekEndStr) weekIncome += amount;
-    } else {
-      // Multi-day income — prorate by overlap days
-      const incTotalDays = Math.max(1, Math.round((new Date(incEnd + 'T00:00:00+05:30').getTime() - new Date(incDate + 'T00:00:00+05:30').getTime()) / 86400000) + 1);
-      const overlapStart = incDate > weekStartStr ? incDate : weekStartStr;
-      const overlapEnd = incEnd < weekEndStr ? incEnd : weekEndStr;
-      const overlapDays = Math.max(1, Math.round((new Date(overlapEnd + 'T00:00:00+05:30').getTime() - new Date(overlapStart + 'T00:00:00+05:30').getTime()) / 86400000) + 1);
-      weekIncome += Math.round(amount * (overlapDays / incTotalDays));
-    }
-  }
-
-  const totalCashIn = projectedDeposit + weekPrepaid + weekIncome;
+  // Income = ONLY projected COD deposit (no prepaid/other income)
+  const totalCashIn = projectedDeposit;
   const founderCut = enabledItems.founderCut !== false ? Math.round(totalCashIn * (founderCutPct / 100)) : 0;
   let remaining = totalCashIn - founderCut;
 
@@ -1264,14 +1240,23 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     remaining -= weekExpenses;
   }
 
+  // Planned expenses within the selected range
+  let plannedTotal = 0;
+  for (const p of allPlanned) {
+    const pDate = p.date ?? '';
+    if (pDate >= weekStartStr && pDate <= weekEndStr) {
+      plannedTotal += Number(p.amount) || 0;
+    }
+  }
+  remaining -= plannedTotal;
+
   const breakdown = [
     { label: 'COD Projected Deposit', amount: projectedDeposit, type: 'income' as const },
-    ...(weekPrepaid > 0 ? [{ label: 'Prepaid Settlements', amount: weekPrepaid, type: 'income' as const }] : []),
-    ...(weekIncome > 0 ? [{ label: 'Other Income', amount: weekIncome, type: 'income' as const }] : []),
     ...(enabledItems.founderCut !== false && founderCut > 0 ? [{ label: `Founder Cut (${founderCutPct}%)`, amount: -founderCut, type: 'deduction' as const }] : []),
     ...(enabledItems.inventoryNeeds !== false && inventoryNeeds > 0 ? [{ label: 'Inventory Restock', amount: -inventoryNeeds, type: 'deduction' as const }] : []),
     ...(enabledItems.baselines !== false ? baselineItems.map((b) => ({ label: b.label, amount: -b.amount, type: 'deduction' as const })) : []),
-    ...(enabledItems.expenses !== false && weekExpenses > 0 ? [{ label: 'Other Expenses', amount: -weekExpenses, type: 'deduction' as const }] : []),
+    ...(enabledItems.expenses !== false && weekExpenses > 0 ? [{ label: 'Expenses', amount: -weekExpenses, type: 'deduction' as const }] : []),
+    ...(plannedTotal > 0 ? [{ label: 'Planned Expenses', amount: -plannedTotal, type: 'deduction' as const }] : []),
     { label: 'Available to Spend', amount: Math.max(remaining, 0), type: 'result' as const },
   ];
 
@@ -1294,7 +1279,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
       weekLabel: getWeekLabel(weekStart),
       weekStart: weekStartStr, weekEnd: weekEndStr,
       codRevenue: spCodRevenue, projectedDeposit,
-      weekPrepaid, totalCashIn,
+      totalCashIn,
       founderCut, founderCutPct, inventoryNeeds,
       baselinesDue, weekExpenses,
       spendingPower: Math.max(remaining, 0),
