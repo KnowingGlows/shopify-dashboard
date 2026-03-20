@@ -97,17 +97,14 @@ function pctNum(num: number, den: number): number {
   return Math.round(num / den * 1000) / 10;
 }
 
-/** Returns 14-day period start → yesterday (periods: days 1-14 → 1st, days 15-28 → 15th, days 29+ → 29th) */
+/** Returns 1st of current month → today minus 7 days */
 function getDefaultRange(): { start: string; end: string } {
   const pad = (n: number) => String(n).padStart(2, '0');
   const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-  const [y, m, d] = todayIST.split('-').map(Number);
-  // 14-day period system: days 1-14 → start=1st, days 15-28 → start=15th, days 29+ → start=29th
-  const startDay = d <= 14 ? 1 : d <= 28 ? 15 : 29;
-  const start = `${y}-${pad(m)}-${pad(startDay)}`;
-  // End = yesterday
-  const yesterday = new Date(Date.now() - 86400000);
-  const end = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(yesterday);
+  const [y, m] = todayIST.split('-').map(Number);
+  const start = `${y}-${pad(m)}-01`;
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+  const end = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(sevenDaysAgo);
   return { start, end };
 }
 

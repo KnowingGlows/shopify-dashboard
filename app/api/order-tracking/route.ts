@@ -314,17 +314,19 @@ export async function GET(request: Request) {
         }
       }
 
-      // NDR = only orders where Delhivery explicitly recorded NDR attempts (ndrCount > 0)
-      // 'attempted' status alone is not used — it just means "currently undelivered", not NDR
-      const ndrWithDelhivery = orders.filter((o) => (o.ndrCount ?? 0) > 0);
-      const ndrOrd = ndrWithDelhivery; // alias for clarity
+      // NDR Rate = orders currently in NDR/attempted state / all dispatched orders
+      // This matches exactly what the UI shows as "NDR / Attempted" count
+      const allAttemptedOrders = orders.filter((o) => ['delivered', 'attempted', 'rto', 'rto_in_transit'].includes(o.status));
+      const currentNdrOrders = orders.filter((o) => o.status === 'attempted');
+      const ndrRatePct = allAttemptedOrders.length > 0
+        ? Math.round(currentNdrOrders.length / allAttemptedOrders.length * 1000) / 10
+        : null;
+
+      // NDR Resolution: of orders that ever had a failed delivery scan (ndrCount > 0), what % got delivered?
+      const everNdrOrders = orders.filter((o) => (o.ndrCount ?? 0) > 0);
+      const ndrOrd = everNdrOrders;
       const ndrRes = ndrOrd.filter((o) => o.status === 'delivered').length;
       const ndrDel = ndrOrd.filter((o) => o.status === 'delivered');
-      // NDR rate = orders with NDR events / all shipments attempted (delivered + attempted + rto + rto_in_transit)
-      const allAttemptedOrders = orders.filter((o) => ['delivered', 'attempted', 'rto', 'rto_in_transit'].includes(o.status));
-      const ndrRatePct = allAttemptedOrders.length > 0
-        ? Math.round(ndrOrd.length / allAttemptedOrders.length * 1000) / 10
-        : null;
       const codOrd = orders.filter((o) => o.paymentType === 'cod');
 
       return {
@@ -338,7 +340,7 @@ export async function GET(request: Request) {
         ndrRate: ndrRatePct,
         ndrDeliveredCount: ndrRes,
         avgNdrAttempts: ndrDel.length > 0 ? Math.round(ndrDel.reduce((s, o) => s + (o.ndrCount ?? 0), 0) / ndrDel.length * 10) / 10 : null,
-        totalNdrOrders: ndrOrd.length,
+        totalNdrOrders: currentNdrOrders.length,
         totalAttemptedOrders: allAttemptedOrders.length,
         atRiskValue: codOrd.filter((o) => o.status === 'rto_in_transit' || o.status === 'rto' || o.status === 'attempted').reduce((s, o) => s + o.amount, 0),
         codPendingDelivery: codOrd.filter((o) => o.status === 'in_transit' || o.status === 'out_for_delivery').reduce((s, o) => s + o.amount, 0),

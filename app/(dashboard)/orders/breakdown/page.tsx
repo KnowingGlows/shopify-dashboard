@@ -66,13 +66,10 @@ function pct(num: number, den: number): string {
 function getDecadeRange(): { start: string; end: string } {
   const pad = (n: number) => String(n).padStart(2, '0');
   const todayIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-  const [y, m, d] = todayIST.split('-').map(Number);
-  // 14-day period system: days 1-14 → start=1st, days 15-28 → start=15th, days 29+ → start=29th
-  const startDay = d <= 14 ? 1 : d <= 28 ? 15 : 29;
-  const start = `${y}-${pad(m)}-${pad(startDay)}`;
-  // End = yesterday
-  const yesterday = new Date(Date.now() - 86400000);
-  const end = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(yesterday);
+  const [y, m] = todayIST.split('-').map(Number);
+  const start = `${y}-${pad(m)}-01`;
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
+  const end = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(sevenDaysAgo);
   return { start, end };
 }
 

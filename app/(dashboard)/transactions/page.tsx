@@ -9,10 +9,6 @@ import {
   Wrench, Users, Truck, Utensils, Plane, Repeat, Home, Receipt, ArrowLeftRight,
   CheckCircle2, Clock, XCircle, Search,
 } from 'lucide-react';
-import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-} from 'recharts';
 import { cn } from '@/lib/utils';
 import { formatINR } from '@/lib/currency-converter';
 import { type ExpenseCategory, EXPENSE_CATEGORY_META } from '@/lib/sms-parser';
@@ -224,29 +220,6 @@ export default function TransactionsPage() {
     return Object.entries(map).sort(([a], [b]) => b.localeCompare(a));
   }, [filtered]);
 
-  // Pie data for categories (debits only, approved only)
-  const categoryPie = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const t of transactions.filter((t) => t.type === 'debit' && t.status === 'approved')) {
-      map[t.category] = (map[t.category] ?? 0) + t.amount;
-    }
-    return Object.entries(map)
-      .map(([cat, val]) => ({ name: EXPENSE_CATEGORY_META[cat as ExpenseCategory]?.label ?? cat, value: val, category: cat as ExpenseCategory }))
-      .sort((a, b) => b.value - a.value);
-  }, [transactions]);
-
-  // Daily spend bar chart (approved only)
-  const dailySpend = useMemo(() => {
-    const map: Record<string, { debit: number; credit: number }> = {};
-    for (const t of transactions.filter((t) => t.status === 'approved')) {
-      if (!map[t.date]) map[t.date] = { debit: 0, credit: 0 };
-      if (t.type === 'debit') map[t.date].debit += t.amount;
-      else map[t.date].credit += t.amount;
-    }
-    return Object.entries(map)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, vals]) => ({ date: formatDate(date), ...vals }));
-  }, [transactions]);
 
   // ── Actions ────────────────────────────────────────────────────────
 
@@ -443,110 +416,6 @@ export default function TransactionsPage() {
               </p>
             </motion.div>
           ))}
-        </div>
-
-        {/* Charts Row */}
-        <div className="grid gap-4 lg:grid-cols-5">
-          {/* Category Pie */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4 lg:col-span-2"
-          >
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">Spending by Category</p>
-            {categoryPie.length > 0 ? (
-              <div className="flex items-center gap-4">
-                <div className="h-[170px] w-[170px] shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={categoryPie}
-                        cx="50%" cy="50%"
-                        innerRadius={45} outerRadius={75}
-                        dataKey="value"
-                        strokeWidth={0}
-                        animationDuration={800}
-                      >
-                        {categoryPie.map((d) => (
-                          <Cell key={d.category} fill={EXPENSE_CATEGORY_META[d.category]?.color ?? '#71717a'} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        content={({ active, payload }) => {
-                          if (!active || !payload?.[0]) return null;
-                          const d = payload[0].payload;
-                          return (
-                            <div className="rounded-lg border border-border bg-[#0c0c0e]/95 px-3 py-2 shadow-xl backdrop-blur-sm">
-                              <p className="text-[12px] font-medium text-foreground">{d.name}</p>
-                              <p className="text-[11px] text-muted-foreground">{formatINR(d.value)}</p>
-                            </div>
-                          );
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex-1 space-y-1.5 overflow-hidden">
-                  {categoryPie.slice(0, 6).map((d) => (
-                    <div key={d.category} className="flex items-center gap-2 text-[12px]">
-                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: EXPENSE_CATEGORY_META[d.category]?.color }} />
-                      <span className="text-muted-foreground truncate">{d.name}</span>
-                      <span className="ml-auto font-medium text-foreground whitespace-nowrap">{formatINR(d.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-[170px] text-muted-foreground text-sm">
-                No spending data yet
-              </div>
-            )}
-          </motion.div>
-
-          {/* Daily Spend Bar */}
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="rounded-xl border border-border bg-card/60 backdrop-blur-sm p-4 lg:col-span-3"
-          >
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3">Daily Flow</p>
-            {dailySpend.length > 0 ? (
-              <div className="h-[170px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailySpend} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                    <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: '#71717a', fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip
-                      content={({ active, payload, label }) => {
-                        if (!active || !payload?.length) return null;
-                        return (
-                          <div className="rounded-lg border border-border bg-[#0c0c0e]/95 px-3 py-2 shadow-xl backdrop-blur-sm">
-                            <p className="text-[11px] font-medium text-muted-foreground mb-1">{label}</p>
-                            {payload.map((p) => (
-                              <div key={p.name} className="flex items-center gap-2 text-[12px]">
-                                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color as string }} />
-                                <span className="text-muted-foreground">{p.name}:</span>
-                                <span className="font-medium text-foreground">{formatINR(p.value as number)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      }}
-                    />
-                    <Bar dataKey="debit" name="Spent" fill="#f87171" radius={[3, 3, 0, 0]} animationDuration={800} />
-                    <Bar dataKey="credit" name="Received" fill="#34d399" radius={[3, 3, 0, 0]} animationDuration={800} animationBegin={200} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-[170px] text-muted-foreground text-sm">
-                No transaction data yet
-              </div>
-            )}
-          </motion.div>
         </div>
 
         {/* Tabs + Search + Bulk Actions */}
