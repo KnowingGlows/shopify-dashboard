@@ -322,15 +322,11 @@ export async function GET(request: Request) {
         ? Math.round(currentNdrOrders.length / allAttemptedOrders.length * 1000) / 10
         : null;
 
-      // NDR Resolution: Delhivery sets firstAttemptDate only when a delivery attempt failed.
-      // This is the most reliable "ever went into NDR" signal — includes current NDR (attempted)
-      // and past NDR orders that subsequently delivered or went RTO.
-      const ndrOrd = orders.filter((o) =>
-        o.firstAttemptDate != null &&
-        ['delivered', 'attempted', 'rto', 'rto_in_transit'].includes(o.status)
-      );
-      const ndrRes = ndrOrd.filter((o) => o.status === 'delivered').length;
-      const ndrDel = ndrOrd.filter((o) => o.status === 'delivered');
+      // NDR Resolution: reuse allAttemptedOrders (same pool as NDR Rate denominator).
+      // Of those, count ones with firstAttemptDate that got delivered = recovered from NDR.
+      const ndrOrd = allAttemptedOrders;
+      const ndrRes = ndrOrd.filter((o) => o.firstAttemptDate != null && o.status === 'delivered').length;
+      const ndrDel = ndrOrd.filter((o) => o.firstAttemptDate != null && o.status === 'delivered');
       const codOrd = orders.filter((o) => o.paymentType === 'cod');
 
       return {

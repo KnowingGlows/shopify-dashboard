@@ -381,10 +381,7 @@ export default function LogisticsPage() {
               <InsightCard label="RTO Rate" value={pctNum(t.rto + t.rtoInTransit, fulfilledTotal || t.total)}
                 suffix="%" icon={RotateCcw} color="text-red-400" delay={0.18}
                 sub={`${t.rto + t.rtoInTransit} returns`} />
-              <InsightCard label="NDR Recovery" value={a?.ndrResolutionRate ?? null}
-                suffix="%" icon={ShieldAlert} color="text-amber-400" delay={0.22}
-                sub={a && a.totalEverNdrOrders > 0 ? `${a.ndrDeliveredCount} delivered of ${a.totalEverNdrOrders} NDR orders` : 'No NDRs'} />
-              <InsightCard label="NDR Rate" value={a?.ndrRate ?? null}
+<InsightCard label="NDR Rate" value={a?.ndrRate ?? null}
                 suffix="%" icon={AlertTriangle} color="text-orange-400" delay={0.26}
                 sub={a && a.totalAttemptedOrders > 0 ? `${a.totalNdrOrders} NDR of ${a.totalAttemptedOrders} attempted` : 'No data'} />
               <InsightCard label="Avg Delivery" value={a?.avgDeliveryDays != null ? `${a.avgDeliveryDays}d` : null}

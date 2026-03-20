@@ -539,7 +539,7 @@ export default function ProjectedFinancePage() {
                     <h2 className="text-base font-semibold text-foreground">Spending Power</h2>
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    {fmtMonthDay(spending.weekStart)} <ArrowRight className="inline h-2.5 w-2.5" /> {fmtMonthDay(spending.weekEnd)}
+                    {fmtMonthDay(startDate)} <ArrowRight className="inline h-2.5 w-2.5" /> {fmtMonthDay(endDate)}
                   </p>
                 </div>
                 <div className="text-right">
@@ -743,6 +743,8 @@ export default function ProjectedFinancePage() {
         {breakdownOpen && spending && (
           <SpendingBreakdownModal
             spending={spending}
+            startDate={startDate}
+            endDate={endDate}
             onClose={() => setBreakdownOpen(false)}
             onRefresh={fetchAll}
           />
@@ -931,7 +933,7 @@ export default function ProjectedFinancePage() {
 
 // ── Spending Breakdown Modal ─────────────────────────────────────────────────
 
-function SpendingBreakdownModal({ spending, onClose, onRefresh }: { spending: SpendingPower; onClose: () => void; onRefresh: () => void }) {
+function SpendingBreakdownModal({ spending, startDate, endDate, onClose, onRefresh }: { spending: SpendingPower; startDate: string; endDate: string; onClose: () => void; onRefresh: () => void }) {
   const [founderPct, setFounderPct] = useState(spending.founderCutPct ?? 50);
   const [enabled, setEnabled] = useState<Record<string, boolean>>(spending.enabledItems ?? { founderCut: true, inventoryNeeds: true, baselines: true, expenses: true });
   const [saving, setSaving] = useState(false);
@@ -979,7 +981,7 @@ function SpendingBreakdownModal({ spending, onClose, onRefresh }: { spending: Sp
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground">Spending Power Breakdown</h2>
-              <p className="text-[11px] text-muted-foreground">{fmtMonthDay(spending.weekStart)} → {fmtMonthDay(spending.weekEnd)}</p>
+              <p className="text-[11px] text-muted-foreground">{fmtMonthDay(startDate)} → {fmtMonthDay(endDate)}</p>
             </div>
           </div>
           <button onClick={onClose} className="rounded-xl border border-border/60 bg-background/60 p-2 text-muted-foreground transition hover:text-foreground">
