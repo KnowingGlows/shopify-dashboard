@@ -138,6 +138,14 @@ function getToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
+function clientWeekendAdjust(d: Date): Date {
+  const day = d.getDay();
+  if (day === 5) d.setDate(d.getDate() + 3); // Fri → Mon
+  else if (day === 6) d.setDate(d.getDate() + 3); // Sat → Tue
+  else if (day === 0) d.setDate(d.getDate() + 2); // Sun → Tue
+  return d;
+}
+
 export default function ProjectedFinancePage() {
   const [activeTab, setActiveTab] = useState<'projection' | 'planning'>('projection');
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
@@ -167,24 +175,22 @@ export default function ProjectedFinancePage() {
   const [planAmount, setPlanAmount] = useState('');
   const [planDate, setPlanDate] = useState(getToday());
 
-  // Date range filter — start/end date pickers
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date(Date.now() - 14 * 86400000);
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
-  });
-  const [endDate, setEndDate] = useState(() =>
+  // Date range filter — forward-looking projection window
+  const [startDate, setStartDate] = useState(() =>
     new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
   );
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date(Date.now() + 14 * 86400000);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  });
 
   const fetchAll = useCallback(async () => {
     try {
-      const start = new Date(startDate + 'T00:00:00+05:30');
-      const end = new Date(endDate + 'T00:00:00+05:30');
-      // Add 42 extra days for COD projection window
-      const days = Math.max(7, Math.round((end.getTime() - start.getTime()) / 86400000) + 1) + 42;
+      // Always fetch 60 days of historical sales — enough for any projection window
+      const days = 60;
       // Fetch finance data first (fast)
       const [res, plannedRes] = await Promise.all([
-        fetch(`/api/finance?action=combined&days=${days}`),
+        fetch(`/api/finance?action=combined&days=${days}&spendStart=${startDate}&spendEnd=${endDate}`),
         fetch('/api/finance?action=planned'),
       ]);
       const [data, plannedData] = await Promise.all([res.json(), plannedRes.json()]);
@@ -281,20 +287,20 @@ export default function ProjectedFinancePage() {
   const dailyOutflows = useMemo(() => {
     const map: Record<string, number> = {};
     for (const p of plannedExpenses) {
-      if (p.date >= todayStr) {
+      if (p.date >= startDate && p.date <= endDate) {
         map[p.date] = (map[p.date] ?? 0) + p.amount;
       }
     }
     return map;
-  }, [plannedExpenses, todayStr]);
+  }, [plannedExpenses, startDate, endDate]);
 
-  // Build outflow chart data — today FORWARD for chartDays
+  // Build outflow chart data — startDate → endDate from date picker
   const outflowDays = useMemo(() => {
     const days: Array<{ date: string; label: string; planned: number }> = [];
-    const start = new Date(todayStr + 'T00:00:00+05:30');
+    const s = new Date(startDate + 'T00:00:00+05:30');
     for (let i = 0; i < chartDays; i++) {
-      const dt = new Date(start);
-      dt.setDate(start.getDate() + i);
+      const dt = new Date(s);
+      dt.setDate(s.getDate() + i);
       const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
       days.push({
         date: dateStr,
@@ -303,7 +309,7 @@ export default function ProjectedFinancePage() {
       });
     }
     return days;
-  }, [todayStr, dailyOutflows, chartDays]);
+  }, [startDate, dailyOutflows, chartDays]);
 
   if (loading) {
     return (
@@ -323,56 +329,43 @@ export default function ProjectedFinancePage() {
   };
 
   const currentWeek = codWeeks[0];
-  const totalCODProjected = codWeeks.reduce((s, w) => s + w.projectedAmount, 0);
+  const totalCODProjected = useMemo(() => codWeeks.reduce((s, w) => s + w.projectedAmount, 0), [codWeeks]);
 
   // Forward-looking inflow — shift each sale to its projected deposit date
-  // depositDate = weekendAdjust(saleDate + brandDays[brand] + 2)
-  function clientWeekendAdjust(d: Date): Date {
-    const day = d.getDay();
-    if (day === 5) d.setDate(d.getDate() + 3); // Fri → Mon
-    else if (day === 6) d.setDate(d.getDate() + 3); // Sat → Tue
-    else if (day === 0) d.setDate(d.getDate() + 2); // Sun → Tue
-    return d;
-  }
-  const inflowByDate: Record<string, number> = {};
-  for (const entry of (d.dailyEntries ?? [])) {
-    const codByBrand = entry.codSalesByBrand ?? {};
-    for (const [brand, amount] of Object.entries(codByBrand)) {
-      const val = Number(amount) || 0;
-      if (val <= 0) continue;
-      const delDays = (deliveryDays[brand] ?? 7) + 2;
-      const base = new Date(entry.date + 'T00:00:00+05:30');
-      base.setDate(base.getDate() + delDays);
-      const depositDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(clientWeekendAdjust(base));
-      const rate = deliveryRates[brand] ?? 65;
-      const deposit = Math.round(val * (rate / 100));
-      if (deposit > 0) inflowByDate[depositDate] = (inflowByDate[depositDate] ?? 0) + deposit;
+  const inflowByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const entry of (d.dailyEntries ?? [])) {
+      const codByBrand = entry.codSalesByBrand ?? {};
+      for (const [brand, amount] of Object.entries(codByBrand)) {
+        const val = Number(amount) || 0;
+        if (val <= 0) continue;
+        const delDays = (deliveryDays[brand] ?? 7) + 2;
+        const base = new Date(entry.date + 'T00:00:00+05:30');
+        base.setDate(base.getDate() + delDays);
+        const depositDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(clientWeekendAdjust(base));
+        const rate = deliveryRates[brand] ?? 65;
+        const deposit = Math.round(val * (rate / 100));
+        if (deposit > 0) map[depositDate] = (map[depositDate] ?? 0) + deposit;
+      }
     }
-  }
+    return map;
+  }, [d.dailyEntries, deliveryDays, deliveryRates]);
 
-  // Total COD collected (raw COD revenue before delivery rate)
-  const totalCODCollected = (d.dailyEntries ?? []).reduce((s, e) => {
+  const totalCODCollected = useMemo(() => (d.dailyEntries ?? []).reduce((s, e) => {
     const cod = e.codSalesByBrand ?? {};
     return s + Object.values(cod).reduce((a, v) => a + Number(v), 0);
-  }, 0);
+  }, 0), [d.dailyEntries]);
 
-  // Build inflow chart — today FORWARD for chartDays (IST dates to match inflowByDate keys)
-  const inflowChartData = Array.from({ length: chartDays }, (_, i) => {
-    const dt = new Date(todayStr + 'T00:00:00+05:30');
+  const inflowChartData = useMemo(() => Array.from({ length: chartDays }, (_, i) => {
+    const dt = new Date(startDate + 'T00:00:00+05:30');
     dt.setDate(dt.getDate() + i);
     const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(dt);
-    return {
-      date: dateStr,
-      deposit: inflowByDate[dateStr] ?? 0,
-      label: fmtMonthDay(dateStr),
-    };
-  });
+    return { date: dateStr, deposit: inflowByDate[dateStr] ?? 0, label: fmtMonthDay(dateStr) };
+  }), [chartDays, startDate, inflowByDate]);
 
-  const totalOutflow = outflowDays.reduce((s, od) => s + od.planned, 0);
-  const totalInflow = inflowChartData.reduce((s, d) => s + d.deposit, 0);
-
-  // P&L Net Profit = grossProfit - (adSpend * 1.14) — the formula-based approach
-  const pnlNetProfit = d.totalGrossProfit - Math.round(d.totalAdSpend * 1.14);
+  const totalOutflow = useMemo(() => outflowDays.reduce((s, od) => s + od.planned, 0), [outflowDays]);
+  const totalInflow = useMemo(() => inflowChartData.reduce((s, d) => s + d.deposit, 0), [inflowChartData]);
+  const pnlNetProfit = useMemo(() => d.totalGrossProfit - Math.round(d.totalAdSpend * 1.14), [d.totalGrossProfit, d.totalAdSpend]);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">

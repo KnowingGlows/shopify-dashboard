@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   Package, Truck, CheckCircle2, AlertTriangle, RotateCcw, XCircle,
   Calendar, ChevronDown, Loader2, Store,
-  Clock, ShieldAlert, Timer, Wallet,
+  Clock, ShieldAlert, Timer, Wallet, CreditCard,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
@@ -221,11 +221,10 @@ export default function LogisticsPage() {
     ]).filter((d) => d.value > 0);
   }, [t]);
 
-  const storeNames = Object.keys(stores);
-  const fulfilledTotal = (t?.delivered ?? 0) + (t?.rto ?? 0) + (t?.rtoInTransit ?? 0) + (t?.attempted ?? 0);
-  const a = activeStore === 'all' ? analytics : (storeAnalytics[activeStore] ?? null);
-  // COD attempted = COD delivered + COD NDR + COD RTO
-  const codAttempted = (a?.codDeliveredCount ?? 0) + (a?.codNdrCount ?? 0) + (a?.codRtoCount ?? 0);
+  const storeNames = useMemo(() => Object.keys(stores), [stores]);
+  const fulfilledTotal = useMemo(() => (t?.delivered ?? 0) + (t?.rto ?? 0) + (t?.rtoInTransit ?? 0) + (t?.attempted ?? 0), [t]);
+  const a = useMemo(() => activeStore === 'all' ? analytics : (storeAnalytics[activeStore] ?? null), [activeStore, analytics, storeAnalytics]);
+  const codAttempted = useMemo(() => (a?.codDeliveredCount ?? 0) + (a?.codNdrCount ?? 0) + (a?.codRtoCount ?? 0), [a]);
 
   return (
     <div className="min-h-screen px-4 py-6 md:px-8 md:py-8">
@@ -387,6 +386,9 @@ export default function LogisticsPage() {
               <InsightCard label="Avg Delivery" value={a?.avgDeliveryDays != null ? `${a.avgDeliveryDays}d` : null}
                 icon={Timer} color="text-violet-400" delay={0.3}
                 sub={a?.avgCodDeliveryDays != null ? `COD: ${a.avgCodDeliveryDays}d` : 'Calculating...'} />
+              <InsightCard label="Prepaid Rate" value={pctNum(t.prepaid, t.total)}
+                suffix="%" icon={CreditCard} color="text-cyan-400" delay={0.34}
+                sub={`${t.prepaid} prepaid of ${t.total} orders`} />
             </div>
 
             {/* ─── Status Distribution (prominent) ─────────────────── */}

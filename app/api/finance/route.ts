@@ -22,10 +22,6 @@ interface FinanceDailyEntry {
   grossMargin: number; // weighted avg or legacy single value
   grossProfit: number;
   adSpend: number;
-  roas: number;
-  revenue: number;
-  paymentProcessorFee: number;
-  shippingCost: number;
   netProfit: number;
   codSalesByBrand: Record<string, number>;
   prepaidSettlement?: number; // total prepaid settlement received this day
@@ -68,17 +64,6 @@ function dueDayToDate(day: number): string {
 
 function getISTDate(date?: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date ?? new Date());
-}
-
-function getISTDateRange(startDate: string, endDate: string): string[] {
-  const dates: string[] = [];
-  const current = new Date(startDate + 'T00:00:00+05:30');
-  const end = new Date(endDate + 'T00:00:00+05:30');
-  while (current <= end) {
-    dates.push(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(current));
-    current.setDate(current.getDate() + 1);
-  }
-  return dates;
 }
 
 interface SalesForDateResult {
@@ -347,10 +332,6 @@ async function saveDailyEntry(body: Record<string, unknown>) {
     grossMargin,
     grossProfit,
     adSpend,
-    roas: 0,
-    revenue: 0,
-    paymentProcessorFee: 0,
-    shippingCost: 0,
     netProfit,
     codSalesByBrand,
     prepaidSettlement,
@@ -698,7 +679,7 @@ async function getReminders() {
     return NextResponse.json({
       reminders: [{
         type: 'cmo_daily',
-        message: 'Enter yesterday\'s ad spend and ROAS',
+        message: 'Enter yesterday\'s ad spend ad spend',
         date: today,
         dismissed: false,
       }],
@@ -715,7 +696,7 @@ async function getReminders() {
   if (!data || !data.adSpend) {
     reminders.push({
       type: 'cmo_daily',
-      message: `Enter yesterday's (${yesterday}) ad spend and ROAS`,
+      message: `Enter yesterday's (${yesterday}) ad spend ad spend`,
       date: yesterday,
       dismissed: false,
       priority: 'high',
@@ -805,10 +786,11 @@ async function getSpendingPower(params: URLSearchParams) {
   const today = getISTDate();
   const todayDate = new Date(today + 'T00:00:00+05:30');
 
-  // 7-day window starting from today (matches COD Cash-In timeline)
-  const weekStart = new Date(todayDate);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
+  // Use date picker range if provided, otherwise default to today + 6 days
+  const spendStart = params.get('spendStart');
+  const spendEnd = params.get('spendEnd');
+  const weekStart = spendStart ? new Date(spendStart + 'T00:00:00+05:30') : new Date(todayDate);
+  const weekEnd = spendEnd ? new Date(spendEnd + 'T00:00:00+05:30') : (() => { const d = new Date(todayDate); d.setDate(d.getDate() + 6); return d; })();
   const weekStartStr = getISTDate(weekStart);
   const weekEndStr = getISTDate(weekEnd);
 
@@ -868,18 +850,16 @@ async function getSpendingPower(params: URLSearchParams) {
 
   // Prepaid settlements this week
   let weekPrepaidSp = 0;
-  if (firestore) {
-    try {
-      const prepaidSnap = await firestore.collection(COLLECTIONS.FINANCE_DAILY)
-        .where('date', '>=', weekStartStr)
-        .where('date', '<=', weekEndStr)
-        .get();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      prepaidSnap.docs.forEach((doc: any) => {
-        weekPrepaidSp += Number(doc.data().prepaidSettlement) || 0;
-      });
-    } catch { /* ignore */ }
-  }
+  try {
+    const prepaidSnap = await firestore.collection(COLLECTIONS.FINANCE_DAILY)
+      .where('date', '>=', weekStartStr)
+      .where('date', '<=', weekEndStr)
+      .get();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    prepaidSnap.docs.forEach((doc: any) => {
+      weekPrepaidSp += Number(doc.data().prepaidSettlement) || 0;
+    });
+  } catch { /* ignore */ }
 
   const totalCashInSp = projectedDeposit + weekPrepaidSp;
   // Founder cut
@@ -1085,12 +1065,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     }));
 
   const allIncome = [...manualIncome, ...txIncome];
-  // Add tx expenses to allExpenses after it's built below
-  const txExpensesList = txExpenses;
-  // Merge approved debit transactions into expenses
-  for (const txExp of txExpensesList) {
-    allExpenses.push(txExp);
-  }
+  for (const txExp of txExpenses) allExpenses.push(txExp);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allInventory = inventorySnap.docs.map((doc: any) => doc.data());
@@ -1186,9 +1161,11 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   }
 
   // ── STEP 4: Spending power (using same in-memory data) ──
-  const weekStart = new Date(todayDate);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
+  // Use date picker range if provided, otherwise default to today + 6 days
+  const spStart = params.get('spendStart');
+  const spEnd = params.get('spendEnd');
+  const weekStart = spStart ? new Date(spStart + 'T00:00:00+05:30') : new Date(todayDate);
+  const weekEnd = spEnd ? new Date(spEnd + 'T00:00:00+05:30') : (() => { const d = new Date(todayDate); d.setDate(d.getDate() + 6); return d; })();
   const weekStartStr = getISTDate(weekStart);
   const weekEndStr = getISTDate(weekEnd);
 
@@ -1283,7 +1260,7 @@ async function getCombinedFinanceData(params: URLSearchParams) {
   const reminders: Array<{ type: string; message: string; date: string; priority?: string }> = [];
   const yesterdayEntry = allDailyEntries.find((e) => e.date === yesterday);
   if (!yesterdayEntry || !yesterdayEntry.adSpend) {
-    reminders.push({ type: 'cmo_daily', message: `Enter yesterday's (${yesterday}) ad spend and ROAS`, date: yesterday, priority: 'high' });
+    reminders.push({ type: 'cmo_daily', message: `Enter yesterday's (${yesterday}) ad spend ad spend`, date: yesterday, priority: 'high' });
   }
 
   // ── Return everything ──
@@ -1320,12 +1297,11 @@ async function getFinanceSummary(params: URLSearchParams) {
   const startDate = params.get('start') ?? getISTDate(new Date(Date.now() - days * 86400000));
 
   // Fetch all data sources in parallel
-  const [dailyEntries, baselines, expenses, productEntries, adsEntries, inventoryEntries] = await Promise.all([
+  const [dailyEntries, baselines, expenses, productEntries, inventoryEntries] = await Promise.all([
     fetchFinanceDaily(firestore, startDate, endDate),
     fetchBaselines(firestore),
     fetchAllExpenses(firestore),
     fetchCollection(firestore, COLLECTIONS.PRODUCT_TRACKER),
-    fetchCollection(firestore, COLLECTIONS.ADS_TRACKER),
     fetchCollection(firestore, COLLECTIONS.INVENTORY),
   ]);
 
@@ -1334,12 +1310,6 @@ async function getFinanceSummary(params: URLSearchParams) {
   const totalGrossProfit = dailyEntries.reduce((s, e) => s + (e.grossProfit ?? 0), 0);
   const totalAdSpend = dailyEntries.reduce((s, e) => s + (e.adSpend ?? 0), 0);
   const totalNetProfit = dailyEntries.reduce((s, e) => s + (e.netProfit ?? 0), 0);
-  const totalShipping = dailyEntries.reduce((s, e) => s + (e.shippingCost ?? 0), 0);
-  const totalProcessorFees = dailyEntries.reduce((s, e) => s + (e.paymentProcessorFee ?? 0), 0);
-  const avgROAS = dailyEntries.length > 0
-    ? dailyEntries.reduce((s, e) => s + (e.roas ?? 0), 0) / dailyEntries.filter(e => e.roas > 0).length || 0
-    : 0;
-
   // Baselines
   const dailyBaselines = baselines.filter((b: Record<string, unknown>) => b.type === 'daily');
   const monthlyBaselines = baselines.filter((b: Record<string, unknown>) => b.type === 'monthly');
@@ -1360,9 +1330,6 @@ async function getFinanceSummary(params: URLSearchParams) {
     totalGrossProfit,
     totalAdSpend,
     totalNetProfit,
-    totalShipping,
-    totalProcessorFees,
-    avgROAS: Math.round(avgROAS * 100) / 100,
     totalExpenses,
     totalProductTestingSpend,
     inventoryValue,
