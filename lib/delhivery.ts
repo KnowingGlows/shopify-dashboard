@@ -192,18 +192,10 @@ function parseShipment(s: any): DelhiveryShipment | null {
     const code = (sd?.StatusCode ?? '').toUpperCase();
     const scanType = (sd?.Scan ?? '').toLowerCase();
 
-    // Only count genuine NDR events — EOD- (end-of-day failed), CR- (consignee refused),
-    // or instruction-based delivery failures. UD- codes are generic "Update" transit scans
-    // in Delhivery and fire on nearly every shipment — do NOT use them for ndrCount.
-    if (
-      code.startsWith('EOD-') || code.startsWith('CR-') ||
-      inst.includes('delivery attempted') ||
-      inst.includes('consignee refused') ||
-      inst.includes('customer not available') ||
-      inst.includes('otp not received') ||
-      inst.includes('not delivered') ||
-      inst.includes('undelivered')
-    ) {
+    // Only count explicit Delhivery NDR scan codes.
+    // EOD- = end-of-day delivery not completed, CR- = consignee refused.
+    // Instruction text is too broad and fires on routine transit scans for almost every shipment.
+    if (code.startsWith('EOD-') || code.startsWith('CR-')) {
       ndrCount++;
     }
   }
