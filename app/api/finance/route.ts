@@ -1192,14 +1192,23 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     }
   }
 
-  // Missed income this week (from finance_income collection)
+  // Income strictly within the selected range (prorate if spans broader period)
   let weekIncome = 0;
   for (const inc of allIncome) {
     const incDate = inc.date ?? '';
     const incEnd = inc.endDate ?? incDate;
-    // Include if the income date range overlaps with the spending power week
-    if (incDate <= weekEndStr && incEnd >= weekStartStr) {
-      weekIncome += Number(inc.amount) || 0;
+    if (incDate > weekEndStr || incEnd < weekStartStr) continue; // no overlap
+    const amount = Number(inc.amount) || 0;
+    if (incDate === incEnd || !inc.endDate) {
+      // Single-day income — only include if within range
+      if (incDate >= weekStartStr && incDate <= weekEndStr) weekIncome += amount;
+    } else {
+      // Multi-day income — prorate by overlap days
+      const incTotalDays = Math.max(1, Math.round((new Date(incEnd + 'T00:00:00+05:30').getTime() - new Date(incDate + 'T00:00:00+05:30').getTime()) / 86400000) + 1);
+      const overlapStart = incDate > weekStartStr ? incDate : weekStartStr;
+      const overlapEnd = incEnd < weekEndStr ? incEnd : weekEndStr;
+      const overlapDays = Math.max(1, Math.round((new Date(overlapEnd + 'T00:00:00+05:30').getTime() - new Date(overlapStart + 'T00:00:00+05:30').getTime()) / 86400000) + 1);
+      weekIncome += Math.round(amount * (overlapDays / incTotalDays));
     }
   }
 
@@ -1234,12 +1243,22 @@ async function getCombinedFinanceData(params: URLSearchParams) {
     remaining -= baselinesDue;
   }
 
-  // Expenses this week
+  // Expenses strictly within the selected range (prorate if spans broader period)
   let weekExpenses = 0;
   if (enabledItems.expenses !== false) {
     for (const e of allExpenses) {
-      if (e.date >= weekStartStr && e.date <= weekEndStr) {
-        weekExpenses += e.amount ?? 0;
+      const eDate = e.date ?? '';
+      const eEnd = e.endDate ?? eDate;
+      if (eDate > weekEndStr || eEnd < weekStartStr) continue;
+      const amount = e.amount ?? 0;
+      if (eDate === eEnd || !e.endDate) {
+        if (eDate >= weekStartStr && eDate <= weekEndStr) weekExpenses += amount;
+      } else {
+        const eTotalDays = Math.max(1, Math.round((new Date(eEnd + 'T00:00:00+05:30').getTime() - new Date(eDate + 'T00:00:00+05:30').getTime()) / 86400000) + 1);
+        const overlapStart = eDate > weekStartStr ? eDate : weekStartStr;
+        const overlapEnd = eEnd < weekEndStr ? eEnd : weekEndStr;
+        const overlapDays = Math.max(1, Math.round((new Date(overlapEnd + 'T00:00:00+05:30').getTime() - new Date(overlapStart + 'T00:00:00+05:30').getTime()) / 86400000) + 1);
+        weekExpenses += Math.round(amount * (overlapDays / eTotalDays));
       }
     }
     remaining -= weekExpenses;
