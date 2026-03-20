@@ -142,7 +142,7 @@ function classifyDelhiveryStatus(shipment: {
   for (let i = 0; i < scans.length; i++) {
     const sd = scans[i].ScanDetail;
     const code = (sd?.StatusCode ?? '').toUpperCase();
-    if (code.startsWith('EOD-') || code.startsWith('CR-') || code.startsWith('UD-')) hasNdr = true;
+    if (code.startsWith('EOD-') || code.startsWith('CR-')) hasNdr = true;
   }
   // If there's an NDR after the last dispatch, the order is in NDR state
   if (hasNdr && status === 'pending') return 'ndr';
@@ -192,13 +192,17 @@ function parseShipment(s: any): DelhiveryShipment | null {
     const code = (sd?.StatusCode ?? '').toUpperCase();
     const scanType = (sd?.Scan ?? '').toLowerCase();
 
-    // Only count explicit Delhivery NDR scan codes + unambiguous delivery failure instructions
+    // Only count genuine NDR events — EOD- (end-of-day failed), CR- (consignee refused),
+    // or instruction-based delivery failures. UD- codes are generic "Update" transit scans
+    // in Delhivery and fire on nearly every shipment — do NOT use them for ndrCount.
     if (
-      code.startsWith('EOD-') || code.startsWith('CR-') || code.startsWith('UD-') ||
+      code.startsWith('EOD-') || code.startsWith('CR-') ||
       inst.includes('delivery attempted') ||
       inst.includes('consignee refused') ||
       inst.includes('customer not available') ||
-      inst.includes('otp not received')
+      inst.includes('otp not received') ||
+      inst.includes('not delivered') ||
+      inst.includes('undelivered')
     ) {
       ndrCount++;
     }
