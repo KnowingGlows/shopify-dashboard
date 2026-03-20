@@ -52,14 +52,15 @@ function groupByProduct(entries: AdsTrackerEntry[], registeredProducts: string[]
     const hitRate = decided > 0 ? Math.round((winners / decided) * 100) : 0;
     const lastUpdated = batches.reduce((latest, b) => b.updatedAt > latest ? b.updatedAt : latest, '');
 
-    // Find latest launched batch (Testing or beyond) and compute timeline
-    const launchedStatuses = ['Testing', 'Winner', 'Loser', 'Scaled'];
-    const launchedBatches = batches.filter((b) => launchedStatuses.includes(b.creativeBatchResult));
-    // Sort by updatedAt — when the batch was marked as Testing (launched)
-    const sorted = [...launchedBatches].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    // Find latest batch by launchDate ?? createdAt (same as detail page)
+    const sorted = [...batches].sort((a, b) => {
+      const aDate = new Date(a.launchDate ?? a.createdAt).getTime();
+      const bDate = new Date(b.launchDate ?? b.createdAt).getTime();
+      return bDate - aDate;
+    });
     const latestBatch = sorted[0] || null;
-    // daysSince = from when the batch was last updated (marked as Testing), not created
-    const daysSinceLastBatch = latestBatch ? Math.floor((now - new Date(latestBatch.updatedAt).getTime()) / 86400000) : -1;
+    const latestBatchStart = latestBatch ? new Date(latestBatch.launchDate ?? latestBatch.createdAt).getTime() : 0;
+    const daysSinceLastBatch = latestBatch ? Math.floor((now - latestBatchStart) / 86400000) : -1;
     const nextBatchDue = daysSinceLastBatch >= 7;
 
     return { name, batches, totalSpend, avgRoas, winners, losers, testing, scaled, hitRate, lastUpdated, latestBatch, daysSinceLastBatch, nextBatchDue };
@@ -263,7 +264,17 @@ export default function OpsAdsPage() {
                           <p className="text-[10px] text-muted-foreground/60">{product.batches.length} batch{product.batches.length !== 1 ? 'es' : ''}</p>
                         </div>
                       </div>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground/20 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                      <div className="flex items-center gap-2 shrink-0">
+                        {product.latestBatch?.creativeBatchResult && (() => {
+                          const r = product.latestBatch!.creativeBatchResult.toLowerCase();
+                          if (r === 'winner') return <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-md">Winner</span>;
+                          if (r === 'loser') return <span className="text-[10px] font-semibold text-red-400 bg-red-500/15 px-2 py-0.5 rounded-md">Loser</span>;
+                          if (r === 'scaled') return <span className="text-[10px] font-semibold text-blue-400 bg-blue-500/15 px-2 py-0.5 rounded-md">Scaled</span>;
+                          if (r === 'testing') return <span className="text-[10px] font-semibold text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-md">Testing</span>;
+                          return <span className="text-[10px] font-semibold text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-md capitalize">{product.latestBatch!.creativeBatchResult}</span>;
+                        })()}
+                        <ArrowRight className="h-4 w-4 text-muted-foreground/20 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                      </div>
                     </div>
 
                     {/* Stats Row */}
@@ -272,7 +283,7 @@ export default function OpsAdsPage() {
                         <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">Launch</p>
                         <p className="text-sm font-semibold text-foreground tabular-nums mt-0.5">
                           {product.latestBatch
-                            ? new Date(product.latestBatch.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+                            ? new Date(product.latestBatch.launchDate ?? product.latestBatch.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
                             : '—'}
                         </p>
                       </div>
@@ -280,7 +291,7 @@ export default function OpsAdsPage() {
                         <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">Next Batch</p>
                         <p className={`text-sm font-semibold tabular-nums mt-0.5 ${product.nextBatchDue ? 'text-amber-400' : 'text-muted-foreground/70'}`}>
                           {product.latestBatch ? (() => {
-                            const d = new Date(product.latestBatch.updatedAt);
+                            const d = new Date(product.latestBatch.launchDate ?? product.latestBatch.createdAt);
                             d.setDate(d.getDate() + 7);
                             return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
                           })() : '—'}
