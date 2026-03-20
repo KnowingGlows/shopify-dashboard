@@ -176,14 +176,16 @@ export default function ProductAdsPage() {
   const decided = winners + losers;
   const hitRate = decided > 0 ? Math.round((winners / decided) * 100) : 0;
 
-  // Next batch timeline — only starts counting when a batch is marked as Testing
+  // Next batch timeline — based on the most recently launched batch
   const latestTimeline = useMemo(() => {
-    // Find most-recently-updated batch that has been marked as Testing (or beyond)
-    const activeBatches = entries.filter((e) => ['Testing', 'Winner', 'Loser', 'Scaled'].includes(e.creativeBatchResult));
-    if (activeBatches.length === 0) return null;
-    const sorted = [...activeBatches].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    if (entries.length === 0) return null;
+    const sorted = [...entries].sort((a, b) => {
+      const aDate = new Date(a.launchDate ?? a.createdAt).getTime();
+      const bDate = new Date(b.launchDate ?? b.createdAt).getTime();
+      return bDate - aDate;
+    });
     const latest = sorted[0];
-    return getBatchTimeline(latest.launchDate ?? latest.updatedAt);
+    return getBatchTimeline(latest.launchDate ?? latest.createdAt);
   }, [entries]);
 
   return (

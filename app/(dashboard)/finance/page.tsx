@@ -9,6 +9,7 @@ import {
   ArrowDown, BanknoteIcon,
 } from 'lucide-react';
 import { PageTransition, StaggerContainer, StaggerItem, AnimatedNumber } from '@/components/motion';
+import { DatePicker } from '@/components/date-picker';
 import { formatINR } from '@/lib/currency-converter';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -69,8 +70,14 @@ export default function ActualFinancePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Date range filter — backward from today
-  const [dateRange, setDateRange] = useState<'14d' | '30d' | '7d' | '90d'>('14d');
+  // Date range filter — start/end date pickers
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date(Date.now() - 14 * 86400000);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  });
+  const [endDate, setEndDate] = useState(() =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+  );
 
   const todayStr = useMemo(() =>
     new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()),
@@ -78,7 +85,9 @@ export default function ActualFinancePage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
+      const start = new Date(startDate + 'T00:00:00+05:30');
+      const end = new Date(endDate + 'T00:00:00+05:30');
+      const days = Math.max(7, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
       const res = await fetch(`/api/finance?action=combined&days=${days}`);
       const data = await res.json();
       setDailyEntries(data.summary?.dailyEntries ?? []);
@@ -89,22 +98,20 @@ export default function ActualFinancePage() {
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange]);
+  }, [startDate, endDate]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const chartDays = useMemo(() => {
-    if (dateRange === '7d') return 7;
-    if (dateRange === '14d') return 14;
-    if (dateRange === '30d') return 30;
-    if (dateRange === '90d') return 90;
-    return 14;
-  }, [dateRange]);
+    const start = new Date(startDate + 'T00:00:00+05:30');
+    const end = new Date(endDate + 'T00:00:00+05:30');
+    return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+  }, [startDate, endDate]);
 
-  // Filter entries up to today
+  // Filter entries within the selected date range
   const pastEntries = useMemo(() =>
-    dailyEntries.filter((e) => e.date <= todayStr),
-  [dailyEntries, todayStr]);
+    dailyEntries.filter((e) => e.date >= startDate && e.date <= endDate),
+  [dailyEntries, startDate, endDate]);
 
   // ── Money In per day ──
   // COD deposits received (using bank deposit date = sale date + 7) + prepaid + income
@@ -252,38 +259,23 @@ export default function ActualFinancePage() {
       {/* Date Range Filter */}
       <div className="flex items-center gap-2 flex-wrap">
         <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-        {(['14d', '30d', '90d', '7d'] as const).map((range) => (
-          <button
-            key={range}
-            onClick={() => setDateRange(range)}
-            className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
-              dateRange === range
-                ? 'bg-primary/15 text-primary border border-primary/30'
-                : 'border border-border text-muted-foreground hover:text-foreground hover:border-border/80'
-            }`}
-          >
-            {range === '7d' ? '7 Days' : range === '14d' ? '14 Days' : range === '30d' ? '30 Days' : '90 Days'}
-          </button>
-        ))}
+        <DatePicker value={startDate} onChange={setStartDate} max={endDate} compact />
+        <span className="text-[11px] text-muted-foreground/40">→</span>
+        <DatePicker value={endDate} onChange={setEndDate} min={startDate} max={todayStr} compact />
       </div>
 
       {/* Key Metrics */}
-      {(() => {
-        const rangeLabel = dateRange === '7d' ? '7d' : dateRange === '14d' ? '14d' : dateRange === '90d' ? '90d' : '30d';
-        return (
-          <StaggerContainer className="grid grid-cols-3 gap-3">
-            <StaggerItem>
-              <MetricCard label={`Money In (${rangeLabel})`} value={totalMoneyIn} icon={<TrendingUp className="h-4 w-4 text-emerald-400" />} color="text-emerald-400" />
-            </StaggerItem>
-            <StaggerItem>
-              <MetricCard label={`Money Out (${rangeLabel})`} value={totalMoneyOut} icon={<ArrowDown className="h-4 w-4 text-red-400" />} color="text-red-400" />
-            </StaggerItem>
-            <StaggerItem>
-              <MetricCard label="Cash Reserve" value={cashReserve} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color={cashReserve >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-            </StaggerItem>
-          </StaggerContainer>
-        );
-      })()}
+      <StaggerContainer className="grid grid-cols-3 gap-3">
+        <StaggerItem>
+          <MetricCard label="Money In" value={totalMoneyIn} icon={<TrendingUp className="h-4 w-4 text-emerald-400" />} color="text-emerald-400" />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="Money Out" value={totalMoneyOut} icon={<ArrowDown className="h-4 w-4 text-red-400" />} color="text-red-400" />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="Cash Reserve" value={cashReserve} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color={cashReserve >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+        </StaggerItem>
+      </StaggerContainer>
 
       {/* ═══ Money In Chart ═══ */}
       {totalMoneyIn > 0 && (

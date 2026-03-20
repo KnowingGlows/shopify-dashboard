@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { AdsTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
-import { formatINR } from '@/lib/currency-converter';
 
 interface ProductSummary {
   name: string;
@@ -126,13 +125,12 @@ export default function OpsAdsPage() {
   const products = useMemo(() => groupByProduct(entries, registeredProducts), [entries, registeredProducts]);
 
   // Global stats
-  const { totalProducts, totalBatches, totalSpend, globalHitRate, activeTesting, needsAttention } = useMemo(() => {
+  const { totalProducts, totalBatches, globalHitRate, activeTesting, needsAttention } = useMemo(() => {
     const allWinners = entries.filter((e) => e.creativeBatchResult === 'Winner').length;
     const allLosers = entries.filter((e) => e.creativeBatchResult === 'Loser').length;
     return {
       totalProducts: products.length,
       totalBatches: entries.length,
-      totalSpend: entries.reduce((s, e) => s + (e.dailyAdSpend ?? 0), 0),
       globalHitRate: (allWinners + allLosers) > 0 ? Math.round((allWinners / (allWinners + allLosers)) * 100) : 0,
       activeTesting: entries.filter((e) => e.creativeBatchResult === 'Testing').length,
       needsAttention: products.filter((p) => p.nextBatchDue).length,
@@ -170,11 +168,10 @@ export default function OpsAdsPage() {
 
       {/* Global Stats */}
       {totalProducts > 0 && (
-        <StaggerContainer className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <StaggerContainer className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {[
             { label: 'Products', value: totalProducts, color: 'text-foreground' },
             { label: 'Batches', value: totalBatches, color: 'text-foreground' },
-            { label: 'Total Spend', value: formatINR(totalSpend), color: 'text-amber-400' },
             { label: 'Hit Rate', value: globalHitRate > 0 ? `${globalHitRate}%` : '—', color: globalHitRate >= 30 ? 'text-emerald-400' : globalHitRate > 0 ? 'text-amber-400' : 'text-muted-foreground' },
             { label: 'Testing', value: activeTesting, color: 'text-amber-400' },
             { label: 'Needs Batch', value: needsAttention, color: needsAttention > 0 ? 'text-red-400' : 'text-muted-foreground' },

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calculator, Percent, Bookmark, Plus, X, Trash2 } from 'lucide-react';
+import { Calculator, Percent, Bookmark, Plus, X, Trash2, Pencil } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 
@@ -36,6 +36,8 @@ export default function ProfitCalculatorPage() {
   const [presets, setPresets] = useState<CalcPreset[]>([]);
   const [showPresets, setShowPresets] = useState(false);
   const [presetName, setPresetName] = useState('');
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [editingPresetName, setEditingPresetName] = useState('');
 
   // ROI Calculator
   const [margin, setMargin] = useState('0.6');
@@ -74,6 +76,14 @@ export default function ProfitCalculatorPage() {
     const updated = presets.filter((p) => p.id !== id);
     setPresets(updated);
     savePresets(updated);
+  };
+
+  const renamePreset = (id: string, newName: string) => {
+    if (!newName.trim()) return;
+    const updated = presets.map((p) => p.id === id ? { ...p, name: newName.trim() } : p);
+    setPresets(updated);
+    savePresets(updated);
+    setEditingPresetId(null);
   };
 
   const fmt = (amount: number) => currency === 'USD' ? formatUSD(amount) : formatINR(amount);
@@ -271,15 +281,39 @@ export default function ProfitCalculatorPage() {
                     <div className="space-y-1.5">
                       {presets.map((p) => (
                         <div key={p.id} className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-2.5 group">
-                          <button onClick={() => applyPreset(p)} className="flex-1 text-left min-w-0">
-                            <p className="text-[12px] font-medium text-foreground truncate">{p.name}</p>
-                            <p className="text-[10px] text-muted-foreground/60">
-                              Margin {(parseFloat(p.margin) * 100).toFixed(0)}% · SP {p.currency === 'INR' ? '₹' : '$'}{p.sellingPrice} · CP {p.currency === 'INR' ? '₹' : '$'}{p.costPrice} · DR {p.deliveryRate}%
-                            </p>
-                          </button>
-                          <button onClick={() => deletePreset(p.id)}
-                            className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-red-400 transition"
-                          ><Trash2 className="h-3.5 w-3.5" /></button>
+                          {editingPresetId === p.id ? (
+                            <input
+                              autoFocus
+                              value={editingPresetName}
+                              onChange={(e) => setEditingPresetName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') renamePreset(p.id, editingPresetName);
+                                if (e.key === 'Escape') setEditingPresetId(null);
+                              }}
+                              onBlur={() => renamePreset(p.id, editingPresetName)}
+                              className="flex-1 rounded border border-primary/30 bg-transparent px-2 py-0.5 text-[12px] text-foreground focus:outline-none"
+                            />
+                          ) : (
+                            <button onClick={() => applyPreset(p)} className="flex-1 text-left min-w-0">
+                              <p className="text-[12px] font-medium text-foreground truncate">{p.name}</p>
+                              <p className="text-[10px] text-muted-foreground/60">
+                                Margin {(parseFloat(p.margin) * 100).toFixed(0)}% · SP {p.currency === 'INR' ? '₹' : '$'}{p.sellingPrice} · CP {p.currency === 'INR' ? '₹' : '$'}{p.costPrice} · DR {p.deliveryRate}%
+                              </p>
+                            </button>
+                          )}
+                          {editingPresetId !== p.id && (
+                            <>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditingPresetId(p.id); setEditingPresetName(p.name); }}
+                                className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-primary transition"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => deletePreset(p.id)}
+                                className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-red-400 transition"
+                              ><Trash2 className="h-3.5 w-3.5" /></button>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>

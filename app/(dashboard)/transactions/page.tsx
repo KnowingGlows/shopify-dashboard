@@ -68,6 +68,28 @@ const ALL_CATEGORIES: ExpenseCategory[] = [
   'travel', 'subscription', 'rent', 'transfer', 'refund', 'income', 'other',
 ];
 
+// Finance-aligned categories for manual tagging (shown in category selector based on transaction type)
+const FINANCE_INCOME_CATS = [
+  { value: 'cod-deposit', label: 'COD Deposit', color: '#10b981' },
+  { value: 'prepaid-settlement', label: 'Prepaid Settlement', color: '#3b82f6' },
+  { value: 'affiliate', label: 'Affiliate', color: '#8b5cf6' },
+  { value: 'refund-received', label: 'Refund Received', color: '#f59e0b' },
+  { value: 'loan-received', label: 'Loan / Credit', color: '#06b6d4' },
+  { value: 'marketplace', label: 'Marketplace', color: '#ec4899' },
+  { value: 'other-income', label: 'Other Income', color: '#6b7280' },
+];
+
+const FINANCE_EXPENSE_CATS = [
+  { value: 'inventory', label: 'Inventory / COGS', color: '#f97316' },
+  { value: 'supplier', label: 'Supplier Payment', color: '#f43f5e' },
+  { value: 'shipping', label: 'Shipping', color: '#0ea5e9' },
+  { value: 'marketing', label: 'Marketing / Ads', color: '#8b5cf6' },
+  { value: 'returns', label: 'Returns / RTO', color: '#ef4444' },
+  { value: 'tools', label: 'Tools / Software', color: '#06b6d4' },
+  { value: 'freelance', label: 'Freelance', color: '#3b82f6' },
+  { value: 'other', label: 'Other', color: '#6b7280' },
+];
+
 const STATUS_META: Record<TxnStatus, { label: string; icon: typeof Check; color: string; bg: string }> = {
   pending:   { label: 'Pending',   icon: Clock,        color: 'text-amber-400',   bg: 'bg-amber-500/15' },
   approved:  { label: 'Approved',  icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/15' },
@@ -113,7 +135,12 @@ function AnimNum({ value }: { value: number }) {
 
 function CategoryBadge({ category, onClick }: { category: ExpenseCategory; onClick?: () => void }) {
   const meta = EXPENSE_CATEGORY_META[category];
-  const Icon = CATEGORY_ICONS[category];
+  const Icon = CATEGORY_ICONS[category] ?? Receipt;
+  // Look up in finance cats as fallback for new finance-aligned categories
+  const allFinanceCats = [...FINANCE_INCOME_CATS, ...FINANCE_EXPENSE_CATS];
+  const financeCat = allFinanceCats.find((c) => c.value === category);
+  const label = meta?.label ?? financeCat?.label ?? category;
+  const color = meta?.color ?? financeCat?.color ?? '#6b7280';
   return (
     <button
       onClick={onClick}
@@ -121,10 +148,10 @@ function CategoryBadge({ category, onClick }: { category: ExpenseCategory; onCli
         'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition',
         onClick ? 'cursor-pointer hover:brightness-125' : 'cursor-default',
       )}
-      style={{ backgroundColor: meta.color + '20', color: meta.color }}
+      style={{ backgroundColor: color + '20', color }}
     >
       <Icon className="h-3 w-3" />
-      {meta.label}
+      {label}
     </button>
   );
 }
@@ -782,26 +809,54 @@ export default function TransactionsPage() {
                                 <div>
                                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-1.5">Category</p>
                                   {editingCategory === txn.id ? (
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {ALL_CATEGORIES.map((cat) => (
-                                        <button
-                                          key={cat}
-                                          onClick={() => {
-                                            updateTransaction(txn.id, txn.status, cat);
-                                            setEditingCategory(null);
-                                          }}
-                                          className={cn(
-                                            'rounded-full px-2 py-0.5 text-[11px] font-medium transition',
-                                            cat === txn.category ? 'ring-1 ring-primary' : 'opacity-60 hover:opacity-100',
-                                          )}
-                                          style={{ backgroundColor: EXPENSE_CATEGORY_META[cat].color + '20', color: EXPENSE_CATEGORY_META[cat].color }}
-                                        >
-                                          {EXPENSE_CATEGORY_META[cat].label}
-                                        </button>
-                                      ))}
+                                    <div className="space-y-2">
+                                      <div>
+                                        <p className="text-[9px] font-medium uppercase tracking-wider text-emerald-400/60 mb-1">Income</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {FINANCE_INCOME_CATS.map((cat) => (
+                                            <button
+                                              key={cat.value}
+                                              onClick={() => {
+                                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                updateTransaction(txn.id, txn.status, cat.value as any);
+                                                setEditingCategory(null);
+                                              }}
+                                              className={cn(
+                                                'rounded-full px-2 py-0.5 text-[11px] font-medium transition',
+                                                txn.category === cat.value ? 'ring-1 ring-primary' : 'opacity-60 hover:opacity-100',
+                                              )}
+                                              style={{ backgroundColor: cat.color + '20', color: cat.color }}
+                                            >
+                                              {cat.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <p className="text-[9px] font-medium uppercase tracking-wider text-red-400/60 mb-1">Expense</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {FINANCE_EXPENSE_CATS.map((cat) => (
+                                            <button
+                                              key={cat.value}
+                                              onClick={() => {
+                                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                updateTransaction(txn.id, txn.status, cat.value as any);
+                                                setEditingCategory(null);
+                                              }}
+                                              className={cn(
+                                                'rounded-full px-2 py-0.5 text-[11px] font-medium transition',
+                                                txn.category === cat.value ? 'ring-1 ring-primary' : 'opacity-60 hover:opacity-100',
+                                              )}
+                                              style={{ backgroundColor: cat.color + '20', color: cat.color }}
+                                            >
+                                              {cat.label}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
                                       <button
                                         onClick={() => setEditingCategory(null)}
-                                        className="text-[11px] text-muted-foreground hover:text-foreground ml-1"
+                                        className="text-[11px] text-muted-foreground hover:text-foreground"
                                       >
                                         Cancel
                                       </button>

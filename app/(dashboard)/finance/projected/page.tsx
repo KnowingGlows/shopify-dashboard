@@ -167,12 +167,21 @@ export default function ProjectedFinancePage() {
   const [planAmount, setPlanAmount] = useState('');
   const [planDate, setPlanDate] = useState(getToday());
 
-  // Date range filter — 14d default (projection window)
-  const [dateRange, setDateRange] = useState<'14d' | '30d' | '7d' | '90d'>('14d');
+  // Date range filter — start/end date pickers
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date(Date.now() - 14 * 86400000);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  });
+  const [endDate, setEndDate] = useState(() =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+  );
 
   const fetchAll = useCallback(async () => {
     try {
-      const days = dateRange === '7d' ? 7 : dateRange === '14d' ? 14 : dateRange === '90d' ? 90 : 30;
+      const start = new Date(startDate + 'T00:00:00+05:30');
+      const end = new Date(endDate + 'T00:00:00+05:30');
+      // Add 42 extra days for COD projection window
+      const days = Math.max(7, Math.round((end.getTime() - start.getTime()) / 86400000) + 1) + 42;
       // Fetch finance data first (fast)
       const [res, plannedRes] = await Promise.all([
         fetch(`/api/finance?action=combined&days=${days}`),
@@ -192,7 +201,7 @@ export default function ProjectedFinancePage() {
     } catch { /* silently fail */ }
     finally { setLoading(false); setRefreshing(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange]);
+  }, [startDate, endDate]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -263,12 +272,10 @@ export default function ProjectedFinancePage() {
   const todayStr = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()), []);
 
   const chartDays = useMemo(() => {
-    if (dateRange === '7d') return 7;
-    if (dateRange === '14d') return 14;
-    if (dateRange === '30d') return 30;
-    if (dateRange === '90d') return 90;
-    return 14;
-  }, [dateRange]);
+    const start = new Date(startDate + 'T00:00:00+05:30');
+    const end = new Date(endDate + 'T00:00:00+05:30');
+    return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+  }, [startDate, endDate]);
 
   // Build daily outflow map from PLANNED expenses only
   const dailyOutflows = useMemo(() => {
@@ -431,19 +438,9 @@ export default function ProjectedFinancePage() {
       {activeTab === 'projection' && (
       <div className="flex items-center gap-2 flex-wrap">
         <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-        {(['14d', '30d', '90d', '7d'] as const).map((range) => (
-          <button
-            key={range}
-            onClick={() => setDateRange(range)}
-            className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition ${
-              dateRange === range
-                ? 'bg-primary/15 text-primary border border-primary/30'
-                : 'border border-border text-muted-foreground hover:text-foreground hover:border-border/80'
-            }`}
-          >
-            {range === '7d' ? '7 Days' : range === '14d' ? '14 Days' : range === '30d' ? '30 Days' : '90 Days'}
-          </button>
-        ))}
+        <DatePicker value={startDate} onChange={setStartDate} max={endDate} compact />
+        <span className="text-[11px] text-muted-foreground/40">→</span>
+        <DatePicker value={endDate} onChange={setEndDate} min={startDate} compact />
       </div>
       )}
 
@@ -451,22 +448,17 @@ export default function ProjectedFinancePage() {
       {activeTab === 'projection' && (<>
 
       {/* Key Metrics */}
-      {(() => {
-        const rangeLabel = dateRange === '7d' ? '7d' : dateRange === '14d' ? '14d' : dateRange === '90d' ? '90d' : '30d';
-        return (
-          <StaggerContainer className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <StaggerItem>
-              <MetricCard label={`Projected Deposits (${rangeLabel})`} value={totalCODProjected} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color="text-emerald-400" />
-            </StaggerItem>
-            <StaggerItem>
-              <MetricCard label={`P&L Net Profit (${rangeLabel})`} value={pnlNetProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={pnlNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-            </StaggerItem>
-            <StaggerItem>
-              <MetricCard label={`COD Collected (${rangeLabel})`} value={totalCODCollected} icon={<DollarSign className="h-4 w-4 text-emerald-400" />} color="text-foreground" />
-            </StaggerItem>
-          </StaggerContainer>
-        );
-      })()}
+      <StaggerContainer className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StaggerItem>
+          <MetricCard label="Projected Deposits" value={totalCODProjected} icon={<BanknoteIcon className="h-4 w-4 text-blue-400" />} color="text-emerald-400" />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="P&L Net Profit" value={pnlNetProfit} icon={<Wallet className="h-4 w-4 text-violet-400" />} color={pnlNetProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard label="COD Collected" value={totalCODCollected} icon={<DollarSign className="h-4 w-4 text-emerald-400" />} color="text-foreground" />
+        </StaggerItem>
+      </StaggerContainer>
 
       {/* ═══ Delivery Timeline Config ═══ */}
       {Object.keys(deliveryRates).length > 0 && (
