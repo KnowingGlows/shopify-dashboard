@@ -322,13 +322,12 @@ export async function GET(request: Request) {
         ? Math.round(currentNdrOrders.length / allAttemptedOrders.length * 1000) / 10
         : null;
 
-      // NDR Resolution: use dispatchCount as the ground truth for "went through NDR".
-      // dispatchCount >= 2 = re-dispatched after a failed attempt (definitive past NDR).
-      // status === 'attempted' = currently in NDR (dispatched once, failed, awaiting re-dispatch).
-      // EOD- scan codes fire on ALL undelivered shipments at end-of-day — completely unreliable.
+      // NDR Resolution: Delhivery sets firstAttemptDate only when a delivery attempt failed.
+      // This is the most reliable "ever went into NDR" signal — includes current NDR (attempted)
+      // and past NDR orders that subsequently delivered or went RTO.
       const ndrOrd = orders.filter((o) =>
-        o.status === 'attempted' ||
-        ((o.dispatchCount ?? 0) >= 2 && ['delivered', 'rto', 'rto_in_transit'].includes(o.status))
+        o.firstAttemptDate != null &&
+        ['delivered', 'attempted', 'rto', 'rto_in_transit'].includes(o.status)
       );
       const ndrRes = ndrOrd.filter((o) => o.status === 'delivered').length;
       const ndrDel = ndrOrd.filter((o) => o.status === 'delivered');
