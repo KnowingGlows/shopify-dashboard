@@ -48,6 +48,7 @@ interface Analytics {
   ndrDeliveredCount: number;
   avgNdrAttempts: number | null;
   totalNdrOrders: number;
+  totalEverNdrOrders: number;
   totalAttemptedOrders: number;
   atRiskValue: number;
   codPendingDelivery: number;
@@ -382,7 +383,7 @@ export default function LogisticsPage() {
                 sub={`${t.rto + t.rtoInTransit} returns`} />
               <InsightCard label="NDR Recovery" value={a?.ndrResolutionRate ?? null}
                 suffix="%" icon={ShieldAlert} color="text-amber-400" delay={0.22}
-                sub={a && a.totalNdrOrders > 0 ? `${a.ndrDeliveredCount} delivered of ${a.totalNdrOrders} NDR orders` : 'No NDRs'} />
+                sub={a && a.totalEverNdrOrders > 0 ? `${a.ndrDeliveredCount} delivered of ${a.totalEverNdrOrders} NDR orders` : 'No NDRs'} />
               <InsightCard label="NDR Rate" value={a?.ndrRate ?? null}
                 suffix="%" icon={AlertTriangle} color="text-orange-400" delay={0.26}
                 sub={a && a.totalAttemptedOrders > 0 ? `${a.totalNdrOrders} NDR of ${a.totalAttemptedOrders} attempted` : 'No data'} />

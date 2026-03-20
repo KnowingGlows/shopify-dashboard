@@ -341,6 +341,7 @@ export async function GET(request: Request) {
         ndrDeliveredCount: ndrRes,
         avgNdrAttempts: ndrDel.length > 0 ? Math.round(ndrDel.reduce((s, o) => s + (o.ndrCount ?? 0), 0) / ndrDel.length * 10) / 10 : null,
         totalNdrOrders: currentNdrOrders.length,
+        totalEverNdrOrders: ndrOrd.length,
         totalAttemptedOrders: allAttemptedOrders.length,
         atRiskValue: codOrd.filter((o) => o.status === 'rto_in_transit' || o.status === 'rto' || o.status === 'attempted').reduce((s, o) => s + o.amount, 0),
         codPendingDelivery: codOrd.filter((o) => o.status === 'in_transit' || o.status === 'out_for_delivery').reduce((s, o) => s + o.amount, 0),
