@@ -311,17 +311,6 @@ export default function ProjectedFinancePage() {
     return days;
   }, [startDate, dailyOutflows, chartDays]);
 
-  if (loading) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          <p className="text-xs text-muted-foreground">Loading projections...</p>
-        </div>
-      </div>
-    );
-  }
-
   const d = summary ?? {
     totalSales: 0, totalGrossProfit: 0, totalAdSpend: 0, totalNetProfit: 0,
     totalExpenses: 0, dailyBaselineTotal: 0, monthlyBaselineTotal: 0,
@@ -366,6 +355,17 @@ export default function ProjectedFinancePage() {
   const totalOutflow = useMemo(() => outflowDays.reduce((s, od) => s + od.planned, 0), [outflowDays]);
   const totalInflow = useMemo(() => inflowChartData.reduce((s, d) => s + d.deposit, 0), [inflowChartData]);
   const pnlNetProfit = useMemo(() => d.totalGrossProfit - Math.round(d.totalAdSpend * 1.14), [d.totalGrossProfit, d.totalAdSpend]);
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground">Loading projections...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
