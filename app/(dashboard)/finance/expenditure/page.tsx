@@ -22,6 +22,7 @@ interface Expense {
   date: string;
   endDate?: string;
   recurring?: boolean;
+  _fromTransaction?: boolean;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -607,14 +608,18 @@ export default function ExpenditurePage() {
                       </div>
                     ) : (
                       <div className="flex gap-0.5 justify-end opacity-0 group-hover:opacity-100 transition">
-                        <button onClick={() => startEdit(exp)} className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition"><Pencil className="h-3 w-3" /></button>
-                        <button
-                          onClick={() => deleteExpense(exp.id)}
-                          disabled={deletingId === exp.id}
-                          className="rounded-md p-1 text-muted-foreground/40 hover:text-red-400 transition disabled:opacity-50"
-                        >
-                          {deletingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-                        </button>
+                        {exp._fromTransaction ? (
+                          <span className="text-[9px] text-muted-foreground/50 px-1.5 py-0.5 rounded bg-muted/30">from txn</span>
+                        ) : (<>
+                          <button onClick={() => startEdit(exp)} className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition"><Pencil className="h-3 w-3" /></button>
+                          <button
+                            onClick={() => deleteExpense(exp.id)}
+                            disabled={deletingId === exp.id}
+                            className="rounded-md p-1 text-muted-foreground/40 hover:text-red-400 transition disabled:opacity-50"
+                          >
+                            {deletingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                          </button>
+                        </>)}
                       </div>
                     )}
                   </div>

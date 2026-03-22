@@ -171,6 +171,13 @@ export async function GET(request: Request) {
         return getSpendingConfig();
       case 'planned':
         return getPlannedExpenses();
+      case 'presets': {
+        const firestore = db();
+        if (!firestore) return NextResponse.json({ presets: [] });
+        const snap = await firestore.collection(COLLECTIONS.CALC_PRESETS).orderBy('createdAt', 'asc').get();
+        const presets = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        return NextResponse.json({ presets });
+      }
       default:
         return getFinanceSummary(searchParams);
     }
@@ -218,6 +225,25 @@ export async function POST(request: Request) {
         return updatePlannedExpense(body);
       case 'delete-planned':
         return deletePlannedExpense(body);
+      case 'save-preset': {
+        const firestore = db();
+        if (!firestore) return NextResponse.json({ error: 'No database' }, { status: 500 });
+        const { preset } = body;
+        const ref = await firestore.collection(COLLECTIONS.CALC_PRESETS).add({ ...preset, createdAt: new Date().toISOString() });
+        return NextResponse.json({ preset: { id: ref.id, ...preset } });
+      }
+      case 'delete-preset': {
+        const firestore = db();
+        if (!firestore) return NextResponse.json({ error: 'No database' }, { status: 500 });
+        await firestore.collection(COLLECTIONS.CALC_PRESETS).doc(body.id).delete();
+        return NextResponse.json({ success: true });
+      }
+      case 'rename-preset': {
+        const firestore = db();
+        if (!firestore) return NextResponse.json({ error: 'No database' }, { status: 500 });
+        await firestore.collection(COLLECTIONS.CALC_PRESETS).doc(body.id).update({ name: body.name });
+        return NextResponse.json({ success: true });
+      }
       case 'clear-all': {
         const db = getFirestore();
         if (!db) return NextResponse.json({ error: 'No database' }, { status: 500 });
@@ -470,7 +496,48 @@ async function getExpenses() {
     }
   }
 
-  return NextResponse.json({ expenses: expanded });
+  // Include approved bank transactions as expenses (debit) and income (credit)
+  const approvedSnap = await firestore
+    .collection(COLLECTIONS.BANK_TRANSACTIONS)
+    .where('status', '==', 'approved')
+    .get();
+
+  const approvedTxExpenses = approvedSnap.docs
+    .filter((doc) => doc.data().type === 'debit')
+    .map((doc) => {
+      const data = doc.data();
+      return {
+        id: `tx_${doc.id}`,
+        category: data.category ?? 'other',
+        description: data.description ?? data.note ?? '',
+        amount: data.amount ?? 0,
+        date: data.date ?? '',
+        recurring: false,
+        createdAt: data.createdAt ?? '',
+        _fromTransaction: true,
+      };
+    });
+
+  const approvedTxIncome = approvedSnap.docs
+    .filter((doc) => doc.data().type === 'credit')
+    .map((doc) => {
+      const data = doc.data();
+      return {
+        id: `tx_${doc.id}`,
+        category: data.category ?? 'other-income',
+        description: data.description ?? data.note ?? '',
+        amount: data.amount ?? 0,
+        date: data.date ?? '',
+        recurring: false,
+        createdAt: data.createdAt ?? '',
+        _fromTransaction: true,
+      };
+    });
+
+  return NextResponse.json({
+    expenses: [...expanded, ...approvedTxExpenses],
+    approvedIncome: approvedTxIncome,
+  });
 }
 
 async function addExpense(body: Record<string, unknown>) {

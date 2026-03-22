@@ -7,7 +7,6 @@ import { PageTransition } from '@/components/motion';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 
 const USD_TO_INR = 90.7;
-const PRESETS_KEY = 'orbit-calc-presets';
 
 interface CalcPreset {
   id: string;
@@ -20,15 +19,6 @@ interface CalcPreset {
   sellingPrice: string;
   costPrice: string;
   deliveryRate: string;
-}
-
-function loadPresets(): CalcPreset[] {
-  if (typeof window === 'undefined') return [];
-  try { return JSON.parse(localStorage.getItem(PRESETS_KEY) ?? '[]'); } catch { return []; }
-}
-
-function savePresets(presets: CalcPreset[]) {
-  localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
 }
 
 export default function ProfitCalculatorPage() {
@@ -50,7 +40,12 @@ export default function ProfitCalculatorPage() {
   const [costPrice, setCostPrice] = useState('35');
   const [deliveryRate, setDeliveryRate] = useState('95');
 
-  useEffect(() => { setPresets(loadPresets()); }, []);
+  useEffect(() => {
+    fetch('/api/finance?action=presets')
+      .then((r) => r.json())
+      .then((d) => setPresets(d.presets ?? []))
+      .catch(() => {});
+  }, []);
 
   const applyPreset = useCallback((p: CalcPreset) => {
     setCurrency(p.currency);
@@ -59,31 +54,27 @@ export default function ProfitCalculatorPage() {
     setShowPresets(false);
   }, []);
 
-  const saveCurrentAsPreset = () => {
+  const saveCurrentAsPreset = async () => {
     if (!presetName.trim()) return;
-    const newPreset: CalcPreset = {
-      id: Date.now().toString(),
-      name: presetName.trim(),
-      currency, margin, adSpend, roas, numDays, sellingPrice, costPrice, deliveryRate,
-    };
-    const updated = [...presets, newPreset];
-    setPresets(updated);
-    savePresets(updated);
-    setPresetName('');
+    const preset = { name: presetName.trim(), currency, margin, adSpend, roas, numDays, sellingPrice, costPrice, deliveryRate };
+    try {
+      const res = await fetch('/api/finance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-preset', preset }) });
+      const data = await res.json();
+      if (data.preset) setPresets((prev) => [...prev, data.preset]);
+      setPresetName('');
+    } catch { /* ignore */ }
   };
 
-  const deletePreset = (id: string) => {
-    const updated = presets.filter((p) => p.id !== id);
-    setPresets(updated);
-    savePresets(updated);
+  const deletePreset = async (id: string) => {
+    setPresets((prev) => prev.filter((p) => p.id !== id));
+    try { await fetch('/api/finance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete-preset', id }) }); } catch { /* ignore */ }
   };
 
-  const renamePreset = (id: string, newName: string) => {
+  const renamePreset = async (id: string, newName: string) => {
     if (!newName.trim()) return;
-    const updated = presets.map((p) => p.id === id ? { ...p, name: newName.trim() } : p);
-    setPresets(updated);
-    savePresets(updated);
+    setPresets((prev) => prev.map((p) => p.id === id ? { ...p, name: newName.trim() } : p));
     setEditingPresetId(null);
+    try { await fetch('/api/finance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'rename-preset', id, name: newName.trim() }) }); } catch { /* ignore */ }
   };
 
   const fmt = (amount: number) => currency === 'USD' ? formatUSD(amount) : formatINR(amount);
