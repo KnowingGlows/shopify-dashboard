@@ -43,7 +43,28 @@ export default function ProfitCalculatorPage() {
   useEffect(() => {
     fetch('/api/finance?action=presets')
       .then((r) => r.json())
-      .then((d) => setPresets(d.presets ?? []))
+      .then(async (d) => {
+        const serverPresets = d.presets ?? [];
+        // Migrate localStorage presets to Firestore (one-time)
+        const LOCAL_KEY = 'orbit-calc-presets';
+        try {
+          const local = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]') as CalcPreset[];
+          if (local.length > 0 && serverPresets.length === 0) {
+            const migrated: CalcPreset[] = [];
+            for (const p of local) {
+              const { id: _id, ...preset } = p;
+              const res = await fetch('/api/finance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-preset', preset }) });
+              const data = await res.json();
+              if (data.preset) migrated.push(data.preset);
+            }
+            localStorage.removeItem(LOCAL_KEY);
+            setPresets(migrated);
+            return;
+          }
+          if (serverPresets.length > 0) localStorage.removeItem(LOCAL_KEY);
+        } catch { /* ignore */ }
+        setPresets(serverPresets);
+      })
       .catch(() => {});
   }, []);
 

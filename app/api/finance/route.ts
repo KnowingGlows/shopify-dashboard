@@ -174,7 +174,7 @@ export async function GET(request: Request) {
       case 'presets': {
         const firestore = db();
         if (!firestore) return NextResponse.json({ presets: [] });
-        const snap = await firestore.collection(COLLECTIONS.CALC_PRESETS).orderBy('createdAt', 'asc').get();
+        const snap = await firestore.collection(COLLECTIONS.CALC_PRESETS).get();
         const presets = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         return NextResponse.json({ presets });
       }
