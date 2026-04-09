@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  BarChart3, Box, CheckSquare, ClipboardList, DollarSign, Home, LogOut,
-  Menu, Megaphone, Package, Search, Settings, Truck, Users, Wallet, X,
-  PenLine, Calculator, List, Receipt, TrendingUp,
+  BarChart3, Box, CheckSquare, ClipboardList, Home, LogOut,
+  Menu, Megaphone, Package, Search, Settings, Truck, Users, X,
+  Calculator,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -31,14 +31,6 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: Home, section: 'core' },
   { href: '/orders', label: 'Logistics', icon: Truck, section: 'core' },
   { href: '/orders/breakdown', label: 'Breakdown', icon: BarChart3, section: 'core', parent: '/orders' },
-  { href: '/finance', label: 'Finance', icon: DollarSign, section: 'finance' },
-  { href: '/finance/entry', label: 'Daily Entry', icon: PenLine, section: 'finance', parent: '/finance' },
-  { href: '/finance/expenditure', label: 'Expenditure', icon: Receipt, section: 'finance', parent: '/finance' },
-  { href: '/finance/entries', label: 'Entries', icon: List, section: 'finance', parent: '/finance' },
-  { href: '/transactions', label: 'Transactions', icon: Wallet, section: 'finance', parent: '/finance' },
-  { href: '/finance/projected', label: 'Finance Projection', icon: TrendingUp, section: 'finance' },
-  { href: '/finance/projected/entry', label: 'Daily P&L', icon: PenLine, section: 'finance', parent: '/finance/projected' },
-  { href: '/finance/projected/entries', label: 'Entries', icon: List, section: 'finance', parent: '/finance/projected' },
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'finance' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
@@ -153,11 +145,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
             if (!hasAccess(i.href)) return false;
             // Hide child items unless parent route is active
             if (i.parent) {
-              // /transactions is a Finance child but has a different path prefix
-              const effectivePath = activePath === '/transactions' ? '/finance' : activePath;
-              if (!effectivePath.startsWith(i.parent)) return false;
-              // /finance sub-items only show when on /finance (not projected, not calculator)
-              if (i.parent === '/finance' && (effectivePath.startsWith('/finance/projected') || effectivePath.startsWith('/finance/calculator'))) return false;
+              if (!activePath.startsWith(i.parent)) return false;
             }
             return true;
           });
