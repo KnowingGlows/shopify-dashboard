@@ -1,21 +1,151 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { StatsCard } from './stats-card';
+import { useEffect, useMemo, useState } from 'react';
+import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 import { StoreBreakdown } from './store-breakdown';
 import { StoreFilter } from './store-filter';
-import { IndianRupee, ShoppingCart, TrendingUp, RefreshCw, AlertCircle, Code2, X, Loader2 } from 'lucide-react';
+import { RefreshCw, AlertCircle, Code2, X, Loader2, Store, ArrowUpRight } from 'lucide-react';
 import { SalesMetrics, OrderData } from '@/types/shopify';
-import { formatCurrency } from '@/lib/currency-converter';
+import { formatCurrency, convertToINR } from '@/lib/currency-converter';
 import { aggregateSalesData, filterByStore } from '@/lib/sales-aggregator';
 import { cn } from '@/lib/utils';
+import { useAuth } from './auth-provider';
 import { Button } from './ui/button';
 
+type RangeKey = 'today' | 'yesterday' | '7d' | '30d' | 'custom';
+
+const RANGE_OPTIONS: Array<{ value: RangeKey; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: '7d', label: 'Last 7 days' },
+  { value: '30d', label: 'Last 30 days' },
+  { value: 'custom', label: 'Custom' },
+];
+
+function greetingFor(date = new Date()) {
+  const h = date.getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function displayName(email?: string | null) {
+  if (!email) return 'there';
+  const handle = email.split('@')[0];
+  const first = handle.split(/[._-]/)[0] ?? handle;
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+function todayLabel() {
+  return new Date().toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+type SeriesPoint = { t: string; v: number };
+
+function buildSeries(orders: OrderData[], range: RangeKey): SeriesPoint[] {
+  const hourly = range === 'today' || range === 'yesterday';
+  const flat = orders.flatMap((d) =>
+    d.orders.map((o) => {
+      const gross = Number(o.total_price || 0) - Number(o.total_refunded || 0);
+      return {
+        at: new Date(o.created_at).getTime(),
+        inr: convertToINR(Math.max(0, gross), o.currency),
+      };
+    })
+  );
+  if (flat.length === 0) return [];
+
+  if (hourly) {
+    const buckets = new Map<number, number>();
+    for (let h = 0; h < 24; h++) buckets.set(h, 0);
+    flat.forEach(({ at, inr }) => {
+      const h = new Date(at).getHours();
+      buckets.set(h, (buckets.get(h) ?? 0) + (Number.isFinite(inr) ? inr : 0));
+    });
+    return Array.from(buckets.entries()).map(([h, v]) => ({ t: `${h}:00`, v }));
+  }
+
+  const buckets = new Map<string, number>();
+  flat.forEach(({ at, inr }) => {
+    const key = new Date(at).toISOString().slice(0, 10);
+    buckets.set(key, (buckets.get(key) ?? 0) + (Number.isFinite(inr) ? inr : 0));
+  });
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([t, v]) => ({ t, v }));
+}
+
+function Sparkline({ data, color = '#a78bfa' }: { data: SeriesPoint[]; color?: string }) {
+  if (!data || data.length < 2) {
+    return <div className="h-10 w-full rounded bg-muted/30" />;
+  }
+  const gid = `spark-${color.replace('#', '')}`;
+  return (
+    <div className="h-10 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Area
+            type="monotone"
+            dataKey="v"
+            stroke={color}
+            strokeWidth={1.5}
+            fill={`url(#${gid})`}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  description,
+  series,
+  color,
+}: {
+  label: string;
+  value: string;
+  description?: string;
+  series: SeriesPoint[];
+  color?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-border/80">
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-2 text-[26px] font-semibold leading-none tracking-tight text-foreground">
+        {value}
+      </div>
+      {description && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">{description}</p>
+      )}
+      <div className="mt-3">
+        <Sparkline data={series} color={color} />
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
+  const { user } = useAuth();
   const [salesData, setSalesData] = useState<SalesMetrics | null>(null);
   const [ordersData, setOrdersData] = useState<OrderData[]>([]);
   const [selectedStore, setSelectedStore] = useState<string>('all');
-  const [dateRange, setDateRange] = useState<'today' | 'yesterday' | '7d' | '30d' | 'custom'>('today');
+  const [dateRange, setDateRange] = useState<RangeKey>('today');
   const [customRange, setCustomRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [customRangeError, setCustomRangeError] = useState<string | null>(null);
   const [currency, setCurrency] = useState<'INR' | 'USD'>('INR');
@@ -97,12 +227,30 @@ export function Dashboard() {
     }
   }, [selectedStore, ordersData]);
 
+  const filteredOrders = useMemo(
+    () => filterByStore(ordersData, selectedStore),
+    [ordersData, selectedStore]
+  );
+  const salesSeries = useMemo(() => buildSeries(filteredOrders, dateRange), [filteredOrders, dateRange]);
+  const ordersSeries = useMemo<SeriesPoint[]>(
+    () => salesSeries.map((p) => ({ t: p.t, v: p.v > 0 ? 1 : 0 })),
+    [salesSeries]
+  );
+
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          <p className="text-xs text-muted-foreground">Loading sales data...</p>
+      <div className="mx-auto max-w-7xl space-y-6 p-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-5 w-48 animate-pulse rounded bg-muted/50" />
+            <div className="h-3 w-64 animate-pulse rounded bg-muted/30" />
+          </div>
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-[150px] rounded-xl border border-border bg-card" />
+          ))}
         </div>
       </div>
     );
@@ -111,7 +259,7 @@ export function Dashboard() {
   if (error) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-4">
-        <div className="w-full max-w-sm rounded-lg border border-destructive/30 bg-card p-6 text-center">
+        <div className="w-full max-w-sm rounded-xl border border-destructive/30 bg-card p-6 text-center">
           <AlertCircle className="mx-auto h-8 w-8 text-destructive" />
           <p className="mt-3 text-sm text-foreground">Error Loading Data</p>
           <p className="mt-1 text-xs text-muted-foreground">{error}</p>
@@ -127,16 +275,9 @@ export function Dashboard() {
   if (!salesData) return null;
 
   const storeNames = ordersData.map((d) => d.storeName);
-  const rangeOptions: Array<{ value: typeof dateRange; label: string }> = [
-    { value: 'today', label: 'Today' },
-    { value: 'yesterday', label: 'Yesterday' },
-    { value: '7d', label: '7 Days' },
-    { value: '30d', label: '30 Days' },
-    { value: 'custom', label: 'Custom' },
-  ];
   const activeRangeLabel = dateRange === 'custom' && customRange.start
     ? `${customRange.start}${customRange.end ? ` → ${customRange.end}` : ''}`
-    : rangeOptions.find((o) => o.value === dateRange)?.label ?? 'Today';
+    : RANGE_OPTIONS.find((o) => o.value === dateRange)?.label ?? 'Today';
 
   const applyCustomRange = () => {
     if (!customRange.start) { setCustomRangeError('Select a start date.'); return; }
@@ -145,57 +286,80 @@ export function Dashboard() {
     fetchData('custom', customRange);
   };
 
+  const topStore = salesData.storeBreakdown.length > 0
+    ? [...salesData.storeBreakdown].sort((a, b) => b.totalSalesINR - a.totalSalesINR)[0]
+    : null;
+  const activeStoreCount = salesData.storeBreakdown.filter((s) => s.totalOrders > 0).length;
+
   return (
-    <div className="mx-auto max-w-7xl space-y-5 p-5">
-      {/* Controls bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
-          {rangeOptions.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setDateRange(opt.value)}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-[11px] font-medium transition-all',
-                opt.value === dateRange ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
+    <div className="mx-auto max-w-7xl space-y-6 p-6">
+      {/* Greeting header */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            {greetingFor()}, {displayName(user?.email)}
+          </h1>
+          <p className="mt-1 text-[12px] text-muted-foreground">
+            {todayLabel()}
+            {lastUpdated && <> · Updated {lastUpdated}</>}
+          </p>
         </div>
-
-        <StoreFilter stores={storeNames} selectedStore={selectedStore} onStoreChange={setSelectedStore} />
-
-        <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
-          {(['INR', 'USD'] as const).map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setCurrency(c)}
-              className={cn(
-                'rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all',
-                currency === c ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {c}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
+            {(['INR', 'USD'] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setCurrency(c)}
+                className={cn(
+                  'rounded-[5px] px-2.5 py-1 text-[11px] font-medium transition-colors',
+                  currency === c ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => fetchData(dateRange, dateRange === 'custom' ? customRange : undefined)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground"
+          >
+            <RefreshCw className="h-3 w-3" /> Refresh
+          </button>
         </div>
+      </div>
 
-        <button
-          onClick={() => fetchData(dateRange, dateRange === 'custom' ? customRange : undefined)}
-          className="rounded-md border border-border bg-card p-2 text-muted-foreground transition hover:text-foreground"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-        </button>
-
-        <span className="ml-auto text-[11px] text-muted-foreground">{activeRangeLabel} · {lastUpdated}</span>
+      {/* Range tabs — Shopify-style underline */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
+        <div className="flex flex-wrap items-center gap-1 -mb-px">
+          {RANGE_OPTIONS.map((opt) => {
+            const active = opt.value === dateRange;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setDateRange(opt.value)}
+                className={cn(
+                  'relative px-3 py-2 text-[12px] font-medium transition-colors',
+                  active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {opt.label}
+                {active && (
+                  <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="pb-2">
+          <StoreFilter stores={storeNames} selectedStore={selectedStore} onStoreChange={setSelectedStore} />
+        </div>
       </div>
 
       {/* Custom range picker */}
       {dateRange === 'custom' && (
-        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
           <span className="text-[11px] text-muted-foreground">From</span>
           <input type="date" value={customRange.start}
             onChange={(e) => { setCustomRangeError(null); setCustomRange((p) => ({ ...p, start: e.target.value })); }}
@@ -209,21 +373,95 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-        <StatsCard title="Total Sales" value={formatCurrency(salesData.totalSalesINR, currency)}
-          icon={currency === 'INR' ? IndianRupee : TrendingUp}
-          description={selectedStore === 'all' ? 'Across all stores' : selectedStore} />
-        <StatsCard title="Total Orders" value={salesData.totalOrders.toLocaleString('en-IN')}
-          icon={ShoppingCart} description={selectedStore === 'all' ? 'Combined orders' : `From ${selectedStore}`} />
-        <StatsCard title="Avg Order Value" value={formatCurrency(salesData.averageOrderValue, currency)}
-          icon={currency === 'INR' ? IndianRupee : TrendingUp} description="Per order" />
-      </div>
+      {/* Overview section */}
+      <section>
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-[13px] font-semibold text-foreground">Overview</h2>
+          <span className="text-[11px] text-muted-foreground">
+            {activeRangeLabel}
+            {selectedStore !== 'all' && <> · {selectedStore}</>}
+          </span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <MetricTile
+            label="Total sales"
+            value={formatCurrency(salesData.totalSalesINR, currency)}
+            description={selectedStore === 'all' ? 'Across all stores' : selectedStore}
+            series={salesSeries}
+            color="#a78bfa"
+          />
+          <MetricTile
+            label="Orders"
+            value={salesData.totalOrders.toLocaleString('en-IN')}
+            description={selectedStore === 'all' ? 'Combined orders' : `From ${selectedStore}`}
+            series={ordersSeries}
+            color="#34d399"
+          />
+          <MetricTile
+            label="Average order value"
+            value={formatCurrency(salesData.averageOrderValue, currency)}
+            description="Per order"
+            series={salesSeries}
+            color="#60a5fa"
+          />
+        </div>
+      </section>
 
-      {/* Store Breakdown */}
-      {selectedStore === 'all' && salesData.storeBreakdown.length > 0 && (
-        <StoreBreakdown stores={salesData.storeBreakdown} currency={currency} />
-      )}
+      {/* Breakdown + at-a-glance */}
+      <section className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          {selectedStore === 'all' && salesData.storeBreakdown.length > 0 ? (
+            <StoreBreakdown stores={salesData.storeBreakdown} currency={currency} />
+          ) : (
+            <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border bg-card/50 p-6 text-center">
+              <div>
+                <Store className="mx-auto h-5 w-5 text-muted-foreground" />
+                <p className="mt-2 text-[12px] text-muted-foreground">
+                  {selectedStore === 'all'
+                    ? 'No store data for this range.'
+                    : `Viewing only ${selectedStore}. Switch to All stores to see the breakdown.`}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-border bg-card">
+          <div className="border-b border-border px-4 py-2.5">
+            <h2 className="text-sm font-medium text-foreground">At a glance</h2>
+          </div>
+          <dl className="divide-y divide-border text-[12px]">
+            <div className="flex items-center justify-between px-4 py-3">
+              <dt className="text-muted-foreground">Active stores</dt>
+              <dd className="font-medium text-foreground">{activeStoreCount}</dd>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <dt className="text-muted-foreground">Top store</dt>
+              <dd className="max-w-[60%] truncate text-right font-medium text-foreground">
+                {topStore?.storeName ?? '—'}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <dt className="text-muted-foreground">Top store sales</dt>
+              <dd className="font-medium text-foreground">
+                {topStore ? formatCurrency(topStore.totalSalesINR, currency) : '—'}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <dt className="text-muted-foreground">Range</dt>
+              <dd className="font-medium text-foreground">{activeRangeLabel}</dd>
+            </div>
+          </dl>
+          <div className="border-t border-border px-4 py-2.5">
+            <a
+              href="/orders"
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80"
+            >
+              View orders <ArrowUpRight className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      </section>
 
       <DevPanel log={devLog} />
     </div>
