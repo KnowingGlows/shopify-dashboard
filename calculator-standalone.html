@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Profit Calculator</title>
+  <style>
+    :root {
+      --bg: #09090b;
+      --card: #111113;
+      --card-muted: #0c0c0e;
+      --border: #1e1e24;
+      --border-strong: #2a2a31;
+      --text: #fafafa;
+      --text-muted: #71717a;
+      --text-dim: #52525b;
+      --primary: #a78bfa;
+      --primary-soft: rgba(167, 139, 250, 0.12);
+      --primary-border: rgba(167, 139, 250, 0.22);
+      --success: #34d399;
+      --success-soft: rgba(52, 211, 153, 0.08);
+      --success-border: rgba(52, 211, 153, 0.22);
+      --danger: #ef4444;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Inter", "Helvetica Neue", Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      min-height: 100vh;
+    }
+    .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+    .container { max-width: 1120px; margin: 0 auto; padding: 24px 20px 60px; }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .header h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+    .header .sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+
+    button { font-family: inherit; cursor: pointer; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text-muted);
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+    }
+    .btn:hover { color: var(--text); border-color: var(--border-strong); }
+    .btn-primary {
+      background: var(--primary-soft);
+      border-color: var(--primary-border);
+      color: var(--primary);
+    }
+    .btn-primary:hover { background: rgba(167, 139, 250, 0.18); }
+    .btn-danger { color: var(--danger); border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.06); }
+    .currency-pill {
+      display: inline-flex; align-items: center;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 4px 10px;
+      font-size: 11px; font-weight: 600; color: var(--primary);
+    }
+
+    /* Grid */
+    .grid { display: grid; gap: 20px; grid-template-columns: 1fr; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+
+    /* Card */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-header .icon {
+      width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
+    }
+    .card-header h2 { font-size: 13px; font-weight: 600; margin: 0; }
+    .card-header p { font-size: 10px; color: var(--text-muted); margin: 2px 0 0; }
+    .card-body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+    /* Form field */
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .field .hint { margin-left: 4px; text-transform: none; letter-spacing: 0; color: var(--text-dim); font-weight: 400; }
+    .field-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .input {
+      width: 100%;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+    }
+    .input::placeholder { color: var(--text-dim); }
+    .input:focus {
+      border-color: var(--primary);
+      background: rgba(167, 139, 250, 0.04);
+      box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.08);
+    }
+
+    .divider { height: 1px; background: var(--border); }
+
+    /* Result rows */
+    .results { display: flex; flex-direction: column; gap: 6px; }
+    .row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px; border-radius: 8px;
+      font-size: 12px;
+    }
+    .row .label { color: var(--text-muted); }
+    .row .value { font-size: 13px; font-weight: 600; }
+    .row.primary { background: rgba(167, 139, 250, 0.06); border: 1px solid var(--primary-border); }
+    .row.primary .value { color: var(--primary); }
+    .row.success { background: var(--success-soft); border: 1px solid var(--success-border); }
+    .row.success .value { color: var(--success); }
+
+    /* Big stat */
+    .big-stat {
+      text-align: center;
+      padding: 24px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--primary-border);
+      background: rgba(167, 139, 250, 0.04);
+    }
+    .big-stat.success { border-color: var(--success-border); background: rgba(52, 211, 153, 0.04); }
+    .big-stat .eyebrow {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+    }
+    .big-stat .number {
+      font-size: 44px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      color: var(--primary);
+    }
+    .big-stat.success .number { color: var(--success); }
+    .big-stat .sub { font-size: 15px; color: var(--text-muted); margin-top: 8px; }
+
+    /* Presets panel */
+    .presets {
+      display: none;
+      margin-bottom: 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .presets.open { display: block; }
+    .presets-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .presets-header h3 { font-size: 13px; font-weight: 600; margin: 0; }
+    .presets-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+    .preset-row { display: flex; gap: 8px; }
+    .preset-list { display: flex; flex-direction: column; gap: 6px; }
+    .preset-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.01);
+      transition: border-color 0.15s;
+    }
+    .preset-item:hover { border-color: var(--border-strong); }
+    .preset-info { flex: 1; min-width: 0; text-align: left; background: none; border: none; color: inherit; padding: 0; cursor: pointer; font-family: inherit; }
+    .preset-info .name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .preset-info .meta { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+    .icon-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px;
+      background: transparent; border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--text-muted);
+      transition: color 0.15s, background 0.15s;
+    }
+    .icon-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+    .icon-btn.danger:hover { color: var(--danger); background: rgba(239, 68, 68, 0.08); }
+    .empty {
+      text-align: center; padding: 18px; color: var(--text-dim); font-size: 11px;
+    }
+    .section-label {
+      font-size: 10px; font-weight: 500; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <h1>Profit Calculator</h1>
+        <div class="sub">Calculate ROI &amp; profit margins for paid advertising</div>
+      </div>
+      <div class="header-actions">
+        <button class="btn" id="toggle-presets" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          Presets <span id="preset-count" style="color: var(--primary);"></span>
+        </button>
+        <span class="currency-pill">₹ INR</span>
+      </div>
+    </div>
+
+    <!-- Presets panel -->
+    <div class="presets" id="presets">
+      <div class="presets-header">
+        <h3>Brand Presets</h3>
+        <button class="icon-btn" id="close-presets" type="button" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="presets-body">
+        <div>
+          <div class="section-label">Save current values</div>
+          <div class="preset-row">
+            <input class="input" id="preset-name" type="text" placeholder="e.g. Kairova, Mavric…" />
+            <button class="btn btn-primary" id="save-preset" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Save
+            </button>
+          </div>
+        </div>
+        <div>
+          <div class="section-label">Saved presets</div>
+          <div class="preset-list" id="preset-list"></div>
+          <div class="empty" id="preset-empty" style="display:none;">
+            No presets saved yet. Set your values above and save them as a brand preset.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two calculators -->
+    <div class="grid">
+      <!-- ROI Calculator -->
+      <section class="card">
+        <div class="card-header">
+          <span class="icon" style="color: var(--primary);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="10" y2="18"/><line x1="14" y1="18" x2="16" y2="18"/></svg>
+          </span>
+          <div>
+            <h2>ROI Calculator</h2>
+            <p>Calculate true profit &amp; return on investment</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="field-2col">
+            <div class="field">
+              <label>Avg Profit Margin <span class="hint">(e.g. 0.6 = 60%)</span></label>
+              <input class="input" id="margin" type="text" value="0.6" inputmode="decimal" />
+            </div>
+            <div class="field">
+              <label>Ad Spend (INR)</label>
+              <input class="input" id="ad-spend" type="text" value="250" inputmode="decimal" />
+            </div>
+            <div class="field">
+              <label>ROAS Multiplier</label>
+              <input class="input" id="roas" type="text" value="6" inputmode="decimal" />
+            </div>
+            <div class="field">
+              <label>Number of Days</label>
+              <input class="input" id="num-days" type="text" value="30" inputmode="decimal" />
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="results">
+            <div class="row"><span class="label">Breakeven ROAS</span><span class="value mono" id="r-breakeven">0.00x</span></div>
+            <div class="row"><span class="label">Revenue from Ad Spend</span><span class="value mono" id="r-revenue">₹0</span></div>
+            <div class="row"><span class="label">Profit After Margin</span><span class="value mono" id="r-profit-margin">₹0</span></div>
+            <div class="row primary"><span class="label">Profit After Ad Spend</span><span class="value mono" id="r-profit-adspend">₹0</span></div>
+            <div class="row success"><span class="label" id="r-true-profit-label">True Profit (30 days)</span><span class="value mono" id="r-true-profit">₹0</span></div>
+          </div>
+
+          <div class="big-stat success">
+            <div class="eyebrow">Return on Investment</div>
+            <div class="number mono" id="r-roi">0%</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Margin Calculator -->
+      <section class="card">
+        <div class="card-header">
+          <span class="icon" style="color: var(--primary);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+          </span>
+          <div>
+            <h2>Margin Calculator</h2>
+            <p>Calculate your product&apos;s profit margin</p>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="field">
+            <label>Selling Price (incl. shipping) — INR</label>
+            <input class="input" id="selling-price" type="text" value="100" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label>Cost of Product (incl. shipping) — INR</label>
+            <input class="input" id="cost-price" type="text" value="35" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label>Delivery Rate % <span class="hint">(successful delivery rate — multiplied to margin)</span></label>
+            <input class="input" id="delivery-rate" type="text" value="95" inputmode="decimal" />
+          </div>
+
+          <div class="big-stat">
+            <div class="eyebrow">Your Profit Margin</div>
+            <div class="number mono" id="m-margin">0.000</div>
+            <div class="sub" id="m-margin-pct">0.0%</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // ─── Formatting ──────────────────────────────────────────────────
+    const inrFormatter = new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0,
+    });
+    const formatINR = (n) => Number.isFinite(n) ? inrFormatter.format(n) : '₹0';
+    const toNum = (s) => {
+      const n = parseFloat(s);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // ─── ROI Calculator ──────────────────────────────────────────────
+    const $margin = document.getElementById('margin');
+    const $adSpend = document.getElementById('ad-spend');
+    const $roas = document.getElementById('roas');
+    const $numDays = document.getElementById('num-days');
+
+    const $rBreakeven = document.getElementById('r-breakeven');
+    const $rRevenue = document.getElementById('r-revenue');
+    const $rProfitMargin = document.getElementById('r-profit-margin');
+    const $rProfitAdSpend = document.getElementById('r-profit-adspend');
+    const $rTrueProfit = document.getElementById('r-true-profit');
+    const $rTrueProfitLabel = document.getElementById('r-true-profit-label');
+    const $rRoi = document.getElementById('r-roi');
+
+    function recalcROI() {
+      const m = toNum($margin.value);
+      const ad = toNum($adSpend.value);
+      const roasVal = toNum($roas.value);
+      const days = toNum($numDays.value) || 30;
+
+      const breakeven = m > 0 ? (1 / m).toFixed(2) : '0.00';
+      const revenue = ad * roasVal;
+      const profitMargin = revenue * m;
+      const profitAdSpend = profitMargin - ad;
+      const roi = ad > 0 ? Math.round((profitAdSpend / ad) * 100) : 0;
+
+      $rBreakeven.textContent = breakeven + 'x';
+      $rRevenue.textContent = formatINR(revenue);
+      $rProfitMargin.textContent = formatINR(profitMargin);
+      $rProfitAdSpend.textContent = formatINR(profitAdSpend);
+      $rTrueProfit.textContent = formatINR(profitAdSpend);
+      $rTrueProfitLabel.textContent = 'True Profit (' + days + ' days)';
+      $rRoi.textContent = roi + '%';
+    }
+
+    [$margin, $adSpend, $roas, $numDays].forEach((el) => el.addEventListener('input', recalcROI));
+
+    // ─── Margin Calculator ───────────────────────────────────────────
+    const $sellingPrice = document.getElementById('selling-price');
+    const $costPrice = document.getElementById('cost-price');
+    const $deliveryRate = document.getElementById('delivery-rate');
+    const $mMargin = document.getElementById('m-margin');
+    const $mMarginPct = document.getElementById('m-margin-pct');
+
+    function recalcMargin() {
+      const sp = toNum($sellingPrice.value);
+      const cp = toNum($costPrice.value);
+      const dr = toNum($deliveryRate.value) / 100;
+      const base = sp > 0 ? (sp - cp) / sp : 0;
+      const final = base * dr;
+      $mMargin.textContent = final.toFixed(3);
+      $mMarginPct.textContent = (final * 100).toFixed(1) + '%';
+    }
+
+    [$sellingPrice, $costPrice, $deliveryRate].forEach((el) => el.addEventListener('input', recalcMargin));
+
+    // ─── Presets (localStorage) ──────────────────────────────────────
+    const STORAGE_KEY = 'orbit-calc-presets-standalone';
+    const $togglePresets = document.getElementById('toggle-presets');
+    const $closePresets = document.getElementById('close-presets');
+    const $presets = document.getElementById('presets');
+    const $presetName = document.getElementById('preset-name');
+    const $savePreset = document.getElementById('save-preset');
+    const $presetList = document.getElementById('preset-list');
+    const $presetEmpty = document.getElementById('preset-empty');
+    const $presetCount = document.getElementById('preset-count');
+
+    function loadPresets() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      } catch {
+        return [];
+      }
+    }
+    function savePresets(list) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
+    function renderPresets() {
+      const list = loadPresets();
+      $presetCount.textContent = list.length ? '(' + list.length + ')' : '';
+      $presetList.innerHTML = '';
+      if (list.length === 0) {
+        $presetEmpty.style.display = 'block';
+        return;
+      }
+      $presetEmpty.style.display = 'none';
+      list.forEach((p) => {
+        const item = document.createElement('div');
+        item.className = 'preset-item';
+        const marginPct = (toNum(p.margin) * 100).toFixed(0);
+        item.innerHTML = `
+          <button class="preset-info" data-action="apply" data-id="${p.id}">
+            <div class="name">${escapeHtml(p.name)}</div>
+            <div class="meta">Margin ${marginPct}% · SP ₹${escapeHtml(p.sellingPrice)} · CP ₹${escapeHtml(p.costPrice)} · DR ${escapeHtml(p.deliveryRate)}%</div>
+          </button>
+          <button class="icon-btn" data-action="rename" data-id="${p.id}" aria-label="Rename">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+          </button>
+          <button class="icon-btn danger" data-action="delete" data-id="${p.id}" aria-label="Delete">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          </button>
+        `;
+        $presetList.appendChild(item);
+      });
+    }
+
+    $togglePresets.addEventListener('click', () => {
+      $presets.classList.toggle('open');
+    });
+    $closePresets.addEventListener('click', () => {
+      $presets.classList.remove('open');
+    });
+
+    $savePreset.addEventListener('click', () => {
+      const name = $presetName.value.trim();
+      if (!name) return;
+      const list = loadPresets();
+      list.push({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name,
+        margin: $margin.value,
+        adSpend: $adSpend.value,
+        roas: $roas.value,
+        numDays: $numDays.value,
+        sellingPrice: $sellingPrice.value,
+        costPrice: $costPrice.value,
+        deliveryRate: $deliveryRate.value,
+      });
+      savePresets(list);
+      $presetName.value = '';
+      renderPresets();
+    });
+
+    $presetName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') $savePreset.click();
+    });
+
+    $presetList.addEventListener('click', (e) => {
+      const target = e.target.closest('[data-action]');
+      if (!target) return;
+      const action = target.getAttribute('data-action');
+      const id = target.getAttribute('data-id');
+      const list = loadPresets();
+      const preset = list.find((p) => p.id === id);
+      if (!preset) return;
+
+      if (action === 'apply') {
+        $margin.value = preset.margin;
+        $adSpend.value = preset.adSpend;
+        $roas.value = preset.roas;
+        $numDays.value = preset.numDays;
+        $sellingPrice.value = preset.sellingPrice;
+        $costPrice.value = preset.costPrice;
+        $deliveryRate.value = preset.deliveryRate;
+        recalcROI();
+        recalcMargin();
+        $presets.classList.remove('open');
+      } else if (action === 'delete') {
+        savePresets(list.filter((p) => p.id !== id));
+        renderPresets();
+      } else if (action === 'rename') {
+        const newName = window.prompt('Rename preset', preset.name);
+        if (newName && newName.trim()) {
+          preset.name = newName.trim();
+          savePresets(list);
+          renderPresets();
+        }
+      }
+    });
+
+    // ─── Init ────────────────────────────────────────────────────────
+    recalcROI();
+    recalcMargin();
+    renderPresets();
+  </script>
+</body>
+</html>

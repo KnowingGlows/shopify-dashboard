@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 import { StoreBreakdown } from './store-breakdown';
 import { StoreFilter } from './store-filter';
@@ -29,11 +30,41 @@ function greetingFor(date = new Date()) {
   return 'Good evening';
 }
 
+const NAME_OVERRIDES: Record<string, string> = {
+  'tsovansh@gmail.com': 'Sovansh',
+};
+
 function displayName(email?: string | null) {
   if (!email) return 'there';
+  const key = email.toLowerCase();
+  if (NAME_OVERRIDES[key]) return NAME_OVERRIDES[key];
   const handle = email.split('@')[0];
   const first = handle.split(/[._-]/)[0] ?? handle;
   return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+function useCountUp(value: number, duration = 700) {
+  const [display, setDisplay] = useState(0);
+  const prevRef = useRef(0);
+  useEffect(() => {
+    const from = prevRef.current;
+    const to = Number.isFinite(value) ? value : 0;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(from + (to - from) * eased);
+      if (t < 1) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        prevRef.current = to;
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return display;
 }
 
 function todayLabel() {
@@ -80,7 +111,7 @@ function buildSeries(orders: OrderData[], range: RangeKey): SeriesPoint[] {
     .map(([t, v]) => ({ t, v }));
 }
 
-function Sparkline({ data, color = '#a78bfa' }: { data: SeriesPoint[]; color?: string }) {
+function Sparkline({ data, color = '#a78bfa', animationBegin = 0 }: { data: SeriesPoint[]; color?: string; animationBegin?: number }) {
   if (!data || data.length < 2) {
     return <div className="h-10 w-full rounded bg-muted/30" />;
   }
@@ -101,7 +132,10 @@ function Sparkline({ data, color = '#a78bfa' }: { data: SeriesPoint[]; color?: s
             stroke={color}
             strokeWidth={1.5}
             fill={`url(#${gid})`}
-            isAnimationActive={false}
+            isAnimationActive
+            animationDuration={900}
+            animationBegin={animationBegin}
+            animationEasing="ease-out"
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -111,32 +145,64 @@ function Sparkline({ data, color = '#a78bfa' }: { data: SeriesPoint[]; color?: s
 
 function MetricTile({
   label,
-  value,
+  rawValue,
+  format,
   description,
   series,
-  color,
+  color = '#a78bfa',
+  delay = 0,
 }: {
   label: string;
-  value: string;
+  rawValue: number;
+  format: (n: number) => string;
   description?: string;
   series: SeriesPoint[];
   color?: string;
+  delay?: number;
 }) {
+  const animated = useCountUp(rawValue, 700);
+  const hoverShadow = `0 14px 40px -16px ${color}55, 0 0 0 1px ${color}33`;
   return (
-    <div className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-border/80">
-      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-        {label}
-      </p>
-      <div className="mt-2 text-[26px] font-semibold leading-none tracking-tight text-foreground">
-        {value}
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -3, boxShadow: hoverShadow }}
+      className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 transition-colors duration-300 hover:border-[color:var(--tile-color)]/40"
+      style={{ ['--tile-color' as string]: color }}
+    >
+      {/* Soft corner glow that brightens on hover */}
+      <div
+        className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full opacity-40 blur-2xl transition-opacity duration-500 group-hover:opacity-90"
+        style={{ background: `radial-gradient(circle, ${color}33, transparent 70%)` }}
+        aria-hidden
+      />
+
+      <div className="relative z-10 flex items-center justify-between">
+        <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+          {label}
+        </p>
+        <span
+          className="h-1.5 w-1.5 rounded-full transition-transform duration-300 group-hover:scale-125"
+          style={{ backgroundColor: color, boxShadow: `0 0 10px ${color}88` }}
+          aria-hidden
+        />
       </div>
+      <motion.div
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: delay + 0.1 }}
+        className="relative z-10 mt-2 text-[26px] font-semibold leading-none tracking-tight text-foreground"
+      >
+        {format(animated)}
+      </motion.div>
       {description && (
-        <p className="mt-1.5 text-[11px] text-muted-foreground">{description}</p>
+        <p className="relative z-10 mt-1.5 text-[11px] text-muted-foreground">{description}</p>
       )}
-      <div className="mt-3">
-        <Sparkline data={series} color={color} />
+      <div className="relative z-10 mt-3">
+        <Sparkline data={series} color={color} animationBegin={delay * 1000 + 200} />
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -385,24 +451,30 @@ export function Dashboard() {
         <div className="grid gap-3 md:grid-cols-3">
           <MetricTile
             label="Total sales"
-            value={formatCurrency(salesData.totalSalesINR, currency)}
+            rawValue={salesData.totalSalesINR}
+            format={(n) => formatCurrency(n, currency)}
             description={selectedStore === 'all' ? 'Across all stores' : selectedStore}
             series={salesSeries}
             color="#a78bfa"
+            delay={0}
           />
           <MetricTile
             label="Orders"
-            value={salesData.totalOrders.toLocaleString('en-IN')}
+            rawValue={salesData.totalOrders}
+            format={(n) => Math.round(n).toLocaleString('en-IN')}
             description={selectedStore === 'all' ? 'Combined orders' : `From ${selectedStore}`}
             series={ordersSeries}
             color="#34d399"
+            delay={0.08}
           />
           <MetricTile
             label="Average order value"
-            value={formatCurrency(salesData.averageOrderValue, currency)}
+            rawValue={salesData.averageOrderValue}
+            format={(n) => formatCurrency(n, currency)}
             description="Per order"
             series={salesSeries}
             color="#60a5fa"
+            delay={0.16}
           />
         </div>
       </section>
@@ -426,7 +498,13 @@ export function Dashboard() {
           )}
         </div>
 
-        <div className="rounded-xl border border-border bg-card">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          whileHover={{ y: -2 }}
+          className="rounded-xl border border-border bg-card transition-colors hover:border-border/80"
+        >
           <div className="border-b border-border px-4 py-2.5">
             <h2 className="text-sm font-medium text-foreground">At a glance</h2>
           </div>
@@ -460,7 +538,7 @@ export function Dashboard() {
               View orders <ArrowUpRight className="h-3 w-3" />
             </a>
           </div>
-        </div>
+        </motion.div>
       </section>
 
       <DevPanel log={devLog} />
