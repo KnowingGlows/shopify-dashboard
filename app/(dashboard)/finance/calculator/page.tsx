@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calculator, Percent, Bookmark, Plus, X, Trash2, Pencil } from 'lucide-react';
+import { Calculator, Percent, Bookmark, Plus, X, Trash2, Pencil, Package } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 
@@ -19,6 +19,7 @@ interface CalcPreset {
   sellingPrice: string;
   costPrice: string;
   deliveryRate: string;
+  aov?: string;
 }
 
 export default function ProfitCalculatorPage() {
@@ -39,6 +40,10 @@ export default function ProfitCalculatorPage() {
   const [sellingPrice, setSellingPrice] = useState('100');
   const [costPrice, setCostPrice] = useState('35');
   const [deliveryRate, setDeliveryRate] = useState('95');
+
+  // Per-Unit Profit Calculator
+  const [aov, setAov] = useState('500');
+  const [customOrders, setCustomOrders] = useState('');
 
   useEffect(() => {
     fetch('/api/finance?action=presets')
@@ -72,12 +77,13 @@ export default function ProfitCalculatorPage() {
     setCurrency(p.currency);
     setMargin(p.margin); setAdSpend(p.adSpend); setRoas(p.roas); setNumDays(p.numDays);
     setSellingPrice(p.sellingPrice); setCostPrice(p.costPrice); setDeliveryRate(p.deliveryRate);
+    if (p.aov != null) setAov(p.aov);
     setShowPresets(false);
   }, []);
 
   const saveCurrentAsPreset = async () => {
     if (!presetName.trim()) return;
-    const preset = { name: presetName.trim(), currency, margin, adSpend, roas, numDays, sellingPrice, costPrice, deliveryRate };
+    const preset = { name: presetName.trim(), currency, margin, adSpend, roas, numDays, sellingPrice, costPrice, deliveryRate, aov };
     try {
       const res = await fetch('/api/finance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-preset', preset }) });
       const data = await res.json();
@@ -118,6 +124,17 @@ export default function ProfitCalculatorPage() {
   const deliveryVal = (parseFloat(deliveryRate) || 0) / 100;
   const baseMargin = sellingVal > 0 ? (sellingVal - costVal) / sellingVal : 0;
   const finalMargin = baseMargin * deliveryVal;
+
+  // Per-Unit Profit calculations
+  // Margin from Margin calc (delivery-rate adjusted), ROAS + Ad Spend from ROI calc.
+  const aovVal = parseFloat(aov) || 0;
+  const customOrdersVal = parseFloat(customOrders) || 0;
+  const estimatedUnits = aovVal > 0 ? revenue / aovVal : 0;
+  const marginPerUnit = aovVal * finalMargin;
+  const adCostPerUnit = roasVal > 0 ? aovVal / roasVal : 0;
+  const perUnitProfit = marginPerUnit - adCostPerUnit;
+  const totalOrdersForProfit = customOrdersVal > 0 ? customOrdersVal : estimatedUnits;
+  const totalProfitFromUnits = perUnitProfit * totalOrdersForProfit;
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -246,6 +263,59 @@ export default function ProfitCalculatorPage() {
         </motion.div>
       </div>
 
+      {/* Per-Unit Profit Calculator */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="rounded-xl border border-border bg-card overflow-hidden card-hover-glow"
+      >
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <Package className="h-4 w-4 text-emerald-400" />
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Per-Unit Profit</h2>
+            <p className="text-[10px] text-muted-foreground">Estimate units sold &amp; per-unit profit using your ROI &amp; Margin inputs above</p>
+          </div>
+        </div>
+        <div className="relative z-10 p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <CalcField label={`Average Order Value (AOV) — ${currency}`}>
+              <input type="text" value={aov} onChange={(e) => setAov(e.target.value)} className="form-input" />
+            </CalcField>
+            <CalcField label="Number of orders" hint="leave blank to use estimated">
+              <input type="text" value={customOrders} onChange={(e) => setCustomOrders(e.target.value)} placeholder="auto" className="form-input" />
+            </CalcField>
+          </div>
+
+          <div className="h-px bg-border" />
+
+          <div className="space-y-1.5">
+            <ResultRow
+              label="Sourcing"
+              value={`margin ${(finalMargin * 100).toFixed(1)}% · ROAS ${roasVal.toFixed(2)}x`}
+            />
+            <ResultRow
+              label="Estimated units sold (Revenue ÷ AOV)"
+              value={Math.round(estimatedUnits).toLocaleString('en-IN')}
+            />
+            <ResultRow label="Margin per unit (AOV × margin)" value={fmt(marginPerUnit)} />
+            <ResultRow label="Ad cost per unit (AOV ÷ ROAS)" value={fmt(adCostPerUnit)} />
+            <ResultRow label="Per-unit profit" value={fmt(perUnitProfit)} highlight="primary" />
+          </div>
+
+          {/* Big total profit stat */}
+          <div
+            className="stat-shimmer glow-pulse rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
+            style={{ '--glow-color': 'rgba(16, 185, 129, 0.12)' } as React.CSSProperties}
+          >
+            <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
+              Total profit for {Math.round(totalOrdersForProfit).toLocaleString('en-IN')} orders
+            </p>
+            <p className="relative z-10 text-4xl font-bold font-mono gradient-text-emerald">{fmt(totalProfitFromUnits)}</p>
+          </div>
+        </div>
+      </motion.div>
+
       {/* Presets Modal */}
       <AnimatePresence>
         {showPresets && (
@@ -309,7 +379,7 @@ export default function ProfitCalculatorPage() {
                             <button onClick={() => applyPreset(p)} className="flex-1 text-left min-w-0">
                               <p className="text-[12px] font-medium text-foreground truncate">{p.name}</p>
                               <p className="text-[10px] text-muted-foreground/60">
-                                Margin {(parseFloat(p.margin) * 100).toFixed(0)}% · SP {p.currency === 'INR' ? '₹' : '$'}{p.sellingPrice} · CP {p.currency === 'INR' ? '₹' : '$'}{p.costPrice} · DR {p.deliveryRate}%
+                                Margin {(parseFloat(p.margin) * 100).toFixed(0)}% · SP {p.currency === 'INR' ? '₹' : '$'}{p.sellingPrice} · CP {p.currency === 'INR' ? '₹' : '$'}{p.costPrice} · DR {p.deliveryRate}%{p.aov ? ` · AOV ${p.currency === 'INR' ? '₹' : '$'}${p.aov}` : ''}
                               </p>
                             </button>
                           )}
