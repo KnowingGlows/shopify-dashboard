@@ -357,6 +357,49 @@
         </div>
       </section>
     </div>
+
+    <!-- Per-Unit Profit Calculator -->
+    <section class="card" style="margin-top: 20px;">
+      <div class="card-header">
+        <span class="icon" style="color: var(--success);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.4l-9-5.19"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </span>
+        <div>
+          <h2>Per-Unit Profit</h2>
+          <p>Estimate units sold and per-unit profit using your ROI &amp; Margin inputs above</p>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="field-2col">
+          <div class="field">
+            <label>Average Order Value (AOV) — INR</label>
+            <input class="input" id="aov" type="text" value="500" inputmode="decimal" />
+          </div>
+          <div class="field">
+            <label>Number of orders <span class="hint">(blank = use estimated)</span></label>
+            <input class="input" id="custom-orders" type="text" placeholder="auto" inputmode="decimal" />
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="results">
+          <div class="row">
+            <span class="label">Sourcing</span>
+            <span class="value mono" id="u-sourcing" style="font-size: 11px; color: var(--text-muted); font-weight: 500;">margin: Margin calc · ROAS: ROI calc</span>
+          </div>
+          <div class="row"><span class="label">Estimated units sold (Revenue ÷ AOV)</span><span class="value mono" id="u-units">0</span></div>
+          <div class="row"><span class="label">Margin per unit (AOV × margin)</span><span class="value mono" id="u-margin-per-unit">₹0</span></div>
+          <div class="row"><span class="label">Ad cost per unit (AOV ÷ ROAS)</span><span class="value mono" id="u-ad-per-unit">₹0</span></div>
+          <div class="row primary"><span class="label">Per-unit profit</span><span class="value mono" id="u-per-unit-profit">₹0</span></div>
+        </div>
+
+        <div class="big-stat success">
+          <div class="eyebrow">Total profit for <span id="u-total-orders-label">0</span> orders</div>
+          <div class="number mono" id="u-total-profit">₹0</div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <script>
@@ -428,6 +471,53 @@
 
     [$sellingPrice, $costPrice, $deliveryRate].forEach((el) => el.addEventListener('input', recalcMargin));
 
+    // ─── Per-Unit Profit Calculator ──────────────────────────────────
+    const $aov = document.getElementById('aov');
+    const $customOrders = document.getElementById('custom-orders');
+    const $uSourcing = document.getElementById('u-sourcing');
+    const $uUnits = document.getElementById('u-units');
+    const $uMarginPerUnit = document.getElementById('u-margin-per-unit');
+    const $uAdPerUnit = document.getElementById('u-ad-per-unit');
+    const $uPerUnitProfit = document.getElementById('u-per-unit-profit');
+    const $uTotalProfit = document.getElementById('u-total-profit');
+    const $uTotalOrdersLabel = document.getElementById('u-total-orders-label');
+
+    function recalcUnits() {
+      const aov = toNum($aov.value);
+      const ad = toNum($adSpend.value);
+      const roasVal = toNum($roas.value);
+
+      // Margin sourced from the Margin calculator (delivery-rate adjusted)
+      const sp = toNum($sellingPrice.value);
+      const cp = toNum($costPrice.value);
+      const dr = toNum($deliveryRate.value) / 100;
+      const baseMargin = sp > 0 ? (sp - cp) / sp : 0;
+      const finalMargin = baseMargin * dr;
+
+      const revenue = ad * roasVal;
+      const estimatedUnits = aov > 0 ? revenue / aov : 0;
+
+      const marginPerUnit = aov * finalMargin;
+      const adCostPerUnit = roasVal > 0 ? aov / roasVal : 0;
+      const perUnitProfit = marginPerUnit - adCostPerUnit;
+
+      const customOrders = toNum($customOrders.value);
+      const totalOrders = customOrders > 0 ? customOrders : estimatedUnits;
+      const totalProfit = perUnitProfit * totalOrders;
+
+      $uSourcing.textContent = 'margin ' + (finalMargin * 100).toFixed(1) + '% · ROAS ' + roasVal.toFixed(2) + 'x';
+      $uUnits.textContent = Math.round(estimatedUnits).toLocaleString('en-IN');
+      $uMarginPerUnit.textContent = formatINR(marginPerUnit);
+      $uAdPerUnit.textContent = formatINR(adCostPerUnit);
+      $uPerUnitProfit.textContent = formatINR(perUnitProfit);
+      $uTotalProfit.textContent = formatINR(totalProfit);
+      $uTotalOrdersLabel.textContent = Math.round(totalOrders).toLocaleString('en-IN');
+    }
+
+    // Recalc when AOV/orders OR any upstream ROI/Margin input changes
+    [$aov, $customOrders, $margin, $adSpend, $roas, $numDays, $sellingPrice, $costPrice, $deliveryRate]
+      .forEach((el) => el.addEventListener('input', recalcUnits));
+
     // ─── Presets (localStorage) ──────────────────────────────────────
     const STORAGE_KEY = 'orbit-calc-presets-standalone';
     const $togglePresets = document.getElementById('toggle-presets');
@@ -468,10 +558,11 @@
         const item = document.createElement('div');
         item.className = 'preset-item';
         const marginPct = (toNum(p.margin) * 100).toFixed(0);
+        const aovPart = p.aov ? ` · AOV ₹${escapeHtml(p.aov)}` : '';
         item.innerHTML = `
           <button class="preset-info" data-action="apply" data-id="${p.id}">
             <div class="name">${escapeHtml(p.name)}</div>
-            <div class="meta">Margin ${marginPct}% · SP ₹${escapeHtml(p.sellingPrice)} · CP ₹${escapeHtml(p.costPrice)} · DR ${escapeHtml(p.deliveryRate)}%</div>
+            <div class="meta">Margin ${marginPct}% · SP ₹${escapeHtml(p.sellingPrice)} · CP ₹${escapeHtml(p.costPrice)} · DR ${escapeHtml(p.deliveryRate)}%${aovPart}</div>
           </button>
           <button class="icon-btn" data-action="rename" data-id="${p.id}" aria-label="Rename">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
@@ -505,6 +596,7 @@
         sellingPrice: $sellingPrice.value,
         costPrice: $costPrice.value,
         deliveryRate: $deliveryRate.value,
+        aov: $aov.value,
       });
       savePresets(list);
       $presetName.value = '';
@@ -532,8 +624,10 @@
         $sellingPrice.value = preset.sellingPrice;
         $costPrice.value = preset.costPrice;
         $deliveryRate.value = preset.deliveryRate;
+        if (preset.aov != null) $aov.value = preset.aov;
         recalcROI();
         recalcMargin();
+        recalcUnits();
         $presets.classList.remove('open');
       } else if (action === 'delete') {
         savePresets(list.filter((p) => p.id !== id));
@@ -551,6 +645,7 @@
     // ─── Init ────────────────────────────────────────────────────────
     recalcROI();
     recalcMargin();
+    recalcUnits();
     renderPresets();
   </script>
 </body>
