@@ -173,3 +173,14 @@ export interface InventoryDispatch {
   date: string; // YYYY-MM-DD
   createdAt: string;
 }
+
+// Daily order dispatch (for Umang's monthly base calculation)
+export interface DailyDispatchEntry {
+  id: string;
+  date: string;       // YYYY-MM-DD (IST)
+  orders: number;
+  notes: string;
+  recordedBy: string; // user email
+  createdAt: string;
+  updatedAt: string;
+}

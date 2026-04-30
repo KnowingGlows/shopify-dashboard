@@ -74,4 +74,5 @@ export const COLLECTIONS = {
   BANK_TRANSACTIONS: 'bank_transactions',
   LOGISTICS_CACHE: 'logistics_cache',
   CALC_PRESETS: 'calc_presets',
+  DAILY_DISPATCHES: 'daily_dispatches',
 } as const;

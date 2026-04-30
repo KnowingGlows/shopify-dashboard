@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart3, Box, CheckSquare, ClipboardList, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Truck, Users, X,
-  Calculator,
+  Calculator, PackageCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -37,6 +37,7 @@ const navItems: NavItem[] = [
   { href: '/ads-tracker', label: 'OPS Ads', icon: Megaphone, section: 'marketing' },
   { href: '/tasks', label: 'Tasks', icon: CheckSquare, section: 'ops' },
   { href: '/inventory', label: 'Inventory', icon: Box, section: 'ops' },
+  { href: '/dispatch', label: 'Dispatch', icon: PackageCheck, section: 'ops' },
   { href: '/logs', label: 'Daily Logs', icon: ClipboardList, section: 'ops' },
   { href: '/settings', label: 'Settings', icon: Settings, section: 'system' },
   { href: '/users', label: 'Users', icon: Users, adminOnly: true, section: 'system' },
