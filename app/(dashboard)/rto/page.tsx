@@ -4,12 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   PackageX, RefreshCw, Loader2, AlertTriangle, X,
-  ChevronDown, ChevronRight, IndianRupee, Boxes, Store,
-  Search,
+  ChevronDown, ChevronRight, Store, Search,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
-import { formatINR } from '@/lib/currency-converter';
 import { cn } from '@/lib/utils';
 import type { RtoSyncResponse, RtoStoreBucket, RtoOrderItem } from '@/types/rto';
 
@@ -80,34 +78,33 @@ export default function RtoPage() {
   const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set());
   const [selectedStore, setSelectedStore] = useState<string>('all');
 
-  const sync = async (isInitial = false) => {
+  const sync = async (opts?: { initial?: boolean; force?: boolean }) => {
+    const { initial = false, force = false } = opts ?? {};
     try {
-      if (isInitial) setLoading(true); else setRefreshing(true);
+      if (initial) setLoading(true); else setRefreshing(true);
       setError(null);
-      const res = await fetch('/api/rto/sync');
+      const res = await fetch(`/api/rto/sync${force ? '?force=1' : ''}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
       setData(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load RTO data.');
     } finally {
-      if (isInitial) setLoading(false); else setRefreshing(false);
+      if (initial) setLoading(false); else setRefreshing(false);
     }
   };
 
-  // Initial fetch + interval auto-sync
+  // Initial fetch + interval auto-sync (interval forces a fresh sync)
   useEffect(() => {
-    sync(true);
-    const id = setInterval(() => { sync(false); }, AUTO_SYNC_INTERVAL_MS);
+    sync({ initial: true });
+    const id = setInterval(() => { sync({ force: true }); }, AUTO_SYNC_INTERVAL_MS);
     return () => clearInterval(id);
   }, []);
 
   const totalUnits = data?.totalUnits ?? 0;
   const totalOrders = data?.totalOrders ?? 0;
-  const totalValue = data?.totalValueAtRisk ?? 0;
   const animatedUnits = useCountUp(totalUnits);
   const animatedOrders = useCountUp(totalOrders);
-  const animatedValue = useCountUp(totalValue);
 
   const filteredStores = useMemo<RtoStoreBucket[]>(() => {
     if (!data) return [];
@@ -166,7 +163,7 @@ export default function RtoPage() {
             </span>
           )}
           <button
-            onClick={() => sync(false)}
+            onClick={() => sync({ force: true })}
             disabled={refreshing || loading}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:bg-accent/30 hover:text-foreground disabled:opacity-50"
           >
@@ -215,11 +212,11 @@ export default function RtoPage() {
       ) : (
         <>
           {/* KPI tiles */}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <KpiTile
               label="Units in transit"
               value={Math.round(animatedUnits).toLocaleString('en-IN')}
-              hint={`${totalOrders} order${totalOrders === 1 ? '' : 's'}`}
+              hint={`across ${totalOrders} order${totalOrders === 1 ? '' : 's'}`}
               accent="amber"
               delay={0}
             />
@@ -229,13 +226,6 @@ export default function RtoPage() {
               hint={`across ${data.byStore.length} store${data.byStore.length === 1 ? '' : 's'}`}
               accent="violet"
               delay={0.08}
-            />
-            <KpiTile
-              label="Value at risk"
-              value={formatINR(Math.round(animatedValue))}
-              hint="COD amount + line item value"
-              accent="emerald"
-              delay={0.16}
             />
           </div>
 
@@ -307,37 +297,30 @@ export default function RtoPage() {
 
                     <div className="relative z-10">
                       {/* Store header */}
-                      <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <span className={cn('flex h-8 w-8 items-center justify-center rounded-lg', accent.bg, accent.text)}>
-                            <Store className="h-3.5 w-3.5" />
+                      <div className="flex items-center justify-between gap-4 px-5 py-3.5">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', accent.bg, accent.text)}>
+                            <Store className="h-4 w-4" />
                           </span>
-                          <div>
-                            <h2 className="text-[14px] font-semibold text-foreground">{store.storeName}</h2>
+                          <div className="min-w-0">
+                            <h2 className="truncate text-[14px] font-semibold text-foreground">{store.storeName}</h2>
                             <p className="text-[11px] text-muted-foreground">
-                              {store.products.length} product{store.products.length === 1 ? '' : 's'} ·
-                              {' '}{store.orders} order{store.orders === 1 ? '' : 's'}
+                              {store.products.length} product{store.products.length === 1 ? '' : 's'} in transit
+                              {' · '}{store.orders} order{store.orders === 1 ? '' : 's'}
                             </p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className={cn('text-2xl font-semibold tabular-nums tracking-tight', accent.text)}>
+                        <div className="shrink-0 text-right">
+                          <p className={cn('text-3xl font-semibold leading-none tracking-tight tabular-nums', accent.text)}>
                             {store.units.toLocaleString('en-IN')}
                           </p>
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">units</p>
+                          <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">units</p>
                         </div>
                       </div>
 
-                      {/* Stats strip */}
-                      <div className="grid grid-cols-3 gap-px bg-border/60">
-                        <Stat label="Orders" value={store.orders.toLocaleString('en-IN')} icon={<Boxes className="h-3 w-3" />} />
-                        <Stat label="Units" value={store.units.toLocaleString('en-IN')} icon={<PackageX className="h-3 w-3" />} />
-                        <Stat label="Value at risk" value={formatINR(store.valueAtRisk)} icon={<IndianRupee className="h-3 w-3" />} />
-                      </div>
-
                       {/* Product breakdown */}
-                      <div className="px-5 py-4">
-                        <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      <div className="border-t border-border/60 px-5 py-4">
+                        <p className="mb-2.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                           Products in transit
                         </p>
                         <div className="space-y-1.5">
@@ -497,18 +480,6 @@ function FilterChip({
   );
 }
 
-function Stat({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
-  return (
-    <div className="bg-card px-4 py-2.5">
-      <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-        {icon}
-        {label}
-      </p>
-      <p className="mt-0.5 text-[14px] font-semibold tabular-nums text-foreground">{value}</p>
-    </div>
-  );
-}
-
 function OrderList({ items, accent }: { items: RtoOrderItem[]; accent: { text: string; dot: string } }) {
   if (items.length === 0) {
     return <div className="px-5 py-3 text-[11px] text-muted-foreground">No orders match.</div>;
@@ -522,7 +493,6 @@ function OrderList({ items, accent }: { items: RtoOrderItem[]; accent: { text: s
             <th style={{ width: 130 }}>AWB</th>
             <th>Products · Units</th>
             <th style={{ width: 90 }}>Type</th>
-            <th style={{ width: 110, textAlign: 'right' }}>Value</th>
             <th style={{ width: 110 }}>RTO since</th>
             <th style={{ width: 110 }}>Expected</th>
           </tr>
@@ -559,13 +529,6 @@ function OrderList({ items, accent }: { items: RtoOrderItem[]; accent: { text: s
                   )}>
                     {it.orderType || '—'}
                   </span>
-                </div>
-              </td>
-              <td>
-                <div className="px-3 py-2 text-right tabular-nums text-[12px] text-foreground">
-                  {it.codAmount > 0
-                    ? formatINR(it.codAmount)
-                    : formatINR(it.lineItems.reduce((s, li) => s + li.valueAtRisk, 0))}
                 </div>
               </td>
               <td>

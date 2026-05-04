@@ -5,8 +5,6 @@ export interface RtoLineItem {
   productName: string;
   sku: string;
   quantity: number;
-  pricePerUnit: number;
-  valueAtRisk: number; // pricePerUnit * quantity
 }
 
 export interface RtoOrderItem {
@@ -15,7 +13,6 @@ export interface RtoOrderItem {
   awb: string;
   rtoStartedDate: string | null;
   expectedReturnDate: string | null;
-  codAmount: number;
   orderType: string;        // "COD" | "Pre-paid"
   customerName: string;
   origin: string;
@@ -28,7 +25,6 @@ export interface RtoStoreBucket {
   storeName: string;
   orders: number;
   units: number;
-  valueAtRisk: number;
   products: Array<{
     productName: string;
     sku: string;
@@ -43,7 +39,6 @@ export interface RtoSyncResponse {
   delhiveryAvailable: boolean;
   totalOrders: number;
   totalUnits: number;
-  totalValueAtRisk: number;
   byStore: RtoStoreBucket[];
   warnings: string[];
 }
