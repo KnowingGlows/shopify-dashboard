@@ -39,6 +39,8 @@ export interface ShopifyOrder {
     title: string;
     quantity: number;
     price: string;
+    sku?: string;
+    variant_title?: string | null;
   }>;
   customer?: {
     first_name: string;
@@ -184,3 +186,4 @@ export interface DailyDispatchEntry {
   createdAt: string;
   updatedAt: string;
 }
+
