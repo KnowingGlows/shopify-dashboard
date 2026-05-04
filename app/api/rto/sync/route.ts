@@ -4,61 +4,14 @@ import { verifySessionToken, COOKIE_NAME } from '@/lib/auth';
 import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchAllStoresOrders } from '@/lib/shopify-api';
 import { getDelhiveryToken, trackShipments, type DelhiveryShipment } from '@/lib/delhivery';
+import type { RtoLineItem, RtoOrderItem, RtoStoreBucket, RtoSyncResponse } from '@/types/rto';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Look back far enough to catch every order whose RTO is still resolving.
-// RTO trips rarely take more than ~30 days end-to-end; 90 is a comfortable safety net.
-const LOOKBACK_DAYS = 90;
-
-// ── Types returned to the page ────────────────────────────────────────────────
-
-export interface RtoLineItem {
-  productName: string;
-  sku: string;
-  quantity: number;
-  pricePerUnit: number;
-  valueAtRisk: number; // pricePerUnit * quantity
-}
-
-export interface RtoOrderItem {
-  orderId: string;          // Shopify name (e.g. "#KR1234")
-  storeName: string;
-  awb: string;
-  rtoStartedDate: string | null;
-  expectedReturnDate: string | null;
-  codAmount: number;
-  orderType: string;        // "COD" | "Pre-paid"
-  customerName: string;
-  origin: string;
-  destination: string;
-  lineItems: RtoLineItem[];
-  totalUnits: number;       // sum of line item quantities
-}
-
-export interface RtoStoreBucket {
-  storeName: string;
-  orders: number;
-  units: number;
-  valueAtRisk: number;
-  // Aggregate by product within the store
-  products: Array<{
-    productName: string;
-    sku: string;
-    units: number;
-    orderCount: number;
-  }>;
-  items: RtoOrderItem[];
-}
-
-export interface RtoSyncResponse {
-  fetchedAt: string;
-  delhiveryAvailable: boolean;
-  totalOrders: number;
-  totalUnits: number;
-  totalValueAtRisk: number;
-  byStore: RtoStoreBucket[];
-  warnings: string[];
-}
+// Shopify rejects orders.json?status=any with `created_at_min` older than 60 days
+// (unless the app has the read_all_orders scope, which we don't). 59 leaves a margin
+// for clock skew. RTO trips practically always resolve well under 30 days, so this
+// captures every in-flight RTO with room to spare.
+const LOOKBACK_DAYS = 59;
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
@@ -93,7 +46,20 @@ export async function GET() {
       createdAtMin,
       createdAtMax,
     });
-    fetchErrors.forEach((e) => warnings.push(`${e.storeName}: ${e.message}`));
+    fetchErrors.forEach((e) => {
+      const msg = /forbidden/i.test(e.message)
+        ? `${e.storeName}: 403 Forbidden — Shopify access token may be missing read_orders scope or the lookback exceeds 60 days.`
+        : `${e.storeName}: ${e.message}`;
+      warnings.push(msg);
+    });
+
+    // Bail clearly if every store failed — caller sees a real error, not an empty state.
+    if (fetchErrors.length === stores.length) {
+      return NextResponse.json(
+        { error: `Failed to fetch orders from all ${stores.length} store${stores.length === 1 ? '' : 's'}.`, warnings },
+        { status: 502 }
+      );
+    }
 
     // 3. Collect AWBs (only from fulfilled orders that aren't cancelled)
     const awbToOrderRef = new Map<string, { storeName: string; orderId: string }>();

@@ -11,7 +11,7 @@ import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { formatINR } from '@/lib/currency-converter';
 import { cn } from '@/lib/utils';
-import type { RtoSyncResponse, RtoStoreBucket, RtoOrderItem } from '@/app/api/rto/sync/route';
+import type { RtoSyncResponse, RtoStoreBucket, RtoOrderItem } from '@/types/rto';
 
 // Sync interval for the page-mounted auto refresh.
 // Fires once on mount, and again every 5 minutes while the tab is open.

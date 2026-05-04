@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npx next *)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(grep -nA 25 \"export.*getShopifyStores\" /Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/lib/shopify-config.ts)"
     ]
   }
 }
