@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Wallet, Plus, Trash2, X, Loader2, AlertTriangle, Search, Globe,
+  Wallet, Plus, Trash2, X, Loader2, AlertTriangle, Search, Globe, ArrowRight,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -13,6 +14,7 @@ import { getCountries } from '@/lib/markets';
 import { isWinning } from '@/lib/funnels';
 import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
+import type { ProductTrackerEntry } from '@/types/shopify';
 import type { FxRates } from '@/lib/fx-rates';
 
 const STATUS_OPTIONS: Array<{ value: FunnelStatus; label: string; tone: 'gray' | 'amber' | 'emerald' | 'sky' | 'rose' }> = [
@@ -88,6 +90,7 @@ export default function FunnelFinancePage() {
   const { user } = useAuth();
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [logsByFunnel, setLogsByFunnel] = useState<Record<string, FunnelDailyLog[]>>({});
+  const [products, setProducts] = useState<ProductTrackerEntry[]>([]);
   const [fx, setFx] = useState<FxRates | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,13 +109,15 @@ export default function FunnelFinancePage() {
     try {
       setLoading(true);
       setError(null);
-      const [funnelsRes, fxRes] = await Promise.all([
+      const [funnelsRes, fxRes, productsRes] = await Promise.all([
         fetch('/api/funnels').then((r) => r.json()),
         fetch('/api/fx').then((r) => r.json()),
+        fetch('/api/product-tracker').then((r) => r.json()),
       ]);
       const list: Funnel[] = funnelsRes.funnels ?? [];
       setFunnels(list);
       setFx(fxRes ?? null);
+      setProducts(productsRes.entries ?? []);
 
       const logsRes = await Promise.all(
         list.map((f) => fetch(`/api/funnels/logs?funnelId=${encodeURIComponent(f.id)}`).then((r) => r.json()))
@@ -137,6 +142,12 @@ export default function FunnelFinancePage() {
 
   const rates: UsdRates = fx?.rates ?? { USD: 1, EUR: 0.92, INR: 83.5 };
   const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
+
+  const productIdByName = useMemo(() => {
+    const m = new Map<string, string>();
+    products.forEach((p) => { if (p.productName) m.set(p.productName, p.id); });
+    return m;
+  }, [products]);
 
   // Derived
   const moneyByFunnel = useMemo(() => {
@@ -334,6 +345,7 @@ export default function FunnelFinancePage() {
       <FinanceDrawer
         funnel={openFunnel}
         logs={openFunnel ? logsByFunnel[openFunnel.id] ?? [] : []}
+        productId={openFunnel ? productIdByName.get(openFunnel.productName) : undefined}
         fmt={fmt}
         onClose={() => setOpenFunnelId(null)}
         onLogsChanged={() => openFunnel && refreshLogs(openFunnel.id)}
@@ -458,10 +470,11 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone?:
 // ── Drawer ──────────────────────────────────────────────────────────────────
 
 function FinanceDrawer({
-  funnel, logs, fmt, onClose, onLogsChanged,
+  funnel, logs, productId, fmt, onClose, onLogsChanged,
 }: {
   funnel: Funnel | null;
   logs: FunnelDailyLog[];
+  productId: string | undefined;
   fmt: (usd: number) => string;
   onClose: () => void;
   onLogsChanged: () => void;
@@ -485,6 +498,7 @@ function FinanceDrawer({
             <FinanceDrawerContent
               funnel={funnel}
               logs={logs}
+              productId={productId}
               fmt={fmt}
               onClose={onClose}
               onLogsChanged={onLogsChanged}
@@ -497,10 +511,11 @@ function FinanceDrawer({
 }
 
 function FinanceDrawerContent({
-  funnel: f, logs, fmt, onClose, onLogsChanged,
+  funnel: f, logs, productId, fmt, onClose, onLogsChanged,
 }: {
   funnel: Funnel;
   logs: FunnelDailyLog[];
+  productId: string | undefined;
   fmt: (usd: number) => string;
   onClose: () => void;
   onLogsChanged: () => void;
@@ -574,7 +589,17 @@ function FinanceDrawerContent({
         <div className={cn('absolute inset-x-0 top-0 h-[3px]', tone.bar)} aria-hidden />
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
-            <p className="truncate text-base font-semibold text-foreground">{f.productName}</p>
+            {productId ? (
+              <Link
+                href={`/product-tracker/${productId}`}
+                className="group inline-flex max-w-full items-center gap-1.5 truncate text-base font-semibold text-foreground hover:text-primary"
+              >
+                <span className="truncate">{f.productName}</span>
+                <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
+              </Link>
+            ) : (
+              <p className="truncate text-base font-semibold text-foreground">{f.productName}</p>
+            )}
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {f.country} · {f.language}
               {f.funnelishUrl && (

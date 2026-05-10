@@ -83,6 +83,10 @@ export interface ProductTrackerEntry {
   productFileLink: string;
   productStage: string;
   totalSpent: number;
+  // Per-product cost (USD) — drives BEROAS reference on product detail page.
+  // Leave at 0 if you haven't sourced the product yet.
+  cogs: number;        // unit cost from supplier
+  shipping: number;    // shipping per unit
   remarks: string;
   createdAt: string;
   updatedAt: string;

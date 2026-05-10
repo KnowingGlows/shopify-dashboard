@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Globe, Plus, Trash2, Pencil, Check, X, Loader2,
@@ -11,6 +12,7 @@ import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import type { Creative, CreativeStatus, CreativeResult, Funnel } from '@/types/funnel';
+import type { ProductTrackerEntry } from '@/types/shopify';
 
 const STATUS_OPTIONS: Array<{ value: CreativeStatus; label: string; tone: 'amber' | 'emerald' | 'rose' }> = [
   { value: 'testing', label: 'Testing', tone: 'amber' },
@@ -38,6 +40,7 @@ export default function AdsInternationalPage() {
   const { user } = useAuth();
   const [creatives, setCreatives] = useState<Creative[]>([]);
   const [funnels, setFunnels] = useState<Funnel[]>([]);
+  const [products, setProducts] = useState<ProductTrackerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,12 +68,14 @@ export default function AdsInternationalPage() {
     try {
       setLoading(true);
       setError(null);
-      const [creativesRes, funnelsRes] = await Promise.all([
+      const [creativesRes, funnelsRes, productsRes] = await Promise.all([
         fetch('/api/creatives-intl').then((r) => r.json()),
         fetch('/api/funnels').then((r) => r.json()),
+        fetch('/api/product-tracker').then((r) => r.json()),
       ]);
       setCreatives(creativesRes.creatives ?? []);
       setFunnels(funnelsRes.funnels ?? []);
+      setProducts(productsRes.entries ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load creatives.');
     } finally {
@@ -83,6 +88,12 @@ export default function AdsInternationalPage() {
     funnels.forEach((f) => map.set(f.id, f));
     return map;
   }, [funnels]);
+
+  const productIdByName = useMemo(() => {
+    const m = new Map<string, string>();
+    products.forEach((p) => { if (p.productName) m.set(p.productName, p.id); });
+    return m;
+  }, [products]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -352,7 +363,16 @@ export default function AdsInternationalPage() {
                         <div className="px-3 py-2 text-[12px]">
                           {f ? (
                             <>
-                              <p className="text-foreground truncate max-w-[180px]">{f.productName}</p>
+                              {(() => {
+                                const pid = productIdByName.get(f.productName);
+                                return pid ? (
+                                  <Link href={`/product-tracker/${pid}`} className="text-foreground truncate max-w-[180px] hover:text-primary inline-block">
+                                    {f.productName}
+                                  </Link>
+                                ) : (
+                                  <p className="text-foreground truncate max-w-[180px]">{f.productName}</p>
+                                );
+                              })()}
                               <p className="text-[10px] text-muted-foreground">{f.country} · {f.language}</p>
                             </>
                           ) : (

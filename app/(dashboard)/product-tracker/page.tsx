@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trash2, ExternalLink, Loader2, Check, AlertCircle,
   Plus, X, Package, ChevronDown, ChevronLeft, ChevronRight,
-  Target, Trophy, TrendingUp, Calendar,
+  Target, Trophy, TrendingUp, Calendar, ArrowRight,
 } from 'lucide-react';
 import { ProductTrackerEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
@@ -426,6 +427,15 @@ export default function ProductTrackerPage() {
                         </a>
                       )}
 
+                      {/* Open detail dossier */}
+                      <Link
+                        href={`/product-tracker/${entry.id}`}
+                        className="rounded-md p-1 text-muted-foreground/40 hover:text-primary transition"
+                        title="Open product dossier"
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+
                       {/* Expand/Collapse */}
                       <button
                         onClick={() => setEditingId(isEditing ? null : entry.id)}
@@ -446,7 +456,7 @@ export default function ProductTrackerPage() {
                         transition={{ duration: 0.2 }}
                         className="overflow-hidden"
                       >
-                        <div className="border-t border-border px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="border-t border-border px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                           <FormField label="File Link">
                             <LinkChip
                               value={entry.productFileLink}
@@ -466,7 +476,7 @@ export default function ProductTrackerPage() {
                               ))}
                             </select>
                           </FormField>
-                          <FormField label="Total Spent">
+                          <FormField label="Total Spent (INR)">
                             <input
                               type="number"
                               value={entry.totalSpent || ''}
@@ -474,6 +484,28 @@ export default function ProductTrackerPage() {
                               onBlur={(e) => handleBlur(entry.id, 'totalSpent', e.target.value === '' ? 0 : Number(e.target.value))}
                               placeholder="0"
                               className="form-input"
+                            />
+                          </FormField>
+                          <FormField label="COGS / unit (USD)" hint="supplier cost per unit">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={entry.cogs || ''}
+                              onChange={(e) => updateLocalField(entry.id, 'cogs', e.target.value === '' ? 0 : Number(e.target.value))}
+                              onBlur={(e) => handleBlur(entry.id, 'cogs', e.target.value === '' ? 0 : Number(e.target.value))}
+                              placeholder="0.00"
+                              className="form-input tabular-nums"
+                            />
+                          </FormField>
+                          <FormField label="Shipping / unit (USD)" hint="per-unit shipping cost">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={entry.shipping || ''}
+                              onChange={(e) => updateLocalField(entry.id, 'shipping', e.target.value === '' ? 0 : Number(e.target.value))}
+                              onBlur={(e) => handleBlur(entry.id, 'shipping', e.target.value === '' ? 0 : Number(e.target.value))}
+                              placeholder="0.00"
+                              className="form-input tabular-nums"
                             />
                           </FormField>
                           <FormField label="Remarks">
@@ -487,6 +519,12 @@ export default function ProductTrackerPage() {
                             />
                           </FormField>
                         </div>
+                        {(entry.cogs > 0 || entry.shipping > 0) && (
+                          <div className="border-t border-border px-4 py-2 flex items-center gap-3 text-[10px] text-muted-foreground">
+                            <span>Total cost / unit</span>
+                            <span className="font-semibold tabular-nums text-foreground">${(entry.cogs + entry.shipping).toFixed(2)}</span>
+                          </div>
+                        )}
                         <div className="border-t border-border px-4 py-2 flex justify-end">
                           <button
                             onClick={() => deleteEntry(entry.id)}
@@ -536,11 +574,12 @@ export default function ProductTrackerPage() {
   );
 }
 
-function FormField({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
+function FormField({ label, children, required, hint }: { label: string; children: React.ReactNode; required?: boolean; hint?: string }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         {label}{required && <span className="text-primary ml-0.5">*</span>}
+        {hint && <span className="ml-1.5 normal-case tracking-normal text-[10px] text-muted-foreground/50">{hint}</span>}
       </label>
       {children}
     </div>

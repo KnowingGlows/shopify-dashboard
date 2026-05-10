@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Funnel as FunnelIcon, Plus, Trash2, Check, X, Loader2,
-  AlertTriangle, Globe, Search,
+  AlertTriangle, Globe, Search, ArrowRight, BarChart3,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -13,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { MARKETS, getLanguagesForCountry, getCountries } from '@/lib/markets';
 import { isWinning, aggregateLogs, hitRate } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
+import type { ProductTrackerEntry } from '@/types/shopify';
 
 const STATUS_OPTIONS: Array<{ value: FunnelStatus; label: string; tone: 'gray' | 'amber' | 'emerald' | 'sky' | 'rose' }> = [
   { value: 'live',    label: 'Live',    tone: 'emerald' },
@@ -63,10 +65,12 @@ export default function FunnelsPage() {
   const { user } = useAuth();
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [logsByFunnel, setLogsByFunnel] = useState<Record<string, FunnelDailyLog[]>>({});
+  const [products, setProducts] = useState<ProductTrackerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters
+  // View mode + filters
+  const [viewMode, setViewMode] = useState<'list' | 'performance'>('list');
   const [statusFilter, setStatusFilter] = useState<FunnelStatus | 'all'>('all');
   const [filterProduct, setFilterProduct] = useState<string>('all');
   const [filterCountry, setFilterCountry] = useState<string>('all');
@@ -82,9 +86,13 @@ export default function FunnelsPage() {
     try {
       setLoading(true);
       setError(null);
-      const funnelsRes = await fetch('/api/funnels').then((r) => r.json());
+      const [funnelsRes, productsRes] = await Promise.all([
+        fetch('/api/funnels').then((r) => r.json()),
+        fetch('/api/product-tracker').then((r) => r.json()),
+      ]);
       const list: Funnel[] = funnelsRes.funnels ?? [];
       setFunnels(list);
+      setProducts(productsRes.entries ?? []);
 
       const logsRes = await Promise.all(
         list.map((f) => fetch(`/api/funnels/logs?funnelId=${encodeURIComponent(f.id)}`).then((r) => r.json()))
@@ -98,6 +106,13 @@ export default function FunnelsPage() {
       setLoading(false);
     }
   };
+
+  // Resolve productName → productId for the "View product" link.
+  const productIdByName = useMemo(() => {
+    const m = new Map<string, string>();
+    products.forEach((p) => { if (p.productName) m.set(p.productName, p.id); });
+    return m;
+  }, [products]);
 
   const refreshLogs = async (funnelId: string) => {
     try {
@@ -240,12 +255,36 @@ export default function FunnelsPage() {
           </div>
         </div>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/25"
-        >
-          <Plus className="h-3.5 w-3.5" /> Add Funnel
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-[11px] font-medium transition-colors',
+                viewMode === 'list' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <FunnelIcon className="h-3 w-3" /> Funnels
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('performance')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-[11px] font-medium transition-colors',
+                viewMode === 'performance' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <BarChart3 className="h-3 w-3" /> Performance
+            </button>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/25"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add Funnel
+          </button>
+        </div>
       </div>
 
       {/* Compact stat strip — performance only */}
@@ -261,6 +300,10 @@ export default function FunnelsPage() {
         <StatCell label="Avg ROAS" value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="amber" />
       </motion.div>
 
+{viewMode === 'performance' ? (
+        <PerformanceView funnels={funnels} logsByFunnel={logsByFunnel} />
+      ) : (
+        <>
       {/* Status pills + filters */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap items-center gap-1">
@@ -361,6 +404,9 @@ export default function FunnelsPage() {
         </div>
       )}
 
+        </>
+      )}
+
       <p className="text-[10px] text-muted-foreground/60">
         Logged in as {user?.email ?? '—'} · money tracking lives in Finance (separate page)
       </p>
@@ -377,6 +423,7 @@ export default function FunnelsPage() {
       <FunnelDrawer
         funnel={openFunnel}
         logs={openFunnel ? logsByFunnel[openFunnel.id] ?? [] : []}
+        productId={openFunnel ? productIdByName.get(openFunnel.productName) : undefined}
         onClose={() => setOpenFunnelId(null)}
         onUpdate={(patch) => openFunnel && updateFunnel(openFunnel.id, patch)}
         onDelete={() => openFunnel && deleteFunnel(openFunnel.id)}
@@ -511,10 +558,11 @@ function FunnelCard({
 // ── Funnel detail drawer ────────────────────────────────────────────────────
 
 function FunnelDrawer({
-  funnel, logs, onClose, onUpdate, onDelete, onLogsChanged,
+  funnel, logs, productId, onClose, onUpdate, onDelete, onLogsChanged,
 }: {
   funnel: Funnel | null;
   logs: FunnelDailyLog[];
+  productId: string | undefined;
   onClose: () => void;
   onUpdate: (patch: Partial<Funnel>) => void;
   onDelete: () => void;
@@ -539,6 +587,7 @@ function FunnelDrawer({
             <FunnelDrawerContent
               funnel={funnel}
               logs={logs}
+              productId={productId}
               onClose={onClose}
               onUpdate={onUpdate}
               onDelete={onDelete}
@@ -552,10 +601,11 @@ function FunnelDrawer({
 }
 
 function FunnelDrawerContent({
-  funnel: f, logs, onClose, onUpdate, onDelete, onLogsChanged,
+  funnel: f, logs, productId, onClose, onUpdate, onDelete, onLogsChanged,
 }: {
   funnel: Funnel;
   logs: FunnelDailyLog[];
+  productId: string | undefined;
   onClose: () => void;
   onUpdate: (patch: Partial<Funnel>) => void;
   onDelete: () => void;
@@ -627,7 +677,17 @@ function FunnelDrawerContent({
         <div className={cn('absolute inset-x-0 top-0 h-[3px]', tone.bar)} aria-hidden />
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
-            <p className="truncate text-base font-semibold text-foreground">{f.productName}</p>
+            {productId ? (
+              <Link
+                href={`/product-tracker/${productId}`}
+                className="group inline-flex max-w-full items-center gap-1.5 truncate text-base font-semibold text-foreground hover:text-primary"
+              >
+                <span className="truncate">{f.productName}</span>
+                <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
+              </Link>
+            ) : (
+              <p className="truncate text-base font-semibold text-foreground">{f.productName}</p>
+            )}
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {f.country} · {f.language}
               {f.launchDate && <> · launched {f.launchDate}</>}
@@ -804,6 +864,201 @@ function PerfCell({ label, value, hint, accent }: {
       <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
       <p className={cn('mt-0.5 text-[16px] font-semibold tabular-nums', accent ? map[accent] : 'text-foreground')}>{value}</p>
       {hint && <p className="mt-0.5 text-[9px] text-muted-foreground/60">{hint}</p>}
+    </div>
+  );
+}
+
+// ── Performance view ────────────────────────────────────────────────────────
+
+function PerformanceView({
+  funnels, logsByFunnel,
+}: {
+  funnels: Funnel[];
+  logsByFunnel: Record<string, FunnelDailyLog[]>;
+}) {
+  type Aggregate = {
+    funnelCount: number;
+    funnelsWithData: number;
+    winners: number;
+    spend: number;
+    revenue: number;
+  };
+
+  const enriched = useMemo(() => {
+    return funnels.map((f) => {
+      const logs = logsByFunnel[f.id] ?? [];
+      const agg = aggregateLogs(logs);
+      let spend = 0, revenue = 0;
+      for (const l of logs) { spend += Number(l.spend) || 0; revenue += Number(l.revenue) || 0; }
+      const blendedRoas = spend > 0 ? revenue / spend : 0;
+      const roasShown = agg.latestRoas > 0 ? agg.latestRoas : blendedRoas;
+      const hasData = roasShown > 0 || spend > 0;
+      const winning = isWinning(roasShown, f.beroas);
+      return { funnel: f, roasShown, spend, revenue, hasData, winning };
+    });
+  }, [funnels, logsByFunnel]);
+
+  const byCountry = useMemo(() => {
+    const map = new Map<string, Aggregate>();
+    enriched.forEach((e) => {
+      const key = e.funnel.country || '—';
+      const a = map.get(key) ?? { funnelCount: 0, funnelsWithData: 0, winners: 0, spend: 0, revenue: 0 };
+      a.funnelCount++;
+      if (e.hasData) {
+        a.funnelsWithData++;
+        if (e.winning) a.winners++;
+      }
+      a.spend += e.spend;
+      a.revenue += e.revenue;
+      map.set(key, a);
+    });
+    return Array.from(map.entries())
+      .map(([country, a]) => ({
+        country, ...a,
+        blendedRoas: a.spend > 0 ? a.revenue / a.spend : 0,
+        hitRate: a.funnelsWithData > 0 ? (a.winners / a.funnelsWithData) * 100 : 0,
+      }))
+      .sort((a, b) => b.spend - a.spend);
+  }, [enriched]);
+
+  const byProduct = useMemo(() => {
+    const map = new Map<string, Aggregate>();
+    enriched.forEach((e) => {
+      const key = e.funnel.productName || '—';
+      const a = map.get(key) ?? { funnelCount: 0, funnelsWithData: 0, winners: 0, spend: 0, revenue: 0 };
+      a.funnelCount++;
+      if (e.hasData) {
+        a.funnelsWithData++;
+        if (e.winning) a.winners++;
+      }
+      a.spend += e.spend;
+      a.revenue += e.revenue;
+      map.set(key, a);
+    });
+    return Array.from(map.entries())
+      .map(([product, a]) => ({
+        product, ...a,
+        blendedRoas: a.spend > 0 ? a.revenue / a.spend : 0,
+        hitRate: a.funnelsWithData > 0 ? (a.winners / a.funnelsWithData) * 100 : 0,
+      }))
+      .sort((a, b) => b.spend - a.spend);
+  }, [enriched]);
+
+  const ranked = useMemo(() => {
+    return enriched
+      .filter((e) => e.hasData)
+      .sort((a, b) => b.roasShown - a.roasShown);
+  }, [enriched]);
+
+  const top5 = ranked.slice(0, 5);
+  const bottom5 = [...ranked].reverse().slice(0, 5);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <PerfTable
+          title="By country"
+          rows={byCountry.map((b) => ({
+            label: b.country,
+            funnelCount: b.funnelCount,
+            roas: b.blendedRoas,
+            hit: b.hitRate,
+            spend: b.spend,
+          }))}
+        />
+        <PerfTable
+          title="By product"
+          rows={byProduct.map((b) => ({
+            label: b.product,
+            funnelCount: b.funnelCount,
+            roas: b.blendedRoas,
+            hit: b.hitRate,
+            spend: b.spend,
+          }))}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <RankingTable title="Top performers" emoji="🏆" funnels={top5} />
+        <RankingTable title="Underperformers" emoji="🔻" funnels={bottom5} muted />
+      </div>
+    </div>
+  );
+}
+
+function PerfTable({ title, rows }: {
+  title: string;
+  rows: Array<{ label: string; funnelCount: number; roas: number; hit: number; spend: number }>;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="border-b border-border px-4 py-2.5">
+        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-4 py-6 text-center text-[12px] text-muted-foreground">No data yet.</p>
+      ) : (
+        <table className="tracker-table">
+          <thead>
+            <tr>
+              <th>{title.split(' ').pop()}</th>
+              <th style={{ textAlign: 'right', width: 70 }}>Funnels</th>
+              <th style={{ textAlign: 'right', width: 80 }}>ROAS</th>
+              <th style={{ textAlign: 'right', width: 80 }}>Hit rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label}>
+                <td><div className="px-3 py-2 text-[12px] text-foreground truncate max-w-[200px]">{r.label}</div></td>
+                <td><div className="px-3 py-2 text-right text-[12px] tabular-nums text-muted-foreground">{r.funnelCount}</div></td>
+                <td><div className="px-3 py-2 text-right text-[12px] tabular-nums text-foreground">{r.roas > 0 ? `${r.roas.toFixed(2)}x` : '—'}</div></td>
+                <td><div className="px-3 py-2 text-right text-[12px] tabular-nums text-foreground">{r.hit.toFixed(0)}%</div></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function RankingTable({
+  title, emoji, funnels, muted,
+}: {
+  title: string;
+  emoji: string;
+  funnels: Array<{ funnel: Funnel; roasShown: number; winning: boolean }>;
+  muted?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <h3 className="text-sm font-medium text-foreground">
+          <span className="mr-1.5">{emoji}</span> {title}
+        </h3>
+        <span className="text-[11px] text-muted-foreground">{funnels.length}</span>
+      </div>
+      {funnels.length === 0 ? (
+        <p className="px-4 py-6 text-center text-[12px] text-muted-foreground">No funnels with data yet.</p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {funnels.map(({ funnel: f, roasShown, winning }) => (
+            <li key={f.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-[12px] font-medium text-foreground">{f.productName}</p>
+                <p className="text-[10px] text-muted-foreground">{f.country} · {f.language}</p>
+              </div>
+              <span className={cn(
+                'shrink-0 text-[14px] font-semibold tabular-nums',
+                muted ? 'text-rose-400' : winning ? 'text-emerald-400' : 'text-foreground'
+              )}>
+                {roasShown.toFixed(2)}x
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

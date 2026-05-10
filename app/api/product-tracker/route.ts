@@ -31,6 +31,8 @@ export async function GET() {
         productFileLink: data.productFileLink ?? '',
         productStage: data.productStage ?? '',
         totalSpent: data.totalSpent ?? 0,
+        cogs: Number(data.cogs) || 0,
+        shipping: Number(data.shipping) || 0,
         remarks: data.remarks ?? '',
         createdAt: data.createdAt ?? '',
         updatedAt: data.updatedAt ?? '',
@@ -60,6 +62,8 @@ export async function POST(request: Request) {
       productFileLink: body.productFileLink ?? '',
       productStage: body.productStage ?? '',
       totalSpent: Number(body.totalSpent) || 0,
+      cogs: Number(body.cogs) || 0,
+      shipping: Number(body.shipping) || 0,
       remarks: body.remarks ?? '',
       createdAt: now,
       updatedAt: now,
@@ -107,6 +111,8 @@ export async function PATCH(request: Request) {
     if (updates.productFileLink !== undefined) sanitizedUpdates.productFileLink = updates.productFileLink;
     if (updates.productStage !== undefined) sanitizedUpdates.productStage = updates.productStage;
     if (updates.totalSpent !== undefined) sanitizedUpdates.totalSpent = Number(updates.totalSpent) || 0;
+    if (updates.cogs !== undefined) sanitizedUpdates.cogs = Number(updates.cogs) || 0;
+    if (updates.shipping !== undefined) sanitizedUpdates.shipping = Number(updates.shipping) || 0;
     if (updates.remarks !== undefined) sanitizedUpdates.remarks = updates.remarks;
     sanitizedUpdates.updatedAt = now;
 
