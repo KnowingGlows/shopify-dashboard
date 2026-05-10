@@ -16,7 +16,18 @@ export interface Funnel {
   funnelishUrl: string;
   status: FunnelStatus;
   launchDate: string;           // YYYY-MM-DD or ''
-  beroas: number;               // breakeven ROAS — single number; future will pull from Finance
+
+  // Per-market pricing — drives BEROAS auto-compute when set.
+  // Cost (COGS + shipping) is read from the linked product; SP and delivery
+  // rate vary per market and live here. Not "money tracking" (those daily
+  // spend/revenue logs live on the Finance page) — these are configuration.
+  sellingPrice: number;         // USD per unit
+  deliveryRate: number;         // 0–100 percent (successful delivery)
+
+  // Manual override / legacy fallback. Used only when SP or deliveryRate
+  // aren't set yet, so old funnels keep working.
+  beroas: number;
+
   notes: string;
   createdBy: string;
   createdAt: string;

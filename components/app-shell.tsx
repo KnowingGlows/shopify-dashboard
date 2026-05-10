@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart3, Box, CheckSquare, ClipboardList, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Truck, Users, X,
-  Calculator, PackageCheck, PackageX, Funnel as FunnelIcon, Globe, Wallet,
+  Calculator, PackageCheck, PackageX, Funnel as FunnelIcon, Globe, Wallet, Trophy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -36,7 +36,7 @@ const navItems: NavItem[] = [
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
   { href: '/funnels', label: 'Funnels', icon: FunnelIcon, section: 'marketing' },
-  { href: '/ads-international', label: 'Ads — International', icon: Globe, section: 'marketing' },
+  { href: '/ads-international', label: 'Ads', icon: Globe, section: 'marketing' },
   { href: '/ads-tracker', label: 'OPS Ads — India', icon: Megaphone, section: 'marketing' },
   { href: '/tasks', label: 'Tasks', icon: CheckSquare, section: 'ops' },
   { href: '/inventory', label: 'Inventory', icon: Box, section: 'ops' },
@@ -94,6 +94,22 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
   const { logout, user } = useAuth();
   const isAdmin = user && ADMIN_ROLES.includes(user.role);
   const perms = user?.permissions ?? [];
+
+  // Winner products surface as sub-items under "Products" — these are the
+  // ones the user actively monitors. One fetch per session, refreshed on
+  // pathname change so newly-marked winners appear quickly.
+  const [winnerProducts, setWinnerProducts] = useState<Array<{ id: string; productName: string }>>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/product-tracker').then((r) => r.json()).then((data) => {
+      if (cancelled) return;
+      const winners = (data.entries ?? [])
+        .filter((e: { productStage?: string }) => e.productStage === 'Winner - Moved To OPS')
+        .map((e: { id: string; productName: string }) => ({ id: e.id, productName: e.productName }));
+      setWinnerProducts(winners);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [activePath]);
 
   // Check if user has access to a given path
   const hasAccess = (href: string): boolean => {
@@ -170,7 +186,35 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
               <div className="space-y-0.5">
                 {items.map((item) => {
                   const idx = globalIndex++;
-                  return <NavLink key={item.href} item={item} isActive={activePath === item.href} onNavigate={onNavigate} index={idx} />;
+                  const node = <NavLink key={item.href} item={item} isActive={activePath === item.href} onNavigate={onNavigate} index={idx} />;
+                  // Inject winner products as indented children right after the Products row.
+                  if (item.href === '/product-tracker' && winnerProducts.length > 0) {
+                    return (
+                      <div key={item.href}>
+                        {node}
+                        {winnerProducts.map((wp) => {
+                          const wpHref = `/product-tracker/${wp.id}`;
+                          const wpIdx = globalIndex++;
+                          return (
+                            <NavLink
+                              key={wpHref}
+                              item={{
+                                href: wpHref,
+                                label: wp.productName || '(unnamed)',
+                                icon: Trophy,
+                                section: 'marketing',
+                                parent: '/product-tracker',
+                              }}
+                              isActive={activePath === wpHref}
+                              onNavigate={onNavigate}
+                              index={wpIdx}
+                            />
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+                  return node;
                 })}
               </div>
             </div>

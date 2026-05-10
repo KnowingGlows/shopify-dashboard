@@ -27,6 +27,8 @@ function sanitizeFunnel(input: Record<string, unknown>, base?: Partial<Funnel>):
     out.status = VALID_STATUSES.includes(s as FunnelStatus) ? (s as FunnelStatus) : 'draft';
   }
   if ('launchDate' in input) out.launchDate = String(input.launchDate ?? '').trim();
+  if ('sellingPrice' in input) out.sellingPrice = Math.max(0, Number(input.sellingPrice) || 0);
+  if ('deliveryRate' in input) out.deliveryRate = Math.max(0, Math.min(100, Number(input.deliveryRate) || 0));
   if ('beroas' in input) out.beroas = Math.max(0, Number(input.beroas) || 0);
   if ('notes' in input) out.notes = String(input.notes ?? '').trim();
   return out;
@@ -60,6 +62,8 @@ export async function GET(request: Request) {
           funnelishUrl: data.funnelishUrl ?? '',
           status: (VALID_STATUSES.includes(data.status) ? data.status : 'draft') as FunnelStatus,
           launchDate: data.launchDate ?? '',
+          sellingPrice: Number(data.sellingPrice) || 0,
+          deliveryRate: Number(data.deliveryRate) || 0,
           beroas: Number(data.beroas) || 0,
           notes: data.notes ?? '',
           createdBy: data.createdBy ?? '',
@@ -108,6 +112,8 @@ export async function POST(request: Request) {
       funnelishUrl: sanitized.funnelishUrl ?? '',
       status: sanitized.status ?? 'draft',
       launchDate: sanitized.launchDate ?? '',
+      sellingPrice: sanitized.sellingPrice ?? 0,
+      deliveryRate: sanitized.deliveryRate ?? 0,
       beroas: sanitized.beroas ?? 0,
       notes: sanitized.notes ?? '',
       createdBy: session.email ?? '',

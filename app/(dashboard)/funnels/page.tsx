@@ -12,7 +12,7 @@ import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { MARKETS, getLanguagesForCountry, getCountries } from '@/lib/markets';
-import { isWinning, aggregateLogs, hitRate } from '@/lib/funnels';
+import { isWinning, aggregateLogs, hitRate, effectiveBeroas, isBeroasAutoComputed } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
 
@@ -123,6 +123,16 @@ export default function FunnelsPage() {
     if (f.productId && productIds.has(f.productId)) return f.productId;
     return productIdByName.get(f.productName);
   };
+  const productById = useMemo(() => {
+    const m = new Map<string, ProductTrackerEntry>();
+    products.forEach((p) => m.set(p.id, p));
+    return m;
+  }, [products]);
+  const resolveProduct = (f: Funnel): ProductTrackerEntry | undefined => {
+    const id = resolveProductId(f);
+    return id ? productById.get(id) : undefined;
+  };
+  const beroasFor = (f: Funnel): number => effectiveBeroas(f, resolveProduct(f));
 
   const refreshLogs = async (funnelId: string) => {
     try {
@@ -167,9 +177,12 @@ export default function FunnelsPage() {
       const logs = logsByFunnel[f.id] ?? [];
       const agg = aggregateLogs(logs);
       if (agg.latestRoas > 0) {
+        const product = (f.productId && productById.get(f.productId))
+          || products.find((p) => p.productName === f.productName);
+        const fb = effectiveBeroas(f, product);
         roasValues.push(agg.latestRoas);
-        winRows.push({ roas: agg.latestRoas, beroas: f.beroas });
-        if (isWinning(agg.latestRoas, f.beroas)) winCount++;
+        winRows.push({ roas: agg.latestRoas, beroas: fb });
+        if (isWinning(agg.latestRoas, fb)) winCount++;
       }
     });
     const avgRoas = roasValues.length > 0
@@ -181,7 +194,7 @@ export default function FunnelsPage() {
       hitRate: hitRate(winRows),
       avgRoas,
     };
-  }, [funnels, logsByFunnel]);
+  }, [funnels, logsByFunnel, productById, products]);
 
   const animatedHit = useCountUp(summary.hitRate, 500);
   const animatedRoas = useCountUp(summary.avgRoas, 500);
@@ -311,7 +324,7 @@ export default function FunnelsPage() {
       </motion.div>
 
 {viewMode === 'performance' ? (
-        <PerformanceView funnels={funnels} logsByFunnel={logsByFunnel} />
+        <PerformanceView funnels={funnels} logsByFunnel={logsByFunnel} products={products} />
       ) : (
         <>
       {/* Status pills + filters */}
@@ -395,13 +408,15 @@ export default function FunnelsPage() {
           {filtered.map((f, i) => {
             const logs = logsByFunnel[f.id] ?? [];
             const agg = aggregateLogs(logs);
-            const winning = isWinning(agg.latestRoas, f.beroas);
+            const fb = beroasFor(f);
+            const winning = isWinning(agg.latestRoas, fb);
             const tone = TONE[STATUS_OPTIONS.find((s) => s.value === f.status)?.tone ?? 'gray'];
             const linked = !!resolveProductId(f);
             return (
               <FunnelCard
                 key={f.id}
                 funnel={f}
+                beroas={fb}
                 latestRoas={agg.latestRoas}
                 lastLogDate={agg.lastLogDate}
                 totalOrders={agg.totalOrders}
@@ -437,7 +452,9 @@ export default function FunnelsPage() {
         funnel={openFunnel}
         logs={openFunnel ? logsByFunnel[openFunnel.id] ?? [] : []}
         productId={openFunnel ? resolveProductId(openFunnel) : undefined}
+        product={openFunnel ? resolveProduct(openFunnel) : undefined}
         products={products}
+        beroas={openFunnel ? beroasFor(openFunnel) : 0}
         onClose={() => setOpenFunnelId(null)}
         onUpdate={(patch) => openFunnel && updateFunnel(openFunnel.id, patch)}
         onDelete={() => openFunnel && deleteFunnel(openFunnel.id)}
@@ -500,9 +517,10 @@ function FilterPill({ label, count, active, onClick, tone = 'gray' }: {
 // ── Funnel card ────────────────────────────────────────────────────────────
 
 function FunnelCard({
-  funnel: f, latestRoas, lastLogDate, totalOrders, winning, tone, linked, index, onOpen,
+  funnel: f, beroas, latestRoas, lastLogDate, totalOrders, winning, tone, linked, index, onOpen,
 }: {
   funnel: Funnel;
+  beroas: number;
   latestRoas: number;
   lastLogDate: string;
   totalOrders: number;
@@ -569,7 +587,7 @@ function FunnelCard({
       </div>
 
       <div className="flex items-center justify-between border-t border-border pt-2.5 text-[10px] text-muted-foreground">
-        <span>BEROAS <span className="font-semibold tabular-nums text-foreground">{f.beroas > 0 ? `${f.beroas.toFixed(2)}x` : '—'}</span></span>
+        <span>BEROAS <span className="font-semibold tabular-nums text-foreground">{beroas > 0 ? `${beroas.toFixed(2)}x` : '—'}</span></span>
         <span>{totalOrders > 0 ? `${totalOrders} orders` : 'no orders'}</span>
         <span>{lastLogDate || 'no logs'}</span>
       </div>
@@ -580,12 +598,14 @@ function FunnelCard({
 // ── Funnel detail drawer ────────────────────────────────────────────────────
 
 function FunnelDrawer({
-  funnel, logs, productId, products, onClose, onUpdate, onDelete, onLogsChanged,
+  funnel, logs, productId, product, products, beroas, onClose, onUpdate, onDelete, onLogsChanged,
 }: {
   funnel: Funnel | null;
   logs: FunnelDailyLog[];
   productId: string | undefined;
+  product: ProductTrackerEntry | undefined;
   products: ProductTrackerEntry[];
+  beroas: number;
   onClose: () => void;
   onUpdate: (patch: Partial<Funnel>) => void;
   onDelete: () => void;
@@ -611,7 +631,9 @@ function FunnelDrawer({
               funnel={funnel}
               logs={logs}
               productId={productId}
+              product={product}
               products={products}
+              beroas={beroas}
               onClose={onClose}
               onUpdate={onUpdate}
               onDelete={onDelete}
@@ -625,20 +647,23 @@ function FunnelDrawer({
 }
 
 function FunnelDrawerContent({
-  funnel: f, logs, productId, products, onClose, onUpdate, onDelete, onLogsChanged,
+  funnel: f, logs, productId, product, products, beroas, onClose, onUpdate, onDelete, onLogsChanged,
 }: {
   funnel: Funnel;
   logs: FunnelDailyLog[];
   productId: string | undefined;
+  product: ProductTrackerEntry | undefined;
   products: ProductTrackerEntry[];
+  beroas: number;
   onClose: () => void;
   onUpdate: (patch: Partial<Funnel>) => void;
   onDelete: () => void;
   onLogsChanged: () => void;
 }) {
   const agg = aggregateLogs(logs);
-  const winning = isWinning(agg.latestRoas, f.beroas);
-  const winThreshold = f.beroas > 0 ? f.beroas + 1 : 0;
+  const winning = isWinning(agg.latestRoas, beroas);
+  const winThreshold = beroas > 0 ? beroas + 1 : 0;
+  const beroasAuto = isBeroasAutoComputed(f, product);
 
   const [date, setDate] = useState(getISTDate());
   const [roas, setRoas] = useState('');
@@ -765,8 +790,9 @@ function FunnelDrawerContent({
             />
             <PerfCell
               label="BEROAS"
-              value={f.beroas > 0 ? `${f.beroas.toFixed(2)}x` : '—'}
+              value={beroas > 0 ? `${beroas.toFixed(2)}x` : '—'}
               accent="primary"
+              hint={beroasAuto ? 'auto from pricing' : beroas > 0 ? 'manual' : 'no pricing yet'}
             />
             <PerfCell
               label="Win threshold"
@@ -826,7 +852,7 @@ function FunnelDrawerContent({
                 </thead>
                 <tbody>
                   {logs.map((l) => {
-                    const win = isWinning(l.roas, f.beroas);
+                    const win = isWinning(l.roas, beroas);
                     return (
                       <tr key={l.id}>
                         <td><div className="px-3 py-2 text-[11px] tabular-nums text-foreground">{l.date}</div></td>
@@ -997,11 +1023,22 @@ function PerfCell({ label, value, hint, accent }: {
 // ── Performance view ────────────────────────────────────────────────────────
 
 function PerformanceView({
-  funnels, logsByFunnel,
+  funnels, logsByFunnel, products,
 }: {
   funnels: Funnel[];
   logsByFunnel: Record<string, FunnelDailyLog[]>;
+  products: ProductTrackerEntry[];
 }) {
+  const productById = useMemo(() => {
+    const m = new Map<string, ProductTrackerEntry>();
+    products.forEach((p) => m.set(p.id, p));
+    return m;
+  }, [products]);
+  const productByName = useMemo(() => {
+    const m = new Map<string, ProductTrackerEntry>();
+    products.forEach((p) => { if (p.productName) m.set(p.productName, p); });
+    return m;
+  }, [products]);
   type Aggregate = {
     funnelCount: number;
     funnelsWithData: number;
@@ -1019,10 +1056,11 @@ function PerformanceView({
       const blendedRoas = spend > 0 ? revenue / spend : 0;
       const roasShown = agg.latestRoas > 0 ? agg.latestRoas : blendedRoas;
       const hasData = roasShown > 0 || spend > 0;
-      const winning = isWinning(roasShown, f.beroas);
+      const product = (f.productId && productById.get(f.productId)) || productByName.get(f.productName);
+      const winning = isWinning(roasShown, effectiveBeroas(f, product));
       return { funnel: f, roasShown, spend, revenue, hasData, winning };
     });
-  }, [funnels, logsByFunnel]);
+  }, [funnels, logsByFunnel, productById, productByName]);
 
   const byCountry = useMemo(() => {
     const map = new Map<string, Aggregate>();
@@ -1199,6 +1237,8 @@ type NewFunnelInput = {
   funnelishUrl: string;
   status: FunnelStatus;
   launchDate: string;
+  sellingPrice: number;
+  deliveryRate: number;
   beroas: number;
   notes: string;
 };
@@ -1218,7 +1258,8 @@ function AddFunnelModal({
   const [funnelishUrl, setFunnelishUrl] = useState('');
   const [status, setStatus] = useState<FunnelStatus>('draft');
   const [launchDate, setLaunchDate] = useState('');
-  const [beroas, setBeroas] = useState('');
+  const [sellingPrice, setSellingPrice] = useState('');
+  const [deliveryRate, setDeliveryRate] = useState('95');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1228,10 +1269,16 @@ function AddFunnelModal({
     if (langs.length > 0 && !langs.includes(language)) setLanguage(langs[0]);
   }, [country, langs, language]);
 
-  const beroasNum = parseFloat(beroas) || 0;
-  const winThreshold = beroasNum > 0 ? beroasNum + 1 : 0;
-
   const selectedProduct = products.find((p) => p.id === productId);
+
+  // Live preview of margin & BEROAS from product cost + this funnel's pricing
+  const sp = parseFloat(sellingPrice) || 0;
+  const dr = (parseFloat(deliveryRate) || 0) / 100;
+  const cost = (selectedProduct?.cogs ?? 0) + (selectedProduct?.shipping ?? 0);
+  const margin = sp > 0 && sp > cost && dr > 0 ? ((sp - cost) / sp) * dr : 0;
+  const beroasComputed = margin > 0 ? 1 / margin : 0;
+  const winThreshold = beroasComputed > 0 ? beroasComputed + 1 : 0;
+  const productHasCost = cost > 0;
 
   const submit = async () => {
     if (!productId || !selectedProduct) { setErr('Pick a product from the tracker.'); return; }
@@ -1248,7 +1295,9 @@ function AddFunnelModal({
         funnelishUrl: funnelishUrl.trim(),
         status,
         launchDate,
-        beroas: beroasNum,
+        sellingPrice: sp,
+        deliveryRate: parseFloat(deliveryRate) || 0,
+        beroas: 0, // computed at read-time from pricing; manual field unused for new funnels
         notes: notes.trim(),
       });
     } catch (e) {
@@ -1371,30 +1420,57 @@ function AddFunnelModal({
             </FormCell>
           </div>
 
-          {/* BEROAS — single number */}
+          {/* Per-market pricing — drives auto-computed BEROAS */}
           <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-primary/80">
+                Pricing for this market
+              </p>
+              {productHasCost ? (
+                <span className="text-[10px] text-muted-foreground">
+                  Cost ${cost.toFixed(2)} from product
+                </span>
+              ) : (
+                <span className="text-[10px] text-amber-400">
+                  Product has no cost — set COGS + shipping in Products
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-2">
-              <FormCell label="BEROAS">
+              <FormCell label="Selling price (USD)">
                 <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={beroas}
-                  onChange={(e) => setBeroas(e.target.value)}
+                  type="number" min="0" step="0.01" inputMode="decimal"
+                  value={sellingPrice}
+                  onChange={(e) => setSellingPrice(e.target.value)}
                   className="form-input tabular-nums"
-                  placeholder="e.g. 1.67"
+                  placeholder="0.00"
                 />
               </FormCell>
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] uppercase tracking-wider text-muted-foreground">Win threshold</label>
-                <div className="flex h-[34px] items-center rounded-lg border border-border bg-background/40 px-3 text-[12px] tabular-nums text-primary">
-                  {winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'}
-                </div>
+              <FormCell label="Delivery rate %">
+                <input
+                  type="number" min="0" max="100" step="0.1" inputMode="decimal"
+                  value={deliveryRate}
+                  onChange={(e) => setDeliveryRate(e.target.value)}
+                  className="form-input tabular-nums"
+                />
+              </FormCell>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+              <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
+                <span className="text-muted-foreground">Margin: </span>
+                <span className="font-semibold tabular-nums text-foreground">{(margin * 100).toFixed(1)}%</span>
+              </div>
+              <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
+                <span className="text-muted-foreground">BEROAS: </span>
+                <span className="font-semibold tabular-nums text-primary">{beroasComputed > 0 ? `${beroasComputed.toFixed(2)}x` : '—'}</span>
+              </div>
+              <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
+                <span className="text-muted-foreground">Win at: </span>
+                <span className="font-semibold tabular-nums text-emerald-400">{winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'}</span>
               </div>
             </div>
             <p className="mt-2 text-[10px] text-muted-foreground/70">
-              Breakeven ROAS for this product. A funnel is considered <em>winning</em> when its ROAS hits BEROAS + 1.
+              BEROAS = 1 / margin. A funnel is <em>winning</em> when its ROAS reaches BEROAS + 1.
             </p>
           </div>
 

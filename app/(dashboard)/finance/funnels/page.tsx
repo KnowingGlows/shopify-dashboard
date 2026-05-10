@@ -11,7 +11,7 @@ import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { getCountries } from '@/lib/markets';
-import { isWinning } from '@/lib/funnels';
+import { isWinning, effectiveBeroas } from '@/lib/funnels';
 import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
@@ -330,6 +330,7 @@ export default function FunnelFinancePage() {
               key={f.id}
               funnel={f}
               money={moneyByFunnel[f.id] ?? { totalSpend: 0, totalRevenue: 0, totalProfit: 0, blendedRoas: 0, daysLogged: 0, lastLogDate: '' }}
+              product={products.find((p) => p.id === (f.productId || productIdByName.get(f.productName)))}
               fmt={fmt}
               index={i}
               onOpen={() => setOpenFunnelId(f.id)}
@@ -342,10 +343,11 @@ export default function FunnelFinancePage() {
         Logged in as {user?.email ?? '—'} · {fx?.source === 'live' ? 'live FX' : fx?.source === 'cache' ? 'cached FX' : fx?.source === 'fallback' ? 'fallback FX' : 'FX loading'} · launches/performance live in <a href="/funnels" className="text-primary hover:text-primary/80">Funnels</a>
       </p>
 
-      <FinanceDrawer
+      <FinanceModal
         funnel={openFunnel}
         logs={openFunnel ? logsByFunnel[openFunnel.id] ?? [] : []}
         productId={openFunnel ? productIdByName.get(openFunnel.productName) : undefined}
+        product={openFunnel ? products.find((p) => p.id === (openFunnel.productId || productIdByName.get(openFunnel.productName))) : undefined}
         fmt={fmt}
         onClose={() => setOpenFunnelId(null)}
         onLogsChanged={() => openFunnel && refreshLogs(openFunnel.id)}
@@ -399,16 +401,17 @@ function FilterPill({ label, count, active, onClick, tone = 'gray' }: {
 }
 
 function FinanceCard({
-  funnel: f, money, fmt, index, onOpen,
+  funnel: f, money, product, fmt, index, onOpen,
 }: {
   funnel: Funnel;
   money: FunnelMoney;
+  product: ProductTrackerEntry | undefined;
   fmt: (usd: number) => string;
   index: number;
   onOpen: () => void;
 }) {
   const tone = TONE[STATUS_OPTIONS.find((s) => s.value === f.status)?.tone ?? 'gray'];
-  const winning = isWinning(money.blendedRoas, f.beroas);
+  const winning = isWinning(money.blendedRoas, effectiveBeroas(f, product));
   const hasSpend = money.totalSpend > 0;
   const profitTone = money.totalProfit < 0 ? 'text-rose-400' : money.totalProfit > 0 ? 'text-emerald-400' : 'text-muted-foreground';
 
@@ -469,12 +472,15 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone?:
 
 // ── Drawer ──────────────────────────────────────────────────────────────────
 
-function FinanceDrawer({
-  funnel, logs, productId, fmt, onClose, onLogsChanged,
+// ── Centered finance modal ──────────────────────────────────────────────────
+
+function FinanceModal({
+  funnel, logs, productId, product, fmt, onClose, onLogsChanged,
 }: {
   funnel: Funnel | null;
   logs: FunnelDailyLog[];
   productId: string | undefined;
+  product: ProductTrackerEntry | undefined;
   fmt: (usd: number) => string;
   onClose: () => void;
   onLogsChanged: () => void;
@@ -482,23 +488,24 @@ function FinanceDrawer({
   return (
     <AnimatePresence>
       {funnel && (
-        <div className="fixed inset-0 z-[80] flex justify-end">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/65 backdrop-blur-md"
             onClick={onClose}
           />
           <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-            className="relative z-10 flex h-full w-full max-w-xl flex-col overflow-hidden border-l border-border bg-card shadow-2xl"
+            initial={{ opacity: 0, scale: 0.96, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 8 }}
+            transition={{ type: 'spring', damping: 26, stiffness: 280 }}
+            className="relative z-10 flex w-full max-w-3xl max-h-[92vh] flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl"
           >
-            <FinanceDrawerContent
+            <FinanceModalContent
               funnel={funnel}
               logs={logs}
               productId={productId}
+              product={product}
               fmt={fmt}
               onClose={onClose}
               onLogsChanged={onLogsChanged}
@@ -510,21 +517,29 @@ function FinanceDrawer({
   );
 }
 
-function FinanceDrawerContent({
-  funnel: f, logs, productId, fmt, onClose, onLogsChanged,
+function FinanceModalContent({
+  funnel: f, logs, productId, product, fmt, onClose, onLogsChanged,
 }: {
   funnel: Funnel;
   logs: FunnelDailyLog[];
   productId: string | undefined;
+  product: ProductTrackerEntry | undefined;
   fmt: (usd: number) => string;
   onClose: () => void;
   onLogsChanged: () => void;
 }) {
   const money = aggregateMoney(logs);
+  const beroas = effectiveBeroas(f, product);
   const tone = TONE[STATUS_OPTIONS.find((s) => s.value === f.status)?.tone ?? 'gray'];
 
   // Form: log money for a day
-  const [date, setDate] = useState(getISTDate());
+  const today = getISTDate();
+  const yesterday = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  })();
+  const [date, setDate] = useState(today);
   const [spend, setSpend] = useState('');
   const [revenue, setRevenue] = useState('');
   const [profit, setProfit] = useState('');
@@ -532,12 +547,21 @@ function FinanceDrawerContent({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Auto-compute profit suggestion from spend & revenue (revenue × margin − spend)
-  // We don't auto-fill since margin isn't computed here; user enters profit themselves.
+  // Live computed values from inputs
+  const spendNum = parseFloat(spend) || 0;
+  const revenueNum = parseFloat(revenue) || 0;
+  const profitNum = parseFloat(profit) || 0;
+  const liveRoas = spendNum > 0 ? revenueNum / spendNum : 0;
+  const liveMargin = revenueNum > 0 ? (profitNum / revenueNum) * 100 : 0;
+  const liveWinning = isWinning(liveRoas, beroas);
+  const hasInputs = spendNum > 0 || revenueNum > 0 || profitNum !== 0;
+
+  const profitTone = money.totalProfit < 0 ? 'rose' : money.totalProfit > 0 ? 'emerald' : 'neutral';
+  const roasTone = money.totalSpend === 0 ? 'neutral' : isWinning(money.blendedRoas, beroas) ? 'emerald' : 'rose';
 
   const addLog = async () => {
     if (!date) { setErr('Date is required.'); return; }
-    if (!spend && !revenue && !profit) { setErr('Enter at least one money field.'); return; }
+    if (!hasInputs) { setErr('Enter at least one money field.'); return; }
     try {
       setSaving(true);
       setErr(null);
@@ -547,9 +571,9 @@ function FinanceDrawerContent({
         body: JSON.stringify({
           funnelId: f.id,
           date,
-          spend: parseFloat(spend) || 0,
-          revenue: parseFloat(revenue) || 0,
-          profit: parseFloat(profit) || 0,
+          spend: spendNum,
+          revenue: revenueNum,
+          profit: profitNum,
           notes,
         }),
       });
@@ -585,20 +609,20 @@ function FinanceDrawerContent({
   return (
     <>
       {/* Header */}
-      <div className="relative">
+      <div className="relative shrink-0">
         <div className={cn('absolute inset-x-0 top-0 h-[3px]', tone.bar)} aria-hidden />
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-border px-6 py-4">
           <div className="min-w-0">
             {productId ? (
               <Link
                 href={`/product-tracker/${productId}`}
-                className="group inline-flex max-w-full items-center gap-1.5 truncate text-base font-semibold text-foreground hover:text-primary"
+                className="group inline-flex max-w-full items-center gap-1.5 text-lg font-semibold text-foreground hover:text-primary"
               >
-                <span className="truncate">{f.productName}</span>
-                <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
+                <span className="min-w-0 flex-1 truncate">{f.productName}</span>
+                <ArrowRight className="h-4 w-4 shrink-0 opacity-0 transition group-hover:opacity-100" />
               </Link>
             ) : (
-              <p className="truncate text-base font-semibold text-foreground">{f.productName}</p>
+              <p className="truncate text-lg font-semibold text-foreground">{f.productName}</p>
             )}
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {f.country} · {f.language}
@@ -612,114 +636,181 @@ function FinanceDrawerContent({
               )}
             </p>
           </div>
-          <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground transition hover:text-foreground">
+          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-accent/30 hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      {/* Body */}
+      {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto">
-        <div className="space-y-4 px-5 py-4">
-          {/* Money summary */}
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            <Cell label="Spend"   value={fmt(money.totalSpend)} />
-            <Cell label="Revenue" value={fmt(money.totalRevenue)} />
-            <Cell
-              label="Profit"
-              value={fmt(money.totalProfit)}
-              accent={money.totalProfit < 0 ? 'rose' : money.totalProfit > 0 ? 'emerald' : undefined}
-            />
-            <Cell
+        <div className="space-y-6 px-6 py-5">
+          {/* Big stat tiles */}
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <BigStat label="Spend"   value={fmt(money.totalSpend)}   tone="amber"  delay={0} />
+            <BigStat label="Revenue" value={fmt(money.totalRevenue)} tone="sky"    delay={0.04} />
+            <BigStat label="Profit"  value={fmt(money.totalProfit)}  tone={profitTone} delay={0.08} />
+            <BigStat
               label="ROAS"
               value={money.blendedRoas > 0 ? `${money.blendedRoas.toFixed(2)}x` : '—'}
-              accent={money.totalSpend > 0 ? (isWinning(money.blendedRoas, f.beroas) ? 'emerald' : 'rose') : undefined}
+              tone={roasTone}
+              delay={0.12}
             />
           </div>
 
-          {/* Add log form — money fields */}
-          <div className="rounded-lg border border-border bg-background/40 p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <Plus className="h-3.5 w-3.5 text-primary" />
-              <span className="text-[11px] font-medium text-foreground">Log money for a day (USD)</span>
-              {err && <span className="ml-auto text-[10px] text-destructive">{err}</span>}
+          {/* Entry section */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-400">
+                  <Plus className="h-3.5 w-3.5" />
+                </span>
+                <h3 className="text-sm font-semibold text-foreground">Log a day</h3>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <DateChip
+                  active={date === today}
+                  onClick={() => setDate(today)}
+                  label="Today"
+                />
+                <DateChip
+                  active={date === yesterday}
+                  onClick={() => setDate(yesterday)}
+                  label="Yesterday"
+                />
+                <div className="ml-1">
+                  <DatePicker value={date} onChange={(d) => setDate(d || today)} max={today} compact />
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <FormCell label="Date">
-                <DatePicker value={date} onChange={(d) => setDate(d || getISTDate())} max={getISTDate()} compact />
-              </FormCell>
-              <FormCell label="Spend (USD)">
-                <input type="number" min="0" inputMode="decimal" value={spend} onChange={(e) => setSpend(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-              </FormCell>
-              <FormCell label="Revenue (USD)">
-                <input type="number" min="0" inputMode="decimal" value={revenue} onChange={(e) => setRevenue(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-              </FormCell>
-              <FormCell label="Profit (USD)">
-                <input type="number" inputMode="decimal" value={profit} onChange={(e) => setProfit(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-              </FormCell>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <MoneyInput label="Spend"   value={spend}   onChange={setSpend}   tone="amber" />
+              <MoneyInput label="Revenue" value={revenue} onChange={setRevenue} tone="sky" />
+              <MoneyInput label="Profit"  value={profit}  onChange={setProfit}  tone="emerald" allowNegative />
             </div>
+
+            {/* Live computed strip */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background/40 px-4 py-2.5">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                Live preview
+              </span>
+              <div className="flex flex-wrap items-center gap-3 text-[12px] tabular-nums">
+                <span className="text-muted-foreground">
+                  ROAS{' '}
+                  <span className={cn('font-semibold', liveRoas > 0 ? (liveWinning ? 'text-emerald-400' : 'text-foreground') : 'text-muted-foreground/50')}>
+                    {liveRoas > 0 ? `${liveRoas.toFixed(2)}x` : '—'}
+                  </span>
+                </span>
+                <span className="text-muted-foreground/40">·</span>
+                <span className="text-muted-foreground">
+                  Margin{' '}
+                  <span className={cn('font-semibold', liveMargin !== 0 ? 'text-foreground' : 'text-muted-foreground/50')}>
+                    {liveMargin !== 0 ? `${liveMargin.toFixed(0)}%` : '—'}
+                  </span>
+                </span>
+                <span className="text-muted-foreground/40">·</span>
+                {!hasInputs ? (
+                  <span className="text-[11px] text-muted-foreground/50">Enter values</span>
+                ) : liveWinning ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Winning
+                  </span>
+                ) : beroas > 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Below {(beroas + 1).toFixed(2)}x
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground/50">No BEROAS set</span>
+                )}
+              </div>
+            </div>
+
             <input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Notes (optional)…"
-              className="form-input mt-2 text-[11px]"
+              className="form-input"
             />
+
+            {err && (
+              <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <span>{err}</span>
+              </div>
+            )}
+
             <button
               onClick={addLog}
-              disabled={saving}
-              className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-emerald-500/15 py-2 text-[12px] font-medium text-emerald-400 transition hover:bg-emerald-500/25 disabled:opacity-40"
+              disabled={saving || !hasInputs}
+              className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-emerald-500/15 px-4 py-3 text-[13px] font-semibold text-emerald-400 transition hover:bg-emerald-500/25 disabled:opacity-40 disabled:hover:bg-emerald-500/15"
             >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add money log
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {saving ? 'Saving…' : 'Add money log'}
             </button>
           </div>
 
-          {/* Logs table */}
-          {logs.length === 0 ? (
-            <p className="px-1 py-4 text-center text-[11px] text-muted-foreground/60">No logs yet — add the first day above.</p>
-          ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="tracker-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 90 }}>Date</th>
-                    <th style={{ textAlign: 'right' }}>Spend</th>
-                    <th style={{ textAlign: 'right' }}>Revenue</th>
-                    <th style={{ textAlign: 'right' }}>Profit</th>
-                    <th style={{ textAlign: 'right', width: 70 }}>ROAS</th>
-                    <th style={{ width: 36, textAlign: 'right' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.map((l) => {
-                    const dailyRoas = l.spend > 0 ? l.revenue / l.spend : 0;
-                    return (
-                      <tr key={l.id}>
-                        <td><div className="px-3 py-2 text-[11px] tabular-nums text-foreground">{l.date}</div></td>
-                        <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{fmt(l.spend)}</div></td>
-                        <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{fmt(l.revenue)}</div></td>
-                        <td>
-                          <div className={cn('px-3 py-2 text-right text-[11px] tabular-nums', l.profit < 0 ? 'text-rose-400' : l.profit > 0 ? 'text-emerald-400' : 'text-muted-foreground')}>
-                            {fmt(l.profit)}
-                          </div>
-                        </td>
-                        <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{dailyRoas > 0 ? `${dailyRoas.toFixed(2)}x` : '—'}</div></td>
-                        <td>
-                          <div className="flex items-center justify-end px-3 py-1.5">
-                            <button onClick={() => removeLog(l.id)} className="rounded-md p-1 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400">
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {/* Recent logs */}
+          {logs.length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-[12px] font-semibold text-foreground">Recent logs</h3>
+                <span className="text-[11px] text-muted-foreground">{logs.length}</span>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-border">
+                <table className="tracker-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 100 }}>Date</th>
+                      <th style={{ textAlign: 'right' }}>Spend</th>
+                      <th style={{ textAlign: 'right' }}>Revenue</th>
+                      <th style={{ textAlign: 'right' }}>Profit</th>
+                      <th style={{ textAlign: 'right', width: 80 }}>ROAS</th>
+                      <th style={{ width: 36, textAlign: 'right' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {logs.map((l) => {
+                      const dailyRoas = l.spend > 0 ? l.revenue / l.spend : 0;
+                      const win = dailyRoas > 0 && isWinning(dailyRoas, beroas);
+                      return (
+                        <tr key={l.id}>
+                          <td><div className="px-3 py-2 text-[11px] tabular-nums text-foreground">{l.date}</div></td>
+                          <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{fmt(l.spend)}</div></td>
+                          <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{fmt(l.revenue)}</div></td>
+                          <td>
+                            <div className={cn('px-3 py-2 text-right text-[11px] tabular-nums', l.profit < 0 ? 'text-rose-400' : l.profit > 0 ? 'text-emerald-400' : 'text-muted-foreground')}>
+                              {fmt(l.profit)}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="px-3 py-2 text-right text-[11px] tabular-nums">
+                              {dailyRoas > 0 ? (
+                                <span className={cn('inline-flex items-center gap-1', win ? 'text-emerald-400' : 'text-foreground')}>
+                                  {win && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
+                                  {dailyRoas.toFixed(2)}x
+                                </span>
+                              ) : '—'}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="flex items-center justify-end px-3 py-1.5">
+                              <button onClick={() => removeLog(l.id)} className="rounded-md p-1 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400">
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
-          <p className="pt-2 text-[10px] text-muted-foreground/60">
-            ROAS / orders / launch info live in <a href="/funnels" className="text-primary hover:text-primary/80">Funnels</a>. Same daily log record, different views.
+          <p className="pt-1 text-center text-[10px] text-muted-foreground/60">
+            ROAS / orders / launch info live in <Link href="/funnels" className="text-primary hover:text-primary/80">Funnels</Link>. Same daily log record, different views.
           </p>
         </div>
       </div>
@@ -727,21 +818,99 @@ function FinanceDrawerContent({
   );
 }
 
-function FormCell({ label, children }: { label: string; children: React.ReactNode }) {
+// ── Big input tile for money fields ─────────────────────────────────────────
+
+function MoneyInput({
+  label, value, onChange, tone, allowNegative,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  tone: 'amber' | 'sky' | 'emerald';
+  allowNegative?: boolean;
+}) {
+  const toneMap = {
+    amber:   { accent: 'text-amber-400',   border: 'hover:border-amber-500/40   focus-within:border-amber-500/60',   bg: 'focus-within:bg-amber-500/[0.04]' },
+    sky:     { accent: 'text-sky-400',     border: 'hover:border-sky-500/40     focus-within:border-sky-500/60',     bg: 'focus-within:bg-sky-500/[0.04]' },
+    emerald: { accent: 'text-emerald-400', border: 'hover:border-emerald-500/40 focus-within:border-emerald-500/60', bg: 'focus-within:bg-emerald-500/[0.04]' },
+  };
+  const t = toneMap[tone];
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</label>
-      {children}
+    <div className={cn('group rounded-xl border border-border bg-background/40 p-4 transition-colors', t.border, t.bg)}>
+      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+      <div className="mt-2 flex items-baseline gap-1">
+        <span className={cn('text-xl font-semibold leading-none', t.accent)}>$</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          min={allowNegative ? undefined : 0}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="0"
+          className="w-full bg-transparent text-[28px] font-semibold leading-none tabular-nums text-foreground outline-none placeholder:text-muted-foreground/25 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+      </div>
     </div>
   );
 }
 
-function Cell({ label, value, accent }: { label: string; value: string; accent?: 'emerald' | 'rose' }) {
-  const map = { emerald: 'text-emerald-400', rose: 'text-rose-400' };
+// ── Animated stat tile ─────────────────────────────────────────────────────
+
+function BigStat({
+  label, value, tone, delay = 0,
+}: {
+  label: string;
+  value: string;
+  tone: 'amber' | 'sky' | 'emerald' | 'rose' | 'neutral';
+  delay?: number;
+}) {
+  const toneMap = {
+    amber:   { text: 'text-amber-400',        border: 'border-amber-500/30',        glow: '#fbbf24', dot: 'bg-amber-400' },
+    sky:     { text: 'text-sky-400',          border: 'border-sky-500/30',          glow: '#38bdf8', dot: 'bg-sky-400' },
+    emerald: { text: 'text-emerald-400',      border: 'border-emerald-500/30',      glow: '#34d399', dot: 'bg-emerald-400' },
+    rose:    { text: 'text-rose-400',         border: 'border-rose-500/30',         glow: '#fb7185', dot: 'bg-rose-400' },
+    neutral: { text: 'text-foreground',       border: 'border-border',              glow: '#71717a', dot: 'bg-muted-foreground' },
+  };
+  const t = toneMap[tone];
   return (
-    <div className="rounded-md border border-border bg-background/40 px-3 py-2">
-      <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={cn('mt-0.5 text-[14px] font-semibold tabular-nums', accent ? map[accent] : 'text-foreground')}>{value}</p>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -2, boxShadow: `0 12px 30px -14px ${t.glow}55, 0 0 0 1px ${t.glow}33` }}
+      className={cn('group relative overflow-hidden rounded-xl border bg-card p-3.5', t.border)}
+    >
+      <div
+        className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-30 blur-2xl transition-opacity duration-500 group-hover:opacity-70"
+        style={{ background: `radial-gradient(circle, ${t.glow}55, transparent 70%)` }}
+        aria-hidden
+      />
+      <div className="relative z-10 flex items-center justify-between">
+        <p className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+        <span className={cn('h-1.5 w-1.5 rounded-full', t.dot)} aria-hidden />
+      </div>
+      <p className={cn('relative z-10 mt-1.5 text-[20px] font-semibold leading-none tabular-nums tracking-tight', t.text)}>
+        {value}
+      </p>
+    </motion.div>
+  );
+}
+
+// ── Quick date chip ─────────────────────────────────────────────────────────
+
+function DateChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'rounded-full border px-2.5 py-1 text-[11px] font-medium transition',
+        active
+          ? 'border-primary/40 bg-primary/15 text-primary'
+          : 'border-border bg-card text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {label}
+    </button>
   );
 }

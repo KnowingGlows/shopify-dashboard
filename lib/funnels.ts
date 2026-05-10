@@ -1,8 +1,44 @@
-// Funnel math helpers — win check, daily-log aggregation, hit rate.
-// Money math (margin, BEROAS-from-pricing, spend/revenue) lives elsewhere
-// (the future Finance page). Here BEROAS is a stored number on the funnel.
+// Funnel math helpers — win check, daily-log aggregation, hit rate, BEROAS resolution.
+// Spend/revenue/profit logging lives in Finance; here we only deal with
+// per-funnel pricing config (SP + delivery rate) and product cost
+// (cogs + shipping) — everything needed to compute BEROAS.
 
-import type { FunnelDailyLog } from '@/types/funnel';
+import type { Funnel, FunnelDailyLog } from '@/types/funnel';
+import type { ProductTrackerEntry } from '@/types/shopify';
+
+/**
+ * Compute the effective BEROAS for a funnel.
+ *
+ *   margin = (SP − productCost) / SP × deliveryRate
+ *   BEROAS = 1 / margin
+ *
+ * Auto-compute when the funnel has SP+deliveryRate AND the linked product
+ * has cost (cogs + shipping). Otherwise fall back to the manual
+ * `funnel.beroas` field. Returns 0 if neither path yields a value.
+ */
+export function effectiveBeroas(funnel: Funnel, product?: ProductTrackerEntry | null): number {
+  const sp = Number(funnel.sellingPrice) || 0;
+  const dr = (Number(funnel.deliveryRate) || 0) / 100;
+  const cost = product ? (Number(product.cogs) || 0) + (Number(product.shipping) || 0) : 0;
+
+  if (sp > 0 && cost >= 0 && dr > 0 && sp > cost) {
+    const margin = ((sp - cost) / sp) * dr;
+    if (margin > 0) return 1 / margin;
+  }
+  // Fallback: manually-entered value (legacy / when pricing isn't set yet)
+  return Math.max(0, Number(funnel.beroas) || 0);
+}
+
+/**
+ * Whether the auto-compute path produced the value (vs the manual fallback).
+ * Useful for showing a small "auto" badge in the UI.
+ */
+export function isBeroasAutoComputed(funnel: Funnel, product?: ProductTrackerEntry | null): boolean {
+  const sp = Number(funnel.sellingPrice) || 0;
+  const dr = (Number(funnel.deliveryRate) || 0) / 100;
+  const cost = product ? (Number(product.cogs) || 0) + (Number(product.shipping) || 0) : 0;
+  return sp > 0 && dr > 0 && sp > cost;
+}
 
 /**
  * A funnel is "winning" when its ROAS is at least BEROAS + 1.
