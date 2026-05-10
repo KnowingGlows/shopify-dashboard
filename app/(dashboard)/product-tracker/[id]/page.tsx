@@ -94,8 +94,12 @@ export default function ProductDetailPage() {
       setProduct(p);
       setFx(fxRes ?? null);
 
+      // Match by productId first (the FK). Fall back to productName for legacy funnels.
       const allFunnels: Funnel[] = funnelsRes.funnels ?? [];
-      const myFunnels = allFunnels.filter((f) => f.productName === p.productName);
+      const myFunnels = allFunnels.filter((f) => {
+        if (f.productId) return f.productId === p.id;
+        return f.productName === p.productName;
+      });
       setFunnels(myFunnels);
 
       const allCreatives: Creative[] = creativesRes.creatives ?? [];

@@ -17,6 +17,7 @@ async function getSession() {
 
 function sanitizeFunnel(input: Record<string, unknown>, base?: Partial<Funnel>): Partial<Funnel> {
   const out: Partial<Funnel> = { ...base };
+  if ('productId' in input) out.productId = String(input.productId ?? '').trim();
   if ('productName' in input) out.productName = String(input.productName ?? '').trim();
   if ('country' in input) out.country = String(input.country ?? '').trim();
   if ('language' in input) out.language = String(input.language ?? '').trim();
@@ -52,6 +53,7 @@ export async function GET(request: Request) {
         const data = doc.data();
         return {
           id: data.id ?? doc.id,
+          productId: data.productId ?? '',
           productName: data.productName ?? '',
           country: data.country ?? '',
           language: data.language ?? '',
@@ -91,6 +93,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const sanitized = sanitizeFunnel(body);
 
+    if (!sanitized.productId) return NextResponse.json({ error: 'productId is required — pick a product from the tracker.' }, { status: 400 });
     if (!sanitized.productName) return NextResponse.json({ error: 'Product name is required.' }, { status: 400 });
     if (!sanitized.country) return NextResponse.json({ error: 'Country is required.' }, { status: 400 });
     if (!sanitized.language) return NextResponse.json({ error: 'Language is required.' }, { status: 400 });
@@ -98,6 +101,7 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
     const entry: Funnel = {
       id: crypto.randomUUID(),
+      productId: sanitized.productId,
       productName: sanitized.productName,
       country: sanitized.country,
       language: sanitized.language,

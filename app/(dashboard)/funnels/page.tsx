@@ -46,7 +46,7 @@ function useCountUp(value: number, duration = 600) {
   // wherever we are *now*, not from the last target. Prevents visible jumps
   // when value changes mid-animation (filter swaps, refreshes, etc.).
   const displayRef = useRef(0);
-  displayRef.current = display;
+  useEffect(() => { displayRef.current = display; });
   useEffect(() => {
     const from = displayRef.current;
     const to = Number.isFinite(value) ? value : 0;
@@ -111,12 +111,18 @@ export default function FunnelsPage() {
     }
   };
 
-  // Resolve productName → productId for the "View product" link.
+  // Resolve a funnel's product id. New funnels carry productId directly;
+  // legacy funnels only have productName, so we fall back to a name lookup.
   const productIdByName = useMemo(() => {
     const m = new Map<string, string>();
     products.forEach((p) => { if (p.productName) m.set(p.productName, p.id); });
     return m;
   }, [products]);
+  const productIds = useMemo(() => new Set(products.map((p) => p.id)), [products]);
+  const resolveProductId = (f: Funnel): string | undefined => {
+    if (f.productId && productIds.has(f.productId)) return f.productId;
+    return productIdByName.get(f.productName);
+  };
 
   const refreshLogs = async (funnelId: string) => {
     try {
@@ -391,6 +397,7 @@ export default function FunnelsPage() {
             const agg = aggregateLogs(logs);
             const winning = isWinning(agg.latestRoas, f.beroas);
             const tone = TONE[STATUS_OPTIONS.find((s) => s.value === f.status)?.tone ?? 'gray'];
+            const linked = !!resolveProductId(f);
             return (
               <FunnelCard
                 key={f.id}
@@ -400,6 +407,7 @@ export default function FunnelsPage() {
                 totalOrders={agg.totalOrders}
                 winning={winning}
                 tone={tone}
+                linked={linked}
                 index={i}
                 onOpen={() => setOpenFunnelId(f.id)}
               />
@@ -418,6 +426,7 @@ export default function FunnelsPage() {
       {/* Add funnel modal */}
       {showAddModal && (
         <AddFunnelModal
+          products={products}
           onClose={() => setShowAddModal(false)}
           onSubmit={handleAddFunnel}
         />
@@ -427,7 +436,8 @@ export default function FunnelsPage() {
       <FunnelDrawer
         funnel={openFunnel}
         logs={openFunnel ? logsByFunnel[openFunnel.id] ?? [] : []}
-        productId={openFunnel ? productIdByName.get(openFunnel.productName) : undefined}
+        productId={openFunnel ? resolveProductId(openFunnel) : undefined}
+        products={products}
         onClose={() => setOpenFunnelId(null)}
         onUpdate={(patch) => openFunnel && updateFunnel(openFunnel.id, patch)}
         onDelete={() => openFunnel && deleteFunnel(openFunnel.id)}
@@ -490,7 +500,7 @@ function FilterPill({ label, count, active, onClick, tone = 'gray' }: {
 // ── Funnel card ────────────────────────────────────────────────────────────
 
 function FunnelCard({
-  funnel: f, latestRoas, lastLogDate, totalOrders, winning, tone, index, onOpen,
+  funnel: f, latestRoas, lastLogDate, totalOrders, winning, tone, linked, index, onOpen,
 }: {
   funnel: Funnel;
   latestRoas: number;
@@ -498,6 +508,7 @@ function FunnelCard({
   totalOrders: number;
   winning: boolean;
   tone: { text: string; bg: string; border: string; bar: string; dot: string };
+  linked: boolean;
   index: number;
   onOpen: () => void;
 }) {
@@ -516,7 +527,14 @@ function FunnelCard({
 
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-foreground">{f.productName}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-[13px] font-semibold text-foreground">{f.productName}</p>
+            {!linked && (
+              <span title="Not linked to a product — open to fix" className="shrink-0">
+                <AlertTriangle className="h-3 w-3 text-amber-400" />
+              </span>
+            )}
+          </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {f.country} · {f.language}
           </p>
@@ -562,11 +580,12 @@ function FunnelCard({
 // ── Funnel detail drawer ────────────────────────────────────────────────────
 
 function FunnelDrawer({
-  funnel, logs, productId, onClose, onUpdate, onDelete, onLogsChanged,
+  funnel, logs, productId, products, onClose, onUpdate, onDelete, onLogsChanged,
 }: {
   funnel: Funnel | null;
   logs: FunnelDailyLog[];
   productId: string | undefined;
+  products: ProductTrackerEntry[];
   onClose: () => void;
   onUpdate: (patch: Partial<Funnel>) => void;
   onDelete: () => void;
@@ -592,6 +611,7 @@ function FunnelDrawer({
               funnel={funnel}
               logs={logs}
               productId={productId}
+              products={products}
               onClose={onClose}
               onUpdate={onUpdate}
               onDelete={onDelete}
@@ -605,11 +625,12 @@ function FunnelDrawer({
 }
 
 function FunnelDrawerContent({
-  funnel: f, logs, productId, onClose, onUpdate, onDelete, onLogsChanged,
+  funnel: f, logs, productId, products, onClose, onUpdate, onDelete, onLogsChanged,
 }: {
   funnel: Funnel;
   logs: FunnelDailyLog[];
   productId: string | undefined;
+  products: ProductTrackerEntry[];
   onClose: () => void;
   onUpdate: (patch: Partial<Funnel>) => void;
   onDelete: () => void;
@@ -726,6 +747,15 @@ function FunnelDrawerContent({
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         <div className="space-y-4 px-5 py-4">
+          {/* Product link warning — surfaces unlinked legacy funnels */}
+          {!productId && (
+            <ProductLinkChip
+              currentName={f.productName}
+              products={products}
+              onLink={(p) => onUpdate({ productId: p.id, productName: p.productName })}
+            />
+          )}
+
           {/* Performance summary */}
           <div className="grid grid-cols-3 gap-2">
             <PerfCell
@@ -845,10 +875,102 @@ function FunnelDrawerContent({
   );
 }
 
-function FormCell({ label, children }: { label: string; children: React.ReactNode }) {
+// Surfaces in the drawer when a funnel has no productId. Lets the user
+// pick the right product manually so we never silently mis-match.
+function ProductLinkChip({
+  currentName, products, onLink,
+}: {
+  currentName: string;
+  products: ProductTrackerEntry[];
+  onLink: (p: ProductTrackerEntry) => void;
+}) {
+  // Suggest products whose name shares any token with the funnel's productName.
+  const suggested = useMemo(() => {
+    const tokens = currentName.toLowerCase().split(/[\s\-_]+/).filter((t) => t.length > 2);
+    if (tokens.length === 0) return [];
+    return products
+      .map((p) => {
+        const name = p.productName.toLowerCase();
+        const score = tokens.reduce((s, t) => s + (name.includes(t) ? 1 : 0), 0);
+        return { p, score };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((x) => x.p);
+  }, [currentName, products]);
+
+  const [picking, setPicking] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>('');
+
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] font-medium text-amber-300">Not linked to a product</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            This funnel was created before product linking. Pick the matching product so it shows up on the dossier.
+          </p>
+
+          {suggested.length > 0 && !picking && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Suggested:</span>
+              {suggested.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => onLink(p)}
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 transition hover:bg-emerald-500/20"
+                >
+                  <Check className="h-3 w-3" /> {p.productName}
+                </button>
+              ))}
+              <button
+                onClick={() => setPicking(true)}
+                className="text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                Or pick another →
+              </button>
+            </div>
+          )}
+
+          {(picking || suggested.length === 0) && (
+            <div className="mt-2 flex items-center gap-2">
+              <select
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                className="form-input flex-1 py-1 text-[11px]"
+              >
+                <option value="">Choose a product…</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>{p.productName || '(unnamed)'}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => {
+                  const p = products.find((x) => x.id === selectedId);
+                  if (p) onLink(p);
+                }}
+                disabled={!selectedId}
+                className="inline-flex items-center gap-1 rounded-md bg-primary/15 px-3 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
+              >
+                <Check className="h-3 w-3" /> Link
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FormCell({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</label>
+      <label className="text-[9px] uppercase tracking-wider text-muted-foreground">
+        {label}
+        {hint && <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/60">{hint}</span>}
+      </label>
       {children}
     </div>
   );
@@ -1070,6 +1192,7 @@ function RankingTable({
 // ── Add Funnel modal ────────────────────────────────────────────────────────
 
 type NewFunnelInput = {
+  productId: string;
   productName: string;
   country: string;
   language: string;
@@ -1081,13 +1204,15 @@ type NewFunnelInput = {
 };
 
 function AddFunnelModal({
+  products,
   onClose,
   onSubmit,
 }: {
+  products: ProductTrackerEntry[];
   onClose: () => void;
   onSubmit: (input: NewFunnelInput) => Promise<void>;
 }) {
-  const [productName, setProductName] = useState('');
+  const [productId, setProductId] = useState<string>(products[0]?.id ?? '');
   const [country, setCountry] = useState('Ireland');
   const [language, setLanguage] = useState('English');
   const [funnelishUrl, setFunnelishUrl] = useState('');
@@ -1106,15 +1231,18 @@ function AddFunnelModal({
   const beroasNum = parseFloat(beroas) || 0;
   const winThreshold = beroasNum > 0 ? beroasNum + 1 : 0;
 
+  const selectedProduct = products.find((p) => p.id === productId);
+
   const submit = async () => {
-    if (!productName.trim()) { setErr('Product name is required.'); return; }
+    if (!productId || !selectedProduct) { setErr('Pick a product from the tracker.'); return; }
     if (!country) { setErr('Country is required.'); return; }
     if (!language) { setErr('Language is required.'); return; }
     setErr(null);
     setSaving(true);
     try {
       await onSubmit({
-        productName: productName.trim(),
+        productId,
+        productName: selectedProduct.productName,
         country,
         language,
         funnelishUrl: funnelishUrl.trim(),
@@ -1151,9 +1279,63 @@ function AddFunnelModal({
         </div>
 
         <div className="p-5 space-y-3 max-h-[80vh] overflow-y-auto">
-          <FormCell label="Product name">
-            <input value={productName} onChange={(e) => setProductName(e.target.value)} className="form-input" placeholder="e.g. EMS Booty Trainer" autoFocus />
-          </FormCell>
+          {products.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-amber-500/30 bg-amber-500/5 p-4 text-center">
+              <p className="text-[12px] font-medium text-foreground">No products in your tracker yet</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Funnels must link to a product. Create one first, then come back.
+              </p>
+              <Link
+                href="/product-tracker"
+                className="mt-3 inline-flex items-center gap-1 rounded-md bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/25"
+              >
+                Open Products page <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          ) : (
+            <FormCell label="Product" hint="from your Products tracker">
+              <select
+                value={productId}
+                onChange={(e) => setProductId(e.target.value)}
+                className="form-input"
+                autoFocus
+              >
+                {(() => {
+                  // Group products by stage so winners surface first.
+                  const byStage = new Map<string, ProductTrackerEntry[]>();
+                  products.forEach((p) => {
+                    const k = p.productStage || '(no stage)';
+                    if (!byStage.has(k)) byStage.set(k, []);
+                    byStage.get(k)!.push(p);
+                  });
+                  // Order: winners → testing ads → testing store page → research → other
+                  const stageOrder = [
+                    'Winner - Moved To OPS',
+                    'Testing Ads',
+                    'Testing Store Page Done',
+                    'Research Phase',
+                    'Dropped',
+                    '(no stage)',
+                  ];
+                  return stageOrder
+                    .filter((s) => byStage.has(s))
+                    .map((s) => (
+                      <optgroup key={s} label={s}>
+                        {byStage.get(s)!.map((p) => (
+                          <option key={p.id} value={p.id}>{p.productName || '(unnamed)'}</option>
+                        ))}
+                      </optgroup>
+                    ));
+                })()}
+              </select>
+              <Link
+                href="/product-tracker"
+                className="mt-1 inline-flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80"
+              >
+                Manage products <ArrowRight className="h-3 w-3" />
+              </Link>
+            </FormCell>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <FormCell label="Country">
@@ -1229,7 +1411,7 @@ function AddFunnelModal({
           </button>
           <button
             onClick={submit}
-            disabled={saving}
+            disabled={saving || products.length === 0}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-4 py-1.5 text-[12px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}

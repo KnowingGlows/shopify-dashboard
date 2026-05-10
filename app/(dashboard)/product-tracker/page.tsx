@@ -9,6 +9,7 @@ import {
   Target, Trophy, TrendingUp, Calendar, ArrowRight,
 } from 'lucide-react';
 import { ProductTrackerEntry } from '@/types/shopify';
+import type { Funnel } from '@/types/funnel';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 import { LinkChip } from '@/components/link-chip';
 import { formatINR } from '@/lib/currency-converter';
@@ -32,8 +33,11 @@ const STAGE_CONFIG: Record<string, { color: string; bg: string; dot: string }> =
   'Dropped': { color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30', dot: 'bg-red-400' },
 };
 
+type TabKey = 'all' | 'active' | 'winners';
+
 export default function ProductTrackerPage() {
   const [entries, setEntries] = useState<ProductTrackerEntry[]>([]);
+  const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -52,11 +56,15 @@ export default function ProductTrackerPage() {
   const fetchEntries = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/product-tracker');
-      const data = await res.json();
-      setEntries(data.entries ?? []);
+      const [productsRes, funnelsRes] = await Promise.all([
+        fetch('/api/product-tracker').then((r) => r.json()),
+        fetch('/api/funnels').then((r) => r.json()),
+      ]);
+      setEntries(productsRes.entries ?? []);
+      setFunnels(funnelsRes.funnels ?? []);
     } catch {
       setEntries([]);
+      setFunnels([]);
     } finally {
       setLoading(false);
     }
@@ -168,15 +176,31 @@ export default function ProductTrackerPage() {
   // Total spent
   const totalSpent = useMemo(() => entries.reduce((s, e) => s + (e.totalSpent || 0), 0), [entries]);
 
-  // Winners toggle
-  const [showWinners, setShowWinners] = useState(false);
-  const winnerEntries = entries.filter((e) => e.productStage === 'Winner - Moved To OPS');
-  const activeEntries = entries.filter((e) => e.productStage !== 'Winner - Moved To OPS');
+  // Per-product funnel summary (counts) — drives the continuity chip on each row.
+  // Match by productId first, fall back to productName for legacy funnels.
+  const funnelSummaryByProduct = useMemo(() => {
+    const map = new Map<string, { total: number; live: number }>();
+    funnels.forEach((f) => {
+      const product = entries.find((e) => (f.productId && e.id === f.productId) || (!f.productId && e.productName === f.productName));
+      if (!product) return;
+      const cur = map.get(product.id) ?? { total: 0, live: 0 };
+      cur.total++;
+      if (f.status === 'live') cur.live++;
+      map.set(product.id, cur);
+    });
+    return map;
+  }, [funnels, entries]);
 
-  // Pagination (on active entries, not winners)
+  // Tab filter — All / Active / Winners
+  const [tab, setTab] = useState<TabKey>('active');
+  const ACTIVE_STAGES = ['Research Phase', 'Testing Store Page Done', 'Testing Ads', ''];
+  const winnerEntries = entries.filter((e) => e.productStage === 'Winner - Moved To OPS');
+  const activeEntries = entries.filter((e) => ACTIVE_STAGES.includes(e.productStage));
+
+  // Pagination
   const ITEMS_PER_PAGE = 10;
   const [page, setPage] = useState(1);
-  const displayEntries = showWinners ? winnerEntries : activeEntries;
+  const displayEntries = tab === 'winners' ? winnerEntries : tab === 'active' ? activeEntries : entries;
   const totalPages = Math.max(1, Math.ceil(displayEntries.length / ITEMS_PER_PAGE));
   const safePage = Math.min(page, totalPages);
   const paginatedEntries = displayEntries.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
@@ -253,18 +277,34 @@ export default function ProductTrackerPage() {
             <span className="text-muted-foreground">{count}</span>
           </div>
         ))}
-        <div className="ml-auto">
-          <button
-            onClick={() => { setShowWinners(!showWinners); setPage(1); }}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
-              showWinners
-                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                : 'border-border text-muted-foreground hover:text-foreground hover:border-border/80'
-            }`}
-          >
-            <Trophy className="h-3 w-3" />
-            {showWinners ? 'Show Active' : `Winners (${winnersCount})`}
-          </button>
+        <div className="ml-auto inline-flex items-center rounded-full border border-border bg-card p-0.5">
+          {([
+            { key: 'all',     label: 'All',     count: entries.length,           tone: '' },
+            { key: 'active',  label: 'Active',  count: activeEntries.length,     tone: '' },
+            { key: 'winners', label: 'Winners', count: winnerEntries.length,     tone: 'emerald' },
+          ] as Array<{ key: TabKey; label: string; count: number; tone: string }>).map((t) => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => { setTab(t.key); setPage(1); }}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                  active
+                    ? t.tone === 'emerald'
+                      ? 'bg-emerald-500/15 text-emerald-400'
+                      : 'bg-primary/15 text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t.key === 'winners' && <Trophy className="h-3 w-3" />}
+                {t.label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold tabular-nums ${active ? 'bg-black/20' : 'bg-border/50 text-foreground'}`}>
+                  {t.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -405,6 +445,25 @@ export default function ProductTrackerPage() {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      {/* Funnel continuity chip */}
+                      {(() => {
+                        const summary = funnelSummaryByProduct.get(entry.id);
+                        if (!summary || summary.total === 0) return null;
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-300"
+                            title={`${summary.total} funnel${summary.total === 1 ? '' : 's'} · ${summary.live} live`}
+                          >
+                            {summary.total} funnel{summary.total === 1 ? '' : 's'}
+                            {summary.live > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-emerald-400">
+                                <span className="h-1 w-1 rounded-full bg-emerald-400" /> {summary.live} live
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })()}
+
                       {/* Stage badge */}
                       {entry.productStage && (
                         <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${cfg.bg} ${cfg.color}`}>

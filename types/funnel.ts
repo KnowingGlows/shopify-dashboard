@@ -8,7 +8,9 @@ export type CreativeResult = 'inconclusive' | 'winner' | 'loser';
 
 export interface Funnel {
   id: string;
-  productName: string;          // free-text for now; will link to product tracker in Round 3
+  productId?: string;           // FK to ProductTrackerEntry — required for new funnels;
+                                // optional only to preserve legacy funnels created before linking
+  productName: string;          // denormalized for display + legacy fallback
   country: string;              // long form, e.g. "Netherlands"
   language: string;
   funnelishUrl: string;
