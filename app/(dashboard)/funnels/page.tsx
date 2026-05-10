@@ -781,6 +781,10 @@ function FunnelDrawerContent({
             />
           )}
 
+          {/* Per-market pricing editor — drives BEROAS auto-compute.
+              Keyed on funnel.id so input state resets when switching funnels. */}
+          <PricingEditor key={f.id} funnel={f} product={product} onSave={onUpdate} />
+
           {/* Performance summary */}
           <div className="grid grid-cols-3 gap-2">
             <PerfCell
@@ -898,6 +902,107 @@ function FunnelDrawerContent({
         </div>
       </div>
     </>
+  );
+}
+
+// Per-market pricing editor inside the drawer. Local state for live preview
+// of margin/BEROAS as the user types; saves on blur so values flow back into
+// the funnel's effectiveBeroas immediately.
+function PricingEditor({
+  funnel: f,
+  product,
+  onSave,
+}: {
+  funnel: Funnel;
+  product: ProductTrackerEntry | undefined;
+  onSave: (patch: Partial<Funnel>) => void;
+}) {
+  // Component is keyed on funnel.id by the parent, so this initial state
+  // is correct each time the user opens a different funnel.
+  const [editSP, setEditSP] = useState<string>(f.sellingPrice ? String(f.sellingPrice) : '');
+  const [editDR, setEditDR] = useState<string>(f.deliveryRate ? String(f.deliveryRate) : '95');
+  const [savedTick, setSavedTick] = useState(false);
+
+  const sp = parseFloat(editSP) || 0;
+  const dr = parseFloat(editDR) || 0;
+  const cost = product ? (Number(product.cogs) || 0) + (Number(product.shipping) || 0) : 0;
+  const margin = sp > 0 && sp > cost && dr > 0 ? ((sp - cost) / sp) * (dr / 100) : 0;
+  const beroas = margin > 0 ? 1 / margin : 0;
+  const winThreshold = beroas > 0 ? beroas + 1 : 0;
+
+  const flush = () => {
+    const nextSP = parseFloat(editSP) || 0;
+    const nextDR = parseFloat(editDR) || 0;
+    const changed = nextSP !== (f.sellingPrice || 0) || nextDR !== (f.deliveryRate || 0);
+    if (!changed) return;
+    onSave({ sellingPrice: nextSP, deliveryRate: nextDR });
+    setSavedTick(true);
+    setTimeout(() => setSavedTick(false), 1200);
+  };
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-primary/80">
+            Pricing for this market
+          </p>
+          {savedTick && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
+              <Check className="h-3 w-3" /> saved
+            </span>
+          )}
+        </div>
+        {!product ? (
+          <span className="text-[10px] text-amber-400">Link a product first</span>
+        ) : cost > 0 ? (
+          <span className="text-[10px] text-muted-foreground">Cost ${cost.toFixed(2)} from product</span>
+        ) : (
+          <span className="text-[10px] text-amber-400">Product has no cost — set COGS + shipping in Products</span>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <FormCell label="Selling price (USD)" hint="varies per market">
+          <input
+            type="number" min="0" step="0.01" inputMode="decimal"
+            value={editSP}
+            onChange={(e) => setEditSP(e.target.value)}
+            onBlur={flush}
+            className="form-input tabular-nums"
+            placeholder="0.00"
+          />
+        </FormCell>
+        <FormCell label="Delivery rate %">
+          <input
+            type="number" min="0" max="100" step="0.1" inputMode="decimal"
+            value={editDR}
+            onChange={(e) => setEditDR(e.target.value)}
+            onBlur={flush}
+            className="form-input tabular-nums"
+          />
+        </FormCell>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+        <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
+          <span className="text-muted-foreground">Margin: </span>
+          <span className="font-semibold tabular-nums text-foreground">
+            {(margin * 100).toFixed(1)}%
+          </span>
+        </div>
+        <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
+          <span className="text-muted-foreground">BEROAS: </span>
+          <span className="font-semibold tabular-nums text-primary">
+            {beroas > 0 ? `${beroas.toFixed(2)}x` : '—'}
+          </span>
+        </div>
+        <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
+          <span className="text-muted-foreground">Win at: </span>
+          <span className="font-semibold tabular-nums text-emerald-400">
+            {winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -95,22 +95,6 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
   const isAdmin = user && ADMIN_ROLES.includes(user.role);
   const perms = user?.permissions ?? [];
 
-  // Winner products surface as sub-items under "Products" — these are the
-  // ones the user actively monitors. One fetch per session, refreshed on
-  // pathname change so newly-marked winners appear quickly.
-  const [winnerProducts, setWinnerProducts] = useState<Array<{ id: string; productName: string }>>([]);
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/product-tracker').then((r) => r.json()).then((data) => {
-      if (cancelled) return;
-      const winners = (data.entries ?? [])
-        .filter((e: { productStage?: string }) => e.productStage === 'Winner - Moved To OPS')
-        .map((e: { id: string; productName: string }) => ({ id: e.id, productName: e.productName }));
-      setWinnerProducts(winners);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [activePath]);
-
   // Check if user has access to a given path
   const hasAccess = (href: string): boolean => {
     if (isAdmin) return true;
