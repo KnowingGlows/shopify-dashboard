@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
+import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { effectiveBeroas, isWinning } from '@/lib/funnels';
 import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
@@ -75,6 +76,7 @@ export default function WinnersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currency, setCurrency] = useState<SupportedCurrency>('USD');
+  const [filterDate, setFilterDate] = useState<string>('');
 
   useEffect(() => { loadAll(); }, []);
 
@@ -127,7 +129,8 @@ export default function WinnersPage() {
       let totalSpend = 0, totalRevenue = 0, totalProfit = 0;
       let lastActivity = '';
       const perFunnel: PerFunnelMetrics[] = myFunnels.map((f) => {
-        const logs = logsByFunnel[f.id] ?? [];
+        const allLogs = logsByFunnel[f.id] ?? [];
+        const logs = filterDate ? allLogs.filter((l) => l.date === filterDate) : allLogs;
         let spend = 0, revenue = 0, profit = 0, lastDate = '';
         for (const l of logs) {
           spend += Number(l.spend) || 0;
@@ -180,7 +183,7 @@ export default function WinnersPage() {
         lastActivity,
       };
     }).sort((a, b) => b.totalSpend - a.totalSpend);
-  }, [products, funnels, logsByFunnel]);
+  }, [products, funnels, logsByFunnel, filterDate]);
 
   // Grand totals across all winners
   const grand = useMemo(() => {
@@ -242,23 +245,22 @@ export default function WinnersPage() {
         </div>
       </div>
 
-      {/* Grand-total KPIs */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4"
-      >
-        <KpiTile label="Active funnels" value={Math.round(animatedActive).toLocaleString('en-IN')} accent="emerald" hint={`of ${grand.totalFunnels}`} />
-        <KpiTile label="Total spend"   value={fmt(animatedSpend)}  accent="amber" />
+      {/* Date filter */}
+      <DateFilterStrip filterDate={filterDate} onChange={setFilterDate} />
+
+      {/* Grand-total KPIs — modern card-style instead of rigid grid-px */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiTile label="Active funnels" value={Math.round(animatedActive).toLocaleString('en-IN')} accent="emerald" hint={`of ${grand.totalFunnels}`} delay={0} />
+        <KpiTile label="Total spend"   value={fmt(animatedSpend)}  accent="amber" delay={0.05} />
         <KpiTile
           label="Total profit"
           value={fmt(animatedProfit)}
           accent={grand.profit < 0 ? 'rose' : 'emerald'}
           hint={grand.revenue > 0 ? `${grand.profitMargin.toFixed(1)}% margin` : undefined}
+          delay={0.1}
         />
-        <KpiTile label="Blended ROAS" value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="violet" />
-      </motion.div>
+        <KpiTile label="Blended ROAS" value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="violet" delay={0.15} />
+      </div>
 
       {/* Error */}
       {error && (
@@ -498,24 +500,93 @@ function FunnelBars({ perFunnel }: { perFunnel: PerFunnelMetrics[] }) {
 
 // ── Top-level KPI tile ───────────────────────────────────────────────────────
 
-function KpiTile({ label, value, hint, accent }: {
+function KpiTile({ label, value, hint, accent, delay = 0 }: {
   label: string;
   value: string;
   hint?: string;
   accent: 'amber' | 'sky' | 'emerald' | 'violet' | 'rose';
+  delay?: number;
 }) {
-  const map = {
+  const text = {
     amber:   'text-amber-400',
     sky:     'text-sky-400',
     emerald: 'text-emerald-400',
     violet:  'text-violet-400',
     rose:    'text-rose-400',
-  };
+  }[accent];
+  const border = {
+    amber:   'border-amber-500/30',
+    sky:     'border-sky-500/30',
+    emerald: 'border-emerald-500/30',
+    violet:  'border-violet-500/30',
+    rose:    'border-rose-500/30',
+  }[accent];
+  const glow = {
+    amber:   '#fbbf24',
+    sky:     '#38bdf8',
+    emerald: '#34d399',
+    violet:  '#a78bfa',
+    rose:    '#fb7185',
+  }[accent];
   return (
-    <div className="bg-card px-4 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-      <p className={cn('mt-1 text-[20px] font-semibold leading-none tabular-nums tracking-tight', map[accent])}>{value}</p>
-      {hint && <p className="mt-1 text-[10px] text-muted-foreground/70">{hint}</p>}
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3, boxShadow: `0 14px 40px -16px ${glow}55, 0 0 0 1px ${glow}33` }}
+      transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={cn('group relative overflow-hidden rounded-xl border bg-card p-4 transition-colors', border)}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-30 blur-2xl transition-opacity duration-500 group-hover:opacity-80"
+        style={{ background: `radial-gradient(circle, ${glow}66, transparent 70%)` }}
+        aria-hidden
+      />
+      <div className="relative z-10 flex items-center justify-between">
+        <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: glow }} aria-hidden />
+      </div>
+      <p className={cn('relative z-10 mt-2 text-[24px] font-semibold leading-none tabular-nums tracking-tight', text)}>{value}</p>
+      {hint && <p className="relative z-10 mt-1.5 text-[10px] text-muted-foreground/70">{hint}</p>}
+    </motion.div>
+  );
+}
+
+function DateFilterStrip({ filterDate, onChange }: { filterDate: string; onChange: (d: string) => void }) {
+  // Compute once per mount — stable for the user's session.
+  const { today, yest } = useMemo(() => {
+    const now = new Date();
+    const fmtIST = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+    return { today: fmtIST(now), yest: fmtIST(new Date(now.getTime() - 86_400_000)) };
+  }, []);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35 }}
+      className="flex flex-wrap items-center gap-2"
+    >
+      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Performance for</p>
+      <FilterChip active={filterDate === ''} onClick={() => onChange('')}>All time</FilterChip>
+      <FilterChip active={filterDate === today} onClick={() => onChange(today)}>Today</FilterChip>
+      <FilterChip active={filterDate === yest} onClick={() => onChange(yest)}>Yesterday</FilterChip>
+      <DatePicker value={filterDate} onChange={onChange} placeholder="Pick a day" compact />
+      {filterDate && (
+        <span className="text-[10px] text-emerald-400">Viewing {filterDate} only</span>
+      )}
+    </motion.div>
+  );
+}
+
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium transition',
+        active ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {children}
+    </button>
   );
 }

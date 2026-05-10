@@ -209,7 +209,7 @@ export default function AdsInternationalPage() {
             <Globe className="h-4 w-4" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Ads — International</h1>
+            <h1 className="text-lg font-semibold text-foreground">Ads</h1>
             <p className="text-[11px] text-muted-foreground">
               Creative inventory across funnels · {summary.live} live · {summary.testing} testing
             </p>
@@ -226,18 +226,13 @@ export default function AdsInternationalPage() {
         </button>
       </div>
 
-      {/* KPI strip */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4"
-      >
-        <StatCell label="Total creatives" value={summary.total.toLocaleString('en-IN')} accent="violet" />
-        <StatCell label="Live" value={summary.live.toLocaleString('en-IN')} accent="emerald" />
-        <StatCell label="Winners" value={summary.winners.toLocaleString('en-IN')} hint="Manually flagged" accent="sky" />
-        <StatCell label="Hit rate" value={`${summary.hitRate.toFixed(0)}%`} hint="winners / decided" accent="amber" />
-      </motion.div>
+      {/* KPI tiles — modern card style with hover glow */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCell label="Total creatives" value={summary.total.toLocaleString('en-IN')}   accent="violet"  delay={0} />
+        <StatCell label="Live"            value={summary.live.toLocaleString('en-IN')}    accent="emerald" delay={0.05} />
+        <StatCell label="Winners"         value={summary.winners.toLocaleString('en-IN')} accent="sky"     hint="Manually flagged" delay={0.1} />
+        <StatCell label="Hit rate"        value={`${summary.hitRate.toFixed(0)}%`}        accent="amber"   hint="winners / decided" delay={0.15} />
+      </div>
 
       {/* Filter pills */}
       <div className="flex flex-wrap items-center gap-2">
@@ -498,22 +493,49 @@ export default function AdsInternationalPage() {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function StatCell({ label, value, hint, accent }: {
+function StatCell({ label, value, hint, accent, delay = 0 }: {
   label: string; value: string; hint?: string;
   accent: 'emerald' | 'amber' | 'sky' | 'violet';
+  delay?: number;
 }) {
-  const map = {
+  const text = {
     emerald: 'text-emerald-400',
     amber:   'text-amber-400',
     sky:     'text-sky-400',
     violet:  'text-violet-400',
-  };
+  }[accent];
+  const border = {
+    emerald: 'border-emerald-500/30',
+    amber:   'border-amber-500/30',
+    sky:     'border-sky-500/30',
+    violet:  'border-violet-500/30',
+  }[accent];
+  const glow = {
+    emerald: '#34d399',
+    amber:   '#fbbf24',
+    sky:     '#38bdf8',
+    violet:  '#a78bfa',
+  }[accent];
   return (
-    <div className="bg-card px-4 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-      <p className={cn('mt-1 text-[20px] font-semibold leading-none tabular-nums tracking-tight', map[accent])}>{value}</p>
-      {hint && <p className="mt-1 text-[10px] text-muted-foreground/70">{hint}</p>}
-    </div>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3, boxShadow: `0 14px 40px -16px ${glow}55, 0 0 0 1px ${glow}33` }}
+      transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={cn('group relative overflow-hidden rounded-xl border bg-card p-4 transition-colors', border)}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-30 blur-2xl transition-opacity duration-500 group-hover:opacity-80"
+        style={{ background: `radial-gradient(circle, ${glow}66, transparent 70%)` }}
+        aria-hidden
+      />
+      <div className="relative z-10 flex items-center justify-between">
+        <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: glow }} aria-hidden />
+      </div>
+      <p className={cn('relative z-10 mt-2 text-[24px] font-semibold leading-none tabular-nums tracking-tight', text)}>{value}</p>
+      {hint && <p className="relative z-10 mt-1.5 text-[10px] text-muted-foreground/70">{hint}</p>}
+    </motion.div>
   );
 }
 

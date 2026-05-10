@@ -6,10 +6,11 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   Package, ArrowLeft, ExternalLink, Loader2, AlertTriangle,
-  Globe, Funnel as FunnelIcon, Wallet,
+  Globe, Funnel as FunnelIcon, Wallet, Pencil, Check, Trophy,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
+import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { isWinning, effectiveBeroas } from '@/lib/funnels';
 import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
@@ -28,6 +29,25 @@ const STATUS_TONE: Record<FunnelStatus, { text: string; bg: string; border: stri
   draft:   { text: 'text-muted-foreground', bg: 'bg-border/40', border: 'border-border', dot: 'bg-muted-foreground' },
   killed:  { text: 'text-rose-400',    bg: 'bg-rose-500/10',    border: 'border-rose-500/30',    dot: 'bg-rose-400' },
 };
+
+const PRODUCT_STAGES = [
+  '',
+  'Research Phase',
+  'Testing Store Page Done',
+  'Testing Ads',
+  'Winner - Moved To OPS',
+  'Dropped',
+];
+
+const STAGE_CONFIG: Record<string, { color: string; bg: string; border: string; dot: string; gradient: string }> = {
+  'Research Phase':         { color: 'text-violet-400',  bg: 'bg-violet-500/10',  border: 'border-violet-500/30',  dot: 'bg-violet-400',  gradient: 'from-violet-500/40 via-violet-400/60 to-violet-500/40' },
+  'Testing Store Page Done':{ color: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30',    dot: 'bg-blue-400',    gradient: 'from-blue-500/40 via-blue-400/60 to-blue-500/40' },
+  'Testing Ads':            { color: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/30',   dot: 'bg-amber-400',   gradient: 'from-amber-500/40 via-amber-400/60 to-amber-500/40' },
+  'Winner - Moved To OPS':  { color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', dot: 'bg-emerald-400', gradient: 'from-emerald-500/50 via-emerald-400/70 to-emerald-500/50' },
+  'Dropped':                { color: 'text-rose-400',    bg: 'bg-rose-500/10',    border: 'border-rose-500/30',    dot: 'bg-rose-400',    gradient: 'from-rose-500/40 via-rose-400/60 to-rose-500/40' },
+};
+
+const STAGE_FALLBACK = { color: 'text-muted-foreground', bg: 'bg-border/40', border: 'border-border', dot: 'bg-muted-foreground', gradient: 'from-muted-foreground/30 via-muted-foreground/40 to-muted-foreground/30' };
 
 const RESULT_TONE: Record<CreativeResult, { text: string; bg: string; border: string }> = {
   winner:       { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
@@ -69,8 +89,32 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currency, setCurrency] = useState<SupportedCurrency>('USD');
+  // Date filter: '' = all-time, otherwise YYYY-MM-DD limits all log aggregation to that date
+  const [filterDate, setFilterDate] = useState<string>('');
+  // Inline-edit state for the product fields
+  const [editingName, setEditingName] = useState(false);
+  const [savedField, setSavedField] = useState<string | null>(null);
 
   useEffect(() => { if (id) loadAll(); }, [id]);
+
+  // Field save — patches the product on the server, optimistic local update,
+  // flashes a green tick on the field that just saved.
+  const saveProductField = async <K extends keyof ProductTrackerEntry>(field: K, value: ProductTrackerEntry[K]) => {
+    if (!product) return;
+    if (product[field] === value) return;
+    setProduct({ ...product, [field]: value });
+    try {
+      await fetch('/api/product-tracker', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: product.id, [field]: value }),
+      });
+      setSavedField(field as string);
+      setTimeout(() => setSavedField((cur) => (cur === field ? null : cur)), 1200);
+    } catch {
+      setError('Failed to save change.');
+    }
+  };
 
   const loadAll = async () => {
     if (!id) return;
@@ -122,10 +166,11 @@ export default function ProductDetailPage() {
   const rates: UsdRates = fx?.rates ?? { USD: 1, EUR: 0.92, INR: 83.5 };
   const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
 
-  // Aggregates per funnel
+  // Aggregates per funnel — honors filterDate (single-day view when set)
   const funnelAggs = useMemo(() => {
     return funnels.map((f) => {
-      const logs = logsByFunnel[f.id] ?? [];
+      const allLogs = logsByFunnel[f.id] ?? [];
+      const logs = filterDate ? allLogs.filter((l) => l.date === filterDate) : allLogs;
       let spend = 0, revenue = 0, profit = 0;
       let lastLogDate = '';
       let latestRoas = 0;
@@ -140,7 +185,7 @@ export default function ProductDetailPage() {
       const blendedRoas = spend > 0 ? revenue / spend : 0;
       return { funnel: f, spend, revenue, profit, blendedRoas, latestRoas, lastLogDate, daysLogged: logs.length };
     });
-  }, [funnels, logsByFunnel]);
+  }, [funnels, logsByFunnel, filterDate]);
 
   // Blended product totals
   const totals = useMemo(() => {
@@ -176,6 +221,13 @@ export default function ProductDetailPage() {
   const liveCount = funnels.filter((f) => f.status === 'live').length;
   const totalCost = (product?.cogs ?? 0) + (product?.shipping ?? 0);
 
+  // IST today/yesterday for the date filter — computed once per mount
+  const dateChips = useMemo(() => {
+    const now = new Date();
+    const fmt = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+    return { today: fmt(now), yest: fmt(new Date(now.getTime() - 86_400_000)) };
+  }, []);
+
   if (loading) {
     return (
       <PageTransition className="mx-auto max-w-7xl p-5 space-y-4">
@@ -207,59 +259,211 @@ export default function ProductDetailPage() {
         <ArrowLeft className="h-3 w-3" /> Back to products
       </Link>
 
-      {/* Hero */}
+      {/* Hero — gradient border, inline-editable */}
+      {(() => {
+        const stageCfg = STAGE_CONFIG[product.productStage] ?? STAGE_FALLBACK;
+        const isWinner = product.productStage === 'Winner - Moved To OPS';
+        return (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="group relative overflow-hidden rounded-2xl border border-border bg-card"
+          >
+            {/* Animated gradient top accent — colored by stage */}
+            <div className={cn('absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r', stageCfg.gradient)} aria-hidden />
+            {/* Ambient corner glow */}
+            <div
+              className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full opacity-25 blur-3xl transition-opacity duration-700 group-hover:opacity-50"
+              style={{ background: isWinner ? 'radial-gradient(circle, #34d39966, transparent 70%)' : 'radial-gradient(circle, #a78bfa55, transparent 70%)' }}
+              aria-hidden
+            />
+
+            <div className="relative z-10 p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-start gap-4 min-w-0 flex-1">
+                  <div className={cn(
+                    'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl shadow-lg',
+                    isWinner ? 'bg-emerald-500/15 text-emerald-400 shadow-emerald-500/20' : 'bg-primary/15 text-primary shadow-primary/10'
+                  )}>
+                    {isWinner ? <Trophy className="h-5 w-5" /> : <Package className="h-5 w-5" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    {/* Editable name */}
+                    {editingName ? (
+                      <input
+                        autoFocus
+                        defaultValue={product.productName}
+                        onBlur={(e) => { saveProductField('productName', e.target.value); setEditingName(false); }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { saveProductField('productName', e.currentTarget.value); setEditingName(false); }
+                          if (e.key === 'Escape') setEditingName(false);
+                        }}
+                        className="w-full bg-transparent text-2xl font-semibold tracking-tight text-foreground outline-none border-b border-primary/40"
+                      />
+                    ) : (
+                      <h1
+                        onClick={() => setEditingName(true)}
+                        className="group/title inline-flex cursor-text items-center gap-2 text-2xl font-semibold tracking-tight text-foreground"
+                      >
+                        <span>{product.productName || 'Unnamed product'}</span>
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground/30 opacity-0 transition group-hover/title:opacity-100" />
+                        {savedField === 'productName' && <Check className="h-3.5 w-3.5 text-emerald-400" />}
+                      </h1>
+                    )}
+
+                    {/* Stage + File */}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <select
+                        value={product.productStage}
+                        onChange={(e) => saveProductField('productStage', e.target.value)}
+                        className={cn(
+                          'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold cursor-pointer outline-none transition appearance-none pr-6 bg-no-repeat',
+                          stageCfg.bg, stageCfg.border, stageCfg.color
+                        )}
+                        style={{
+                          backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+                          backgroundPosition: 'right 6px center',
+                        }}
+                      >
+                        {PRODUCT_STAGES.map((s) => (
+                          <option key={s} value={s} className="bg-card text-foreground">{s || 'Select stage…'}</option>
+                        ))}
+                      </select>
+
+                      {product.productFileLink ? (
+                        <a
+                          href={product.productFileLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition hover:text-primary hover:border-primary/30"
+                        >
+                          <ExternalLink className="h-3 w-3" /> File
+                        </a>
+                      ) : null}
+                      {savedField === 'productStage' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
+                          <Check className="h-3 w-3" /> saved
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Editable file link + remarks (compact inline) */}
+                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <InlineField
+                        label="File link"
+                        value={product.productFileLink}
+                        placeholder="https://…"
+                        saved={savedField === 'productFileLink'}
+                        onSave={(v) => saveProductField('productFileLink', v)}
+                      />
+                      <InlineField
+                        label="Remarks"
+                        value={product.remarks}
+                        placeholder="Notes about this product…"
+                        saved={savedField === 'remarks'}
+                        onSave={(v) => saveProductField('remarks', v)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Currency toggle */}
+                <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
+                  {(['USD', 'EUR', 'INR'] as const).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCurrency(c)}
+                      className={cn(
+                        'rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors',
+                        currency === c ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Editable cost grid */}
+              <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <EditableMoneyCell
+                  label="COGS / unit"
+                  hint="supplier cost"
+                  value={product.cogs}
+                  saved={savedField === 'cogs'}
+                  onSave={(v) => saveProductField('cogs', v)}
+                  fmt={fmt}
+                  tone="violet"
+                />
+                <EditableMoneyCell
+                  label="Shipping / unit"
+                  hint="per-unit shipping"
+                  value={product.shipping}
+                  saved={savedField === 'shipping'}
+                  onSave={(v) => saveProductField('shipping', v)}
+                  fmt={fmt}
+                  tone="sky"
+                />
+                <ReadOnlyCell
+                  label="Total cost / unit"
+                  value={totalCost > 0 ? fmt(totalCost) : '—'}
+                  tone={totalCost > 0 ? 'amber' : 'neutral'}
+                  hint="cogs + shipping"
+                />
+                <ReadOnlyCell
+                  label="Funnels"
+                  value={`${liveCount} live · ${funnels.length} total`}
+                  tone={liveCount > 0 ? 'emerald' : 'neutral'}
+                />
+              </div>
+            </div>
+          </motion.div>
+        );
+      })()}
+
+      {/* Date filter — defaults to all-time, single-day view when set */}
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="rounded-xl border border-border bg-card p-5"
+        transition={{ duration: 0.35, delay: 0.04 }}
+        className="flex flex-wrap items-center gap-2"
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-              <Package className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-foreground">{product.productName || 'Unnamed product'}</h1>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                {product.productStage || 'No stage'}
-                {product.productFileLink && (
-                  <>
-                    {' · '}
-                    <a href={product.productFileLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:text-primary/80">
-                      <ExternalLink className="h-3 w-3" /> File
-                    </a>
-                  </>
-                )}
-              </p>
-              {product.remarks && <p className="mt-1.5 text-[12px] text-muted-foreground/80">{product.remarks}</p>}
-            </div>
-          </div>
-
-          <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
-            {(['USD', 'EUR', 'INR'] as const).map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCurrency(c)}
-                className={cn(
-                  'rounded-[5px] px-2.5 py-1 text-[11px] font-medium transition-colors',
-                  currency === c ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Cost + economics */}
-        <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
-          <Cell label="COGS / unit"     value={product.cogs > 0 ? fmt(product.cogs) : '—'} />
-          <Cell label="Shipping / unit" value={product.shipping > 0 ? fmt(product.shipping) : '—'} />
-          <Cell label="Total cost / unit" value={totalCost > 0 ? fmt(totalCost) : '—'} accent={totalCost > 0 ? 'amber' : undefined} />
-          <Cell label="Funnels"         value={`${liveCount} live · ${funnels.length} total`} />
-        </div>
+        <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Performance for</p>
+        <button
+          onClick={() => setFilterDate('')}
+          className={cn(
+            'inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium transition',
+            filterDate === '' ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+          )}
+        >
+          All time
+        </button>
+        <button
+          onClick={() => setFilterDate(dateChips.today)}
+          className={cn(
+            'inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium transition',
+            filterDate === dateChips.today ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+          )}
+        >
+          Today
+        </button>
+        <button
+          onClick={() => setFilterDate(dateChips.yest)}
+          className={cn(
+            'inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium transition',
+            filterDate === dateChips.yest ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+          )}
+        >
+          Yesterday
+        </button>
+        <DatePicker value={filterDate} onChange={(d) => setFilterDate(d)} placeholder="Pick a day" compact />
+        {filterDate && (
+          <span className="text-[10px] text-emerald-400">
+            Viewing {filterDate} only
+          </span>
+        )}
       </motion.div>
 
       {/* Performance KPIs */}
@@ -267,12 +471,12 @@ export default function ProductDetailPage() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.06 }}
-        className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4"
+        className="grid grid-cols-2 gap-3 md:grid-cols-4"
       >
-        <StatCell label="Total spend"   value={fmt(animatedSpend)} accent="amber" />
-        <StatCell label="Total profit"  value={fmt(animatedProfit)} accent={totals.profit < 0 ? 'rose' : 'emerald'} hint={totals.revenue > 0 ? `${totals.profitMargin.toFixed(1)}% margin` : undefined} />
-        <StatCell label="Blended ROAS"  value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="sky" />
-        <StatCell label="Funnel hit"    value={`${animatedFunnelHit.toFixed(0)}%`} hint={`${hitRates.creativeWinners} winning creatives`} accent="violet" />
+        <KpiTile label="Total spend"   value={fmt(animatedSpend)} accent="amber" />
+        <KpiTile label="Total profit"  value={fmt(animatedProfit)} accent={totals.profit < 0 ? 'rose' : 'emerald'} hint={totals.revenue > 0 ? `${totals.profitMargin.toFixed(1)}% margin` : undefined} />
+        <KpiTile label="Blended ROAS"  value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="sky" />
+        <KpiTile label="Funnel hit"    value={`${animatedFunnelHit.toFixed(0)}%`} hint={`${hitRates.creativeWinners} winning creatives`} accent="violet" />
       </motion.div>
 
       {/* Funnels for this product */}
@@ -455,32 +659,183 @@ export default function ProductDetailPage() {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function Cell({ label, value, accent }: { label: string; value: string; accent?: 'amber' | 'emerald' | 'rose' }) {
-  const map = { amber: 'text-amber-400', emerald: 'text-emerald-400', rose: 'text-rose-400' };
+const TONE_TEXT = {
+  amber:   'text-amber-400',
+  sky:     'text-sky-400',
+  emerald: 'text-emerald-400',
+  rose:    'text-rose-400',
+  violet:  'text-violet-400',
+  neutral: 'text-foreground',
+} as const;
+
+const TONE_GLOW = {
+  amber:   '#fbbf24',
+  sky:     '#38bdf8',
+  emerald: '#34d399',
+  rose:    '#fb7185',
+  violet:  '#a78bfa',
+  neutral: '#71717a',
+} as const;
+
+const TONE_BORDER = {
+  amber:   'border-amber-500/30',
+  sky:     'border-sky-500/30',
+  emerald: 'border-emerald-500/30',
+  rose:    'border-rose-500/30',
+  violet:  'border-violet-500/30',
+  neutral: 'border-border',
+} as const;
+
+type Tone = keyof typeof TONE_TEXT;
+
+// Editable money input shown as a stat-like cell. Click into it like an input.
+function EditableMoneyCell({
+  label, hint, value, onSave, fmt, saved, tone,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  onSave: (v: number) => void;
+  fmt: (usd: number) => string;
+  saved: boolean;
+  tone: Tone;
+}) {
+  // Controlled-uncontrolled toggle: when focused use local draft, when not focused
+  // we display the prop value directly so external updates flow through cleanly.
+  const [draft, setDraft] = useState<string>('');
+  const [focused, setFocused] = useState(false);
+  const displayString = focused ? draft : (value > 0 ? String(value) : '');
+
+  const flush = () => {
+    const n = parseFloat(draft);
+    onSave(Number.isFinite(n) && n >= 0 ? n : 0);
+    setFocused(false);
+  };
+
   return (
-    <div className="rounded-md border border-border bg-background/40 px-3 py-2">
-      <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={cn('mt-0.5 text-[14px] font-semibold tabular-nums', accent ? map[accent] : 'text-foreground')}>{value}</p>
+    <div className={cn(
+      'group relative overflow-hidden rounded-xl border bg-card p-3 transition-colors',
+      focused ? TONE_BORDER[tone] : 'border-border hover:border-border/80'
+    )}>
+      <div
+        className={cn('pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl transition-opacity duration-500', focused ? 'opacity-50' : 'opacity-0 group-hover:opacity-25')}
+        style={{ background: `radial-gradient(circle, ${TONE_GLOW[tone]}66, transparent 70%)` }}
+        aria-hidden
+      />
+      <div className="relative z-10">
+        <div className="flex items-baseline justify-between">
+          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+          {saved && <Check className="h-3 w-3 text-emerald-400" />}
+        </div>
+        <div className="mt-1 flex items-baseline gap-1">
+          <span className={cn('text-base font-semibold leading-none', TONE_TEXT[tone])}>$</span>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            inputMode="decimal"
+            value={displayString}
+            onChange={(e) => setDraft(e.target.value)}
+            onFocus={() => { setDraft(value > 0 ? String(value) : ''); setFocused(true); }}
+            onBlur={flush}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              if (e.key === 'Escape') {
+                setFocused(false);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            placeholder="0"
+            className="w-full bg-transparent text-[20px] font-semibold leading-none tabular-nums text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+        </div>
+        {hint && !focused && <p className="mt-1 text-[9px] text-muted-foreground/60">{hint}</p>}
+        {focused && <p className="mt-1 text-[9px] text-muted-foreground/60">Press Enter to save · Esc to cancel</p>}
+        {/* Show the formatted display value as a sub-line if the converted currency differs from raw USD */}
+        {value > 0 && !focused && (
+          <p className="mt-0.5 text-[10px] text-muted-foreground/60">{fmt(value)} display</p>
+        )}
+      </div>
     </div>
   );
 }
 
-function StatCell({ label, value, hint, accent }: {
+function ReadOnlyCell({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone: Tone }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3">
+      <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className={cn('mt-1 text-[20px] font-semibold leading-none tabular-nums', TONE_TEXT[tone])}>{value}</p>
+      {hint && <p className="mt-1 text-[9px] text-muted-foreground/60">{hint}</p>}
+    </div>
+  );
+}
+
+// Animated KPI tile (replaces old StatCell)
+function KpiTile({ label, value, hint, accent }: {
   label: string; value: string; hint?: string;
   accent: 'emerald' | 'amber' | 'sky' | 'violet' | 'rose';
 }) {
-  const map = {
-    emerald: 'text-emerald-400',
-    amber:   'text-amber-400',
-    sky:     'text-sky-400',
-    violet:  'text-violet-400',
-    rose:    'text-rose-400',
-  };
   return (
-    <div className="bg-card px-4 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-      <p className={cn('mt-1 text-[20px] font-semibold leading-none tabular-nums tracking-tight', map[accent])}>{value}</p>
-      {hint && <p className="mt-1 text-[10px] text-muted-foreground/70">{hint}</p>}
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3, boxShadow: `0 14px 40px -16px ${TONE_GLOW[accent]}55, 0 0 0 1px ${TONE_GLOW[accent]}33` }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className={cn('group relative overflow-hidden rounded-xl border bg-card p-4 transition-colors', TONE_BORDER[accent])}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-30 blur-2xl transition-opacity duration-500 group-hover:opacity-80"
+        style={{ background: `radial-gradient(circle, ${TONE_GLOW[accent]}66, transparent 70%)` }}
+        aria-hidden
+      />
+      <div className="relative z-10 flex items-center justify-between">
+        <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: TONE_GLOW[accent] }} aria-hidden />
+      </div>
+      <p className={cn('relative z-10 mt-2 text-[24px] font-semibold leading-none tabular-nums tracking-tight', TONE_TEXT[accent])}>
+        {value}
+      </p>
+      {hint && <p className="relative z-10 mt-1.5 text-[10px] text-muted-foreground/70">{hint}</p>}
+    </motion.div>
+  );
+}
+
+// Inline single-line editable text (used for File link and Remarks in the hero)
+function InlineField({
+  label, value, placeholder, onSave, saved,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onSave: (v: string) => void;
+  saved: boolean;
+}) {
+  // Controlled-uncontrolled toggle: when focused use local draft; when not focused
+  // we display the prop directly so external updates flow through.
+  const [draft, setDraft] = useState('');
+  const [focused, setFocused] = useState(false);
+  const display = focused ? draft : value;
+  return (
+    <div className={cn(
+      'group relative rounded-lg border bg-background/40 px-3 py-2 transition-colors',
+      focused ? 'border-primary/40 bg-primary/[0.04]' : 'border-border hover:border-border/80'
+    )}>
+      <div className="flex items-center justify-between">
+        <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+        {saved && <Check className="h-3 w-3 text-emerald-400" />}
+      </div>
+      <input
+        value={display}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => { setDraft(value); setFocused(true); }}
+        onBlur={() => { onSave(draft); setFocused(false); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Escape') { setFocused(false); (e.target as HTMLInputElement).blur(); }
+        }}
+        placeholder={placeholder}
+        className="mt-0.5 w-full bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/40"
+      />
     </div>
   );
 }
