@@ -35,6 +35,7 @@ const navItems: NavItem[] = [
   { href: '/finance/funnels', label: 'Funnel Finance', icon: Wallet, section: 'finance' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
+  { href: '/winners', label: 'Winners', icon: Trophy, section: 'marketing' },
   { href: '/funnels', label: 'Funnels', icon: FunnelIcon, section: 'marketing' },
   { href: '/ads-international', label: 'Ads', icon: Globe, section: 'marketing' },
   { href: '/ads-tracker', label: 'OPS Ads — India', icon: Megaphone, section: 'marketing' },
@@ -170,35 +171,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
               <div className="space-y-0.5">
                 {items.map((item) => {
                   const idx = globalIndex++;
-                  const node = <NavLink key={item.href} item={item} isActive={activePath === item.href} onNavigate={onNavigate} index={idx} />;
-                  // Inject winner products as indented children right after the Products row.
-                  if (item.href === '/product-tracker' && winnerProducts.length > 0) {
-                    return (
-                      <div key={item.href}>
-                        {node}
-                        {winnerProducts.map((wp) => {
-                          const wpHref = `/product-tracker/${wp.id}`;
-                          const wpIdx = globalIndex++;
-                          return (
-                            <NavLink
-                              key={wpHref}
-                              item={{
-                                href: wpHref,
-                                label: wp.productName || '(unnamed)',
-                                icon: Trophy,
-                                section: 'marketing',
-                                parent: '/product-tracker',
-                              }}
-                              isActive={activePath === wpHref}
-                              onNavigate={onNavigate}
-                              index={wpIdx}
-                            />
-                          );
-                        })}
-                      </div>
-                    );
-                  }
-                  return node;
+                  return <NavLink key={item.href} item={item} isActive={activePath === item.href} onNavigate={onNavigate} index={idx} />;
                 })}
               </div>
             </div>

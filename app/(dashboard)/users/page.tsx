@@ -24,6 +24,7 @@ const PAGES = [
   { path: '/', label: 'Home' },
   { path: '/finance', label: 'Finance' },
   { path: '/product-tracker', label: 'Products' },
+  { path: '/winners', label: 'Winners' },
   { path: '/funnels', label: 'Funnels' },
   { path: '/ads-international', label: 'Ads' },
   { path: '/ads-tracker', label: 'OPS Ads — India' },
