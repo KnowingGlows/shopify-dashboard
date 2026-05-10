@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart3, Box, CheckSquare, ClipboardList, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Truck, Users, X,
-  Calculator, PackageCheck, PackageX,
+  Calculator, PackageCheck, PackageX, Funnel as FunnelIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -34,7 +34,8 @@ const navItems: NavItem[] = [
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'finance' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
-  { href: '/ads-tracker', label: 'OPS Ads', icon: Megaphone, section: 'marketing' },
+  { href: '/funnels', label: 'Funnels', icon: FunnelIcon, section: 'marketing' },
+  { href: '/ads-tracker', label: 'OPS Ads — India', icon: Megaphone, section: 'marketing' },
   { href: '/tasks', label: 'Tasks', icon: CheckSquare, section: 'ops' },
   { href: '/inventory', label: 'Inventory', icon: Box, section: 'ops' },
   { href: '/rto', label: 'RTO', icon: PackageX, section: 'ops' },

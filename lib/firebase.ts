@@ -75,4 +75,8 @@ export const COLLECTIONS = {
   LOGISTICS_CACHE: 'logistics_cache',
   CALC_PRESETS: 'calc_presets',
   DAILY_DISPATCHES: 'daily_dispatches',
+  FUNNELS: 'funnels',
+  FUNNEL_DAILY_LOGS: 'funnel_daily_logs',
+  CREATIVES_INTL: 'creatives_intl',
+  FX_RATES: 'fx_rates',
 } as const;
