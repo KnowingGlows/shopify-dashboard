@@ -35,7 +35,7 @@ const navItems: NavItem[] = [
   { href: '/finance/funnels', label: 'Funnel Finance', icon: Wallet, section: 'finance' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
-  { href: '/winners', label: 'Winners', icon: Trophy, section: 'marketing' },
+  { href: '/product-tracker/winners', label: 'Winners', icon: Trophy, section: 'marketing', parent: '/product-tracker' },
   { href: '/funnels', label: 'Funnels', icon: FunnelIcon, section: 'marketing' },
   { href: '/ads-international', label: 'Ads', icon: Globe, section: 'marketing' },
   { href: '/ads-tracker', label: 'OPS Ads — India', icon: Megaphone, section: 'marketing' },

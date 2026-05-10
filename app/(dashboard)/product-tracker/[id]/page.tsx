@@ -11,7 +11,7 @@ import {
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { cn } from '@/lib/utils';
-import { isWinning } from '@/lib/funnels';
+import { isWinning, effectiveBeroas } from '@/lib/funnels';
 import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, Creative, FunnelStatus, CreativeResult } from '@/types/funnel';
@@ -157,7 +157,7 @@ export default function ProductDetailPage() {
   const hitRates = useMemo(() => {
     // Funnel hit rate: among funnels with data, % winning
     const withData = funnelAggs.filter((a) => a.spend > 0 || a.latestRoas > 0);
-    const winners = withData.filter((a) => isWinning(Math.max(a.blendedRoas, a.latestRoas), a.funnel.beroas)).length;
+    const winners = withData.filter((a) => isWinning(Math.max(a.blendedRoas, a.latestRoas), effectiveBeroas(a.funnel, product ?? undefined))).length;
     const funnelHitRate = withData.length > 0 ? (winners / withData.length) * 100 : 0;
 
     // Creative hit rate: % flagged as winners (out of decided)
@@ -316,7 +316,8 @@ export default function ProductDetailPage() {
                 {funnelAggs.map(({ funnel: f, spend, profit, blendedRoas, latestRoas, lastLogDate }) => {
                   const tone = STATUS_TONE[f.status];
                   const roasShown = latestRoas > 0 ? latestRoas : blendedRoas;
-                  const winning = isWinning(roasShown, f.beroas);
+                  const fb = effectiveBeroas(f, product ?? undefined);
+                  const winning = isWinning(roasShown, fb);
                   const hasData = roasShown > 0 || spend > 0;
                   return (
                     <tr key={f.id}>
@@ -334,7 +335,7 @@ export default function ProductDetailPage() {
                           </span>
                         </div>
                       </td>
-                      <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-muted-foreground">{f.beroas > 0 ? `${f.beroas.toFixed(2)}x` : '—'}</div></td>
+                      <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-muted-foreground">{fb > 0 ? `${fb.toFixed(2)}x` : '—'}</div></td>
                       <td>
                         <div className={cn('px-3 py-2 text-right text-[11px] tabular-nums font-semibold', !hasData ? 'text-muted-foreground/50' : winning ? 'text-emerald-400' : 'text-foreground')}>
                           {roasShown > 0 ? `${roasShown.toFixed(2)}x` : '—'}
