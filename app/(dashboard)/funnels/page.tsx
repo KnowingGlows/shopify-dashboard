@@ -12,6 +12,7 @@ import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { MARKETS, getLanguagesForCountry, getCountries } from '@/lib/markets';
+// (DatePicker is already imported below for the daily log entry)
 import { isWinning, aggregateLogs, hitRate, effectiveBeroas, isBeroasAutoComputed } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
@@ -79,6 +80,7 @@ export default function FunnelsPage() {
   const [filterProduct, setFilterProduct] = useState<string>('all');
   const [filterCountry, setFilterCountry] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [filterDate, setFilterDate] = useState<string>('');
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -166,6 +168,16 @@ export default function FunnelsPage() {
     });
   }, [funnels, statusFilter, filterProduct, filterCountry, search]);
 
+  // Filtered logs view — when a specific date is picked, scope all aggregations to that day.
+  const logsScoped = useMemo(() => {
+    if (!filterDate) return logsByFunnel;
+    const out: Record<string, FunnelDailyLog[]> = {};
+    for (const id of Object.keys(logsByFunnel)) {
+      out[id] = (logsByFunnel[id] ?? []).filter((l) => l.date === filterDate);
+    }
+    return out;
+  }, [logsByFunnel, filterDate]);
+
   // KPIs across all funnels (not filtered) — performance scoreboard
   const summary = useMemo(() => {
     let liveCount = 0;
@@ -174,7 +186,7 @@ export default function FunnelsPage() {
     const winRows: Array<{ roas: number; beroas: number }> = [];
     funnels.forEach((f) => {
       if (f.status === 'live') liveCount++;
-      const logs = logsByFunnel[f.id] ?? [];
+      const logs = logsScoped[f.id] ?? [];
       const agg = aggregateLogs(logs);
       if (agg.latestRoas > 0) {
         const product = (f.productId && productById.get(f.productId))
@@ -194,7 +206,7 @@ export default function FunnelsPage() {
       hitRate: hitRate(winRows),
       avgRoas,
     };
-  }, [funnels, logsByFunnel, productById, products]);
+  }, [funnels, logsScoped, productById, products]);
 
   const animatedHit = useCountUp(summary.hitRate, 500);
   const animatedRoas = useCountUp(summary.avgRoas, 500);
@@ -318,8 +330,10 @@ export default function FunnelsPage() {
         <StatCell label="Avg ROAS"    value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="amber" delay={0.15} />
       </div>
 
+      <DateFilterStrip filterDate={filterDate} onChange={setFilterDate} />
+
 {viewMode === 'performance' ? (
-        <PerformanceView funnels={funnels} logsByFunnel={logsByFunnel} products={products} />
+        <PerformanceView funnels={funnels} logsByFunnel={logsScoped} products={products} />
       ) : (
         <>
       {/* Status pills + filters */}
@@ -401,7 +415,7 @@ export default function FunnelsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((f, i) => {
-            const logs = logsByFunnel[f.id] ?? [];
+            const logs = logsScoped[f.id] ?? [];
             const agg = aggregateLogs(logs);
             const fb = beroasFor(f);
             const winning = isWinning(agg.latestRoas, fb);
@@ -507,6 +521,47 @@ function StatCell({ label, value, hint, accent, delay = 0 }: {
   );
 }
 
+// ── Date filter strip — themed calendar with quick chips ────────────────────
+
+function DateFilterStrip({ filterDate, onChange }: { filterDate: string; onChange: (d: string) => void }) {
+  const { today, yest } = useMemo(() => {
+    const now = new Date();
+    const fmtIST = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+    return { today: fmtIST(now), yest: fmtIST(new Date(now.getTime() - 86_400_000)) };
+  }, []);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.18 }}
+      className="flex flex-wrap items-center gap-2"
+    >
+      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Performance for</p>
+      <DateChip active={filterDate === ''} onClick={() => onChange('')}>All time</DateChip>
+      <DateChip active={filterDate === today} onClick={() => onChange(today)}>Today</DateChip>
+      <DateChip active={filterDate === yest} onClick={() => onChange(yest)}>Yesterday</DateChip>
+      <DatePicker value={filterDate} onChange={onChange} placeholder="Pick a day" compact />
+      {filterDate && (
+        <span className="text-[10px] text-emerald-400">Viewing {filterDate} only</span>
+      )}
+    </motion.div>
+  );
+}
+
+function DateChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium transition',
+        active ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ── Filter pill ────────────────────────────────────────────────────────────
 
 function FilterPill({ label, count, active, onClick, tone = 'gray' }: {
@@ -554,18 +609,38 @@ function FunnelCard({
 }) {
   const hasData = latestRoas > 0;
   const statusLabel = STATUS_OPTIONS.find((s) => s.value === f.status)?.label ?? f.status;
+  const winThreshold = beroas > 0 ? beroas + 1 : 0;
+  // Progress 0..1 of how close ROAS is to the win threshold (capped at 1.5x for headroom)
+  const progress = winThreshold > 0 && latestRoas > 0
+    ? Math.min(1, latestRoas / (winThreshold * 1.1))
+    : 0;
+  const winBorder = winning ? 'border-emerald-500/40 hover:border-emerald-500/60' : 'border-border hover:border-border/80';
+  const winGlow = winning ? '0 14px 40px -16px #34d39955, 0 0 0 1px #34d39933' : undefined;
   return (
     <motion.button
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: Math.min(index * 0.03, 0.3), ease: [0.22, 1, 0.36, 1] }}
-      whileHover={{ y: -3 }}
+      transition={{ duration: 0.4, delay: Math.min(index * 0.03, 0.3), ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -3, boxShadow: winGlow }}
       onClick={onOpen}
-      className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-border/80"
+      className={cn(
+        'group relative flex flex-col gap-3 overflow-hidden rounded-xl border bg-card p-4 text-left transition-colors',
+        winBorder
+      )}
     >
-      <div className={cn('absolute inset-x-0 top-0 h-[3px]', tone.bar)} aria-hidden />
+      {/* Status accent bar (top, gradient when winning) */}
+      <div className={cn('absolute inset-x-0 top-0 h-[3px]', winning ? 'bg-gradient-to-r from-emerald-500/60 via-emerald-400 to-emerald-500/60' : tone.bar)} aria-hidden />
 
-      <div className="flex items-start justify-between gap-2">
+      {/* Ambient corner glow — emerald for winners */}
+      {winning && (
+        <div
+          className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full opacity-30 blur-2xl transition-opacity duration-500 group-hover:opacity-60"
+          style={{ background: 'radial-gradient(circle, #34d39966, transparent 70%)' }}
+          aria-hidden
+        />
+      )}
+
+      <div className="relative z-10 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <p className="truncate text-[13px] font-semibold text-foreground">{f.productName}</p>
@@ -576,7 +651,7 @@ function FunnelCard({
             )}
           </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {f.country} · {f.language}
+            {f.country} <span className="text-muted-foreground/50">·</span> {f.language}
           </p>
         </div>
         <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
@@ -585,12 +660,12 @@ function FunnelCard({
         </span>
       </div>
 
-      <div className="flex items-end justify-between">
+      <div className="relative z-10 flex items-end justify-between">
         <div>
-          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">ROAS</p>
+          <p className="text-[9px] font-medium uppercase tracking-[0.08em] text-muted-foreground">ROAS</p>
           <p className={cn(
-            'text-2xl font-semibold leading-none tabular-nums tracking-tight',
-            !hasData ? 'text-muted-foreground/50' : winning ? 'text-emerald-400' : 'text-foreground'
+            'text-3xl font-semibold leading-none tabular-nums tracking-tight',
+            !hasData ? 'text-muted-foreground/40' : winning ? 'text-emerald-400' : 'text-foreground'
           )}>
             {hasData ? `${latestRoas.toFixed(2)}x` : '—'}
           </p>
@@ -598,9 +673,13 @@ function FunnelCard({
         {!hasData ? (
           <span className="text-[10px] text-muted-foreground/60">no logs</span>
         ) : winning ? (
-          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Winning
-          </span>
+          <motion.span
+            initial={{ scale: 0.9 }}
+            animate={{ scale: 1 }}
+            className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" /> Winning
+          </motion.span>
         ) : (
           <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-400">
             <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Below
@@ -608,10 +687,35 @@ function FunnelCard({
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-border pt-2.5 text-[10px] text-muted-foreground">
+      {/* Progress bar — ROAS vs win threshold */}
+      {hasData && winThreshold > 0 && (
+        <div className="relative z-10">
+          <div className="relative h-1.5 overflow-hidden rounded-full bg-border/60">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${progress * 100}%` }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+              className={cn('h-full rounded-full', winning ? 'bg-gradient-to-r from-emerald-500 to-emerald-300' : 'bg-rose-400/70')}
+            />
+            {/* Win threshold marker */}
+            <span
+              className="absolute top-0 h-full w-px bg-foreground/40"
+              style={{ left: `${(1 / 1.1) * 100}%` }}
+              aria-hidden
+              title={`Win at ${winThreshold.toFixed(2)}x`}
+            />
+          </div>
+          <div className="mt-1 flex items-center justify-between text-[9px] text-muted-foreground/70">
+            <span>0</span>
+            <span className="tabular-nums">Win {winThreshold.toFixed(2)}x</span>
+          </div>
+        </div>
+      )}
+
+      <div className="relative z-10 flex items-center justify-between border-t border-border/60 pt-2.5 text-[10px] text-muted-foreground">
         <span>BEROAS <span className="font-semibold tabular-nums text-foreground">{beroas > 0 ? `${beroas.toFixed(2)}x` : '—'}</span></span>
         <span>{totalOrders > 0 ? `${totalOrders} orders` : 'no orders'}</span>
-        <span>{lastLogDate || 'no logs'}</span>
+        <span>{lastLogDate || '—'}</span>
       </div>
     </motion.button>
   );

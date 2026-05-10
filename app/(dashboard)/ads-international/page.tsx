@@ -49,6 +49,7 @@ export default function AdsInternationalPage() {
   const [filterFunnel, setFilterFunnel] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<CreativeStatus | 'all'>('all');
   const [filterResult, setFilterResult] = useState<CreativeResult | 'all'>('all');
+  const [filterDate, setFilterDate] = useState<string>('');
   const [search, setSearch] = useState('');
 
   // Add modal
@@ -101,13 +102,14 @@ export default function AdsInternationalPage() {
       if (filterFunnel !== 'all' && c.funnelId !== filterFunnel) return false;
       if (filterStatus !== 'all' && c.status !== filterStatus) return false;
       if (filterResult !== 'all' && c.result !== filterResult) return false;
+      if (filterDate && c.launchDate !== filterDate) return false;
       if (q) {
         const hay = [c.batchName, c.productName, c.country, c.language, c.creativeType, c.notes].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [creatives, filterFunnel, filterStatus, filterResult, search]);
+  }, [creatives, filterFunnel, filterStatus, filterResult, filterDate, search]);
 
   // KPIs
   const summary = useMemo(() => {
@@ -233,6 +235,8 @@ export default function AdsInternationalPage() {
         <StatCell label="Winners"         value={summary.winners.toLocaleString('en-IN')} accent="sky"     hint="Manually flagged" delay={0.1} />
         <StatCell label="Hit rate"        value={`${summary.hitRate.toFixed(0)}%`}        accent="amber"   hint="winners / decided" delay={0.15} />
       </div>
+
+      <DateFilterStrip filterDate={filterDate} onChange={setFilterDate} />
 
       {/* Filter pills */}
       <div className="flex flex-wrap items-center gap-2">
@@ -536,6 +540,43 @@ function StatCell({ label, value, hint, accent, delay = 0 }: {
       <p className={cn('relative z-10 mt-2 text-[24px] font-semibold leading-none tabular-nums tracking-tight', text)}>{value}</p>
       {hint && <p className="relative z-10 mt-1.5 text-[10px] text-muted-foreground/70">{hint}</p>}
     </motion.div>
+  );
+}
+
+function DateFilterStrip({ filterDate, onChange }: { filterDate: string; onChange: (d: string) => void }) {
+  const { today, yest } = useMemo(() => {
+    const now = new Date();
+    const fmtIST = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+    return { today: fmtIST(now), yest: fmtIST(new Date(now.getTime() - 86_400_000)) };
+  }, []);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.18 }}
+      className="flex flex-wrap items-center gap-2"
+    >
+      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Launched on</p>
+      <FilterDateChip active={filterDate === ''} onClick={() => onChange('')}>Any day</FilterDateChip>
+      <FilterDateChip active={filterDate === today} onClick={() => onChange(today)}>Today</FilterDateChip>
+      <FilterDateChip active={filterDate === yest} onClick={() => onChange(yest)}>Yesterday</FilterDateChip>
+      <DatePicker value={filterDate} onChange={onChange} placeholder="Pick a day" compact />
+      {filterDate && <span className="text-[10px] text-emerald-400">Showing {filterDate} only</span>}
+    </motion.div>
+  );
+}
+
+function FilterDateChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium transition',
+        active ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

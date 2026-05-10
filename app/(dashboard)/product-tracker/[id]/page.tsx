@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Package, ArrowLeft, ExternalLink, Loader2, AlertTriangle,
+  Package, ArrowLeft, ArrowRight, ExternalLink, Loader2, AlertTriangle,
   Globe, Funnel as FunnelIcon, Wallet, Pencil, Check, Trophy,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
@@ -495,79 +495,110 @@ export default function ProductDetailPage() {
         </div>
 
         {funnels.length === 0 ? (
-          <div className="px-4 py-8 text-center">
-            <p className="text-[12px] text-muted-foreground">No funnels for this product yet.</p>
-            <Link href="/funnels" className="mt-2 inline-block text-[11px] text-primary hover:text-primary/80">
-              Create one →
+          <div className="px-4 py-10 text-center">
+            <FunnelIcon className="mx-auto h-7 w-7 text-muted-foreground/30" />
+            <p className="mt-2 text-[12px] text-muted-foreground">No funnels for this product yet.</p>
+            <Link href="/funnels" className="mt-3 inline-flex items-center gap-1 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/25">
+              Create one <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="tracker-table">
-              <thead>
-                <tr>
-                  <th>Market</th>
-                  <th style={{ width: 100 }}>Status</th>
-                  <th style={{ textAlign: 'right', width: 80 }}>BEROAS</th>
-                  <th style={{ textAlign: 'right', width: 80 }}>ROAS</th>
-                  <th style={{ width: 90 }}>Win</th>
-                  <th style={{ textAlign: 'right' }}>Spend</th>
-                  <th style={{ textAlign: 'right' }}>Profit</th>
-                  <th style={{ width: 110 }}>Last log</th>
-                </tr>
-              </thead>
-              <tbody>
-                {funnelAggs.map(({ funnel: f, spend, profit, blendedRoas, latestRoas, lastLogDate }) => {
-                  const tone = STATUS_TONE[f.status];
-                  const roasShown = latestRoas > 0 ? latestRoas : blendedRoas;
-                  const fb = effectiveBeroas(f, product ?? undefined);
-                  const winning = isWinning(roasShown, fb);
-                  const hasData = roasShown > 0 || spend > 0;
-                  return (
-                    <tr key={f.id}>
-                      <td>
-                        <div className="px-3 py-2">
-                          <p className="text-[13px] text-foreground">{f.country}</p>
-                          <p className="text-[10px] text-muted-foreground">{f.language}</p>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="px-3 py-2">
-                          <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
-                            <span className={cn('h-1 w-1 rounded-full', tone.dot)} />
-                            {STATUS_LABEL[f.status]}
-                          </span>
-                        </div>
-                      </td>
-                      <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-muted-foreground">{fb > 0 ? `${fb.toFixed(2)}x` : '—'}</div></td>
-                      <td>
-                        <div className={cn('px-3 py-2 text-right text-[11px] tabular-nums font-semibold', !hasData ? 'text-muted-foreground/50' : winning ? 'text-emerald-400' : 'text-foreground')}>
+          <div className="divide-y divide-border/60">
+            {funnelAggs.map(({ funnel: f, spend, profit, blendedRoas, latestRoas, lastLogDate }, idx) => {
+              const tone = STATUS_TONE[f.status];
+              const roasShown = latestRoas > 0 ? latestRoas : blendedRoas;
+              const fb = effectiveBeroas(f, product ?? undefined);
+              const winning = isWinning(roasShown, fb);
+              const hasData = roasShown > 0 || spend > 0;
+              const winThreshold = fb > 0 ? fb + 1 : 0;
+              const progress = winThreshold > 0 && roasShown > 0
+                ? Math.min(1, roasShown / (winThreshold * 1.1))
+                : 0;
+              return (
+                <motion.div
+                  key={f.id}
+                  initial={{ opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.3, delay: Math.min(idx * 0.04, 0.3) }}
+                  className="group relative px-5 py-3 transition-colors hover:bg-foreground/[0.02]"
+                >
+                  {/* Left status accent bar */}
+                  <div className={cn('absolute inset-y-2 left-0 w-[2px] rounded-r', tone.dot)} aria-hidden />
+
+                  <div className="grid grid-cols-12 items-center gap-3">
+                    {/* Market */}
+                    <div className="col-span-3">
+                      <p className="text-[13px] font-medium text-foreground">{f.country}</p>
+                      <p className="text-[10px] text-muted-foreground">{f.language}</p>
+                    </div>
+
+                    {/* Status */}
+                    <div className="col-span-2">
+                      <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
+                        <span className={cn('h-1 w-1 rounded-full', tone.dot)} />
+                        {STATUS_LABEL[f.status]}
+                      </span>
+                    </div>
+
+                    {/* ROAS + threshold bar */}
+                    <div className="col-span-4">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className={cn('text-[14px] font-semibold tabular-nums', !hasData ? 'text-muted-foreground/40' : winning ? 'text-emerald-400' : 'text-foreground')}>
                           {roasShown > 0 ? `${roasShown.toFixed(2)}x` : '—'}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/70 tabular-nums">
+                          BEROAS {fb > 0 ? `${fb.toFixed(2)}x` : '—'}
+                        </span>
+                      </div>
+                      {hasData && winThreshold > 0 ? (
+                        <div className="relative mt-1 h-1 overflow-hidden rounded-full bg-border/60">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${progress * 100}%` }}
+                            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                            className={cn('h-full rounded-full', winning ? 'bg-gradient-to-r from-emerald-500 to-emerald-300' : 'bg-rose-400/70')}
+                          />
+                          <span className="absolute top-0 h-full w-px bg-foreground/40" style={{ left: `${(1 / 1.1) * 100}%` }} aria-hidden />
                         </div>
-                      </td>
-                      <td>
-                        <div className="px-3 py-2">
-                          {!hasData ? (
-                            <span className="text-[10px] text-muted-foreground/60">no data</span>
-                          ) : winning ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400">
-                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Win
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-400">
-                              <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Below
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{spend > 0 ? fmt(spend) : '—'}</div></td>
-                      <td><div className={cn('px-3 py-2 text-right text-[11px] tabular-nums', profit < 0 ? 'text-rose-400' : profit > 0 ? 'text-emerald-400' : 'text-muted-foreground')}>{spend > 0 ? fmt(profit) : '—'}</div></td>
-                      <td><div className="px-3 py-2 text-[11px] text-muted-foreground tabular-nums">{lastLogDate || '—'}</div></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      ) : (
+                        <div className="mt-1 h-1 rounded-full bg-border/30" />
+                      )}
+                    </div>
+
+                    {/* Win badge + numbers */}
+                    <div className="col-span-3 flex items-center justify-end gap-3">
+                      {!hasData ? (
+                        <span className="text-[10px] text-muted-foreground/60">no data</span>
+                      ) : winning ? (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                          <span className="h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" /> Win
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
+                          <span className="h-1 w-1 rounded-full bg-rose-400" /> Below
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Secondary row: $ + last log */}
+                  {(spend > 0 || lastLogDate) && (
+                    <div className="mt-1 flex items-center gap-3 pl-0 text-[10px] text-muted-foreground">
+                      {spend > 0 && (
+                        <>
+                          <span>Spend <span className="font-semibold tabular-nums text-foreground">{fmt(spend)}</span></span>
+                          <span className="text-muted-foreground/40">·</span>
+                          <span>Profit <span className={cn('font-semibold tabular-nums', profit < 0 ? 'text-rose-400' : profit > 0 ? 'text-emerald-400' : 'text-foreground')}>{fmt(profit)}</span></span>
+                        </>
+                      )}
+                      {lastLogDate && (
+                        <span className="ml-auto tabular-nums">{lastLogDate}</span>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </motion.div>

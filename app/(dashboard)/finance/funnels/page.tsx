@@ -97,6 +97,7 @@ export default function FunnelFinancePage() {
   const [currency, setCurrency] = useState<SupportedCurrency>('USD');
 
   // Filters
+  const [filterDate, setFilterDate] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<FunnelStatus | 'all'>('all');
   const [filterCountry, setFilterCountry] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -152,9 +153,13 @@ export default function FunnelFinancePage() {
   // Derived
   const moneyByFunnel = useMemo(() => {
     const m: Record<string, FunnelMoney> = {};
-    funnels.forEach((f) => { m[f.id] = aggregateMoney(logsByFunnel[f.id] ?? []); });
+    funnels.forEach((f) => {
+      const all = logsByFunnel[f.id] ?? [];
+      const scoped = filterDate ? all.filter((l) => l.date === filterDate) : all;
+      m[f.id] = aggregateMoney(scoped);
+    });
     return m;
-  }, [funnels, logsByFunnel]);
+  }, [funnels, logsByFunnel, filterDate]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -252,6 +257,8 @@ export default function FunnelFinancePage() {
         />
         <StatCell label="Blended ROAS" value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="violet" delay={0.15} />
       </div>
+
+      <DateFilterStrip filterDate={filterDate} onChange={setFilterDate} />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -400,6 +407,45 @@ function StatCell({ label, value, hint, accent, delay = 0 }: {
       <p className={cn('relative z-10 mt-2 text-[24px] font-semibold leading-none tabular-nums tracking-tight', text)}>{value}</p>
       {hint && <p className="relative z-10 mt-1.5 text-[10px] text-muted-foreground/70">{hint}</p>}
     </motion.div>
+  );
+}
+
+function DateFilterStrip({ filterDate, onChange }: { filterDate: string; onChange: (d: string) => void }) {
+  const { today, yest } = useMemo(() => {
+    const now = new Date();
+    const fmtIST = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+    return { today: fmtIST(now), yest: fmtIST(new Date(now.getTime() - 86_400_000)) };
+  }, []);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: 0.18 }}
+      className="flex flex-wrap items-center gap-2"
+    >
+      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Money for</p>
+      <FilterDateChip active={filterDate === ''} onClick={() => onChange('')}>All time</FilterDateChip>
+      <FilterDateChip active={filterDate === today} onClick={() => onChange(today)}>Today</FilterDateChip>
+      <FilterDateChip active={filterDate === yest} onClick={() => onChange(yest)}>Yesterday</FilterDateChip>
+      <DatePicker value={filterDate} onChange={onChange} placeholder="Pick a day" compact />
+      {filterDate && (
+        <span className="text-[10px] text-emerald-400">Viewing {filterDate} only</span>
+      )}
+    </motion.div>
+  );
+}
+
+function FilterDateChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium transition',
+        active ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
