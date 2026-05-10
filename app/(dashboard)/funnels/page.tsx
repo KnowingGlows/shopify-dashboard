@@ -4,25 +4,35 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Funnel as FunnelIcon, Plus, Trash2, Check, X, Loader2,
-  AlertTriangle, ChevronDown, ChevronRight, Globe,
+  AlertTriangle, Globe, Search,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { MARKETS, getLanguagesForCountry, getCountries } from '@/lib/markets';
-import { beroasFor, marginFor, isWinning, aggregateLogs, hitRate } from '@/lib/funnels';
-import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
+import { isWinning, aggregateLogs, hitRate } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
-import type { FxRates } from '@/lib/fx-rates';
 
-const STATUS_OPTIONS: Array<{ value: FunnelStatus; label: string }> = [
-  { value: 'draft',   label: 'Draft' },
-  { value: 'testing', label: 'Testing' },
-  { value: 'live',    label: 'Live' },
-  { value: 'paused',  label: 'Paused' },
-  { value: 'killed',  label: 'Killed' },
+const STATUS_OPTIONS: Array<{ value: FunnelStatus; label: string; tone: 'gray' | 'amber' | 'emerald' | 'sky' | 'rose' }> = [
+  { value: 'live',    label: 'Live',    tone: 'emerald' },
+  { value: 'testing', label: 'Testing', tone: 'amber' },
+  { value: 'paused',  label: 'Paused',  tone: 'sky' },
+  { value: 'draft',   label: 'Draft',   tone: 'gray' },
+  { value: 'killed',  label: 'Killed',  tone: 'rose' },
 ];
+
+const STATUS_RANK: Record<FunnelStatus, number> = {
+  live: 0, testing: 1, paused: 2, draft: 3, killed: 4,
+};
+
+const TONE: Record<'gray' | 'amber' | 'emerald' | 'sky' | 'rose', { text: string; bg: string; border: string; bar: string; dot: string }> = {
+  gray:    { text: 'text-muted-foreground', bg: 'bg-border/40',     border: 'border-border',         bar: 'bg-muted-foreground/40', dot: 'bg-muted-foreground' },
+  amber:   { text: 'text-amber-400',        bg: 'bg-amber-500/10',  border: 'border-amber-500/30',   bar: 'bg-amber-400',           dot: 'bg-amber-400' },
+  emerald: { text: 'text-emerald-400',      bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', bar: 'bg-emerald-400',         dot: 'bg-emerald-400' },
+  sky:     { text: 'text-sky-400',          bg: 'bg-sky-500/10',     border: 'border-sky-500/30',     bar: 'bg-sky-400',             dot: 'bg-sky-400' },
+  rose:    { text: 'text-rose-400',         bg: 'bg-rose-500/10',    border: 'border-rose-500/30',    bar: 'bg-rose-400',            dot: 'bg-rose-400' },
+};
 
 function getISTDate(date?: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date ?? new Date());
@@ -53,40 +63,29 @@ export default function FunnelsPage() {
   const { user } = useAuth();
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [logsByFunnel, setLogsByFunnel] = useState<Record<string, FunnelDailyLog[]>>({});
-  const [fx, setFx] = useState<FxRates | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<SupportedCurrency>('USD');
 
   // Filters
+  const [statusFilter, setStatusFilter] = useState<FunnelStatus | 'all'>('all');
   const [filterProduct, setFilterProduct] = useState<string>('all');
   const [filterCountry, setFilterCountry] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [groupBy, setGroupBy] = useState<'product' | 'country' | 'flat'>('product');
+  const [search, setSearch] = useState('');
 
-  // Add modal
+  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
+  const [openFunnelId, setOpenFunnelId] = useState<string | null>(null);
 
-  // Expanded rows
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
-  // Initial load
   useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [funnelsRes, fxRes] = await Promise.all([
-        fetch('/api/funnels').then((r) => r.json()),
-        fetch('/api/fx').then((r) => r.json()),
-      ]);
+      const funnelsRes = await fetch('/api/funnels').then((r) => r.json());
       const list: Funnel[] = funnelsRes.funnels ?? [];
       setFunnels(list);
-      setFx(fxRes ?? null);
 
-      // Eager-load logs for each funnel so KPIs and Win badges render immediately.
-      // For now this is N+1 but fine for the expected funnel count.
       const logsRes = await Promise.all(
         list.map((f) => fetch(`/api/funnels/logs?funnelId=${encodeURIComponent(f.id)}`).then((r) => r.json()))
       );
@@ -108,61 +107,69 @@ export default function FunnelsPage() {
     } catch { /* ignore */ }
   };
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, EUR: 0.92, INR: 83.5 };
-  const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
-
   // ── Derived data ─────────────────────────────────────────────────────────
-  const productOptions = useMemo(() => {
-    return Array.from(new Set(funnels.map((f) => f.productName).filter(Boolean))).sort();
-  }, [funnels]);
+  const productOptions = useMemo(
+    () => Array.from(new Set(funnels.map((f) => f.productName).filter(Boolean))).sort(),
+    [funnels]
+  );
 
   const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return funnels.filter((f) => {
+      if (statusFilter !== 'all' && f.status !== statusFilter) return false;
       if (filterProduct !== 'all' && f.productName !== filterProduct) return false;
       if (filterCountry !== 'all' && f.country !== filterCountry) return false;
-      if (filterStatus !== 'all' && f.status !== filterStatus) return false;
+      if (q) {
+        const hay = [f.productName, f.country, f.language, f.notes].join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
+    }).sort((a, b) => {
+      const sd = STATUS_RANK[a.status] - STATUS_RANK[b.status];
+      if (sd !== 0) return sd;
+      return b.updatedAt.localeCompare(a.updatedAt);
     });
-  }, [funnels, filterProduct, filterCountry, filterStatus]);
+  }, [funnels, statusFilter, filterProduct, filterCountry, search]);
 
-  // Grouping
-  const grouped = useMemo<Array<{ key: string; label: string; rows: Funnel[] }>>(() => {
-    if (groupBy === 'flat') return [{ key: 'all', label: '', rows: filtered }];
-    const map = new Map<string, Funnel[]>();
-    filtered.forEach((f) => {
-      const key = groupBy === 'product' ? f.productName : f.country;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(f);
-    });
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, rows]) => ({ key, label: key || '(unspecified)', rows }));
-  }, [filtered, groupBy]);
-
-  // KPIs across visible (filtered) funnels
-  const liveCount = filtered.filter((f) => f.status === 'live').length;
+  // KPIs across all funnels (not filtered) — performance scoreboard
   const summary = useMemo(() => {
-    let totalSpend = 0, totalRevenue = 0;
+    let liveCount = 0;
+    let winCount = 0;
+    const roasValues: number[] = [];
     const winRows: Array<{ roas: number; beroas: number }> = [];
-    filtered.forEach((f) => {
+    funnels.forEach((f) => {
+      if (f.status === 'live') liveCount++;
       const logs = logsByFunnel[f.id] ?? [];
       const agg = aggregateLogs(logs);
-      totalSpend += agg.totalSpend;
-      totalRevenue += agg.totalRevenue;
-      winRows.push({ roas: agg.blendedRoas, beroas: beroasFor(f) });
+      if (agg.latestRoas > 0) {
+        roasValues.push(agg.latestRoas);
+        winRows.push({ roas: agg.latestRoas, beroas: f.beroas });
+        if (isWinning(agg.latestRoas, f.beroas)) winCount++;
+      }
     });
-    const blendedRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+    const avgRoas = roasValues.length > 0
+      ? roasValues.reduce((s, v) => s + v, 0) / roasValues.length
+      : 0;
     return {
-      totalSpend,
-      totalRevenue,
-      blendedRoas,
+      liveCount,
+      winCount,
       hitRate: hitRate(winRows),
+      avgRoas,
     };
-  }, [filtered, logsByFunnel]);
+  }, [funnels, logsByFunnel]);
 
-  const animatedSpend = useCountUp(summary.totalSpend);
-  const animatedRoas = useCountUp(summary.blendedRoas, 500);
   const animatedHit = useCountUp(summary.hitRate, 500);
+  const animatedRoas = useCountUp(summary.avgRoas, 500);
+  const animatedWin = useCountUp(summary.winCount, 400);
+
+  // Status counts for the pill row
+  const statusCounts = useMemo(() => {
+    const c: Record<FunnelStatus | 'all', number> = {
+      all: funnels.length, live: 0, testing: 0, paused: 0, draft: 0, killed: 0,
+    };
+    funnels.forEach((f) => { c[f.status]++; });
+    return c;
+  }, [funnels]);
 
   // ── Actions ─────────────────────────────────────────────────────────────
   const handleAddFunnel = async (input: NewFunnelInput) => {
@@ -208,25 +215,17 @@ export default function FunnelsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
       setFunnels((prev) => prev.filter((f) => f.id !== id));
-      setLogsByFunnel((prev) => {
-        const next = { ...prev }; delete next[id]; return next;
-      });
+      setLogsByFunnel((prev) => { const next = { ...prev }; delete next[id]; return next; });
+      setOpenFunnelId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete funnel.');
     }
   };
 
-  const toggleExpand = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  const openFunnel = openFunnelId ? funnels.find((f) => f.id === openFunnelId) ?? null : null;
 
   return (
-    <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
+    <PageTransition className="mx-auto max-w-7xl p-5 space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -236,85 +235,75 @@ export default function FunnelsPage() {
           <div>
             <h1 className="text-lg font-semibold text-foreground">Funnels</h1>
             <p className="text-[11px] text-muted-foreground">
-              International funnel tracking · {liveCount} live
+              Launches &amp; performance · {summary.liveCount} live of {funnels.length}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Currency toggle */}
-          <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
-            {(['USD', 'EUR', 'INR'] as const).map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCurrency(c)}
-                className={cn(
-                  'rounded-[5px] px-2.5 py-1 text-[11px] font-medium transition-colors',
-                  currency === c ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/25"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add Funnel
-          </button>
-        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/25"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add Funnel
+        </button>
       </div>
 
-      {/* KPI tiles */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <KpiTile label="Live funnels" value={liveCount.toLocaleString('en-IN')} accent="emerald" delay={0} />
-        <KpiTile label="Hit rate" value={`${animatedHit.toFixed(0)}%`} hint="ROAS ≥ BEROAS+1" accent="violet" delay={0.06} />
-        <KpiTile label="Blended ROAS" value={animatedRoas.toFixed(2) + 'x'} accent="sky" delay={0.12} />
-        <KpiTile label="Total spend" value={fmt(animatedSpend)} accent="amber" delay={0.18} />
-      </div>
+      {/* Compact stat strip — performance only */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4"
+      >
+        <StatCell label="Live" value={summary.liveCount.toLocaleString('en-IN')} accent="emerald" />
+        <StatCell label="Winning" value={Math.round(animatedWin).toLocaleString('en-IN')} hint="ROAS ≥ BEROAS+1" accent="violet" />
+        <StatCell label="Hit rate" value={`${animatedHit.toFixed(0)}%`} accent="sky" />
+        <StatCell label="Avg ROAS" value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="amber" />
+      </motion.div>
 
-      {/* Filters */}
+      {/* Status pills + filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <select
-          value={filterProduct}
-          onChange={(e) => setFilterProduct(e.target.value)}
-          className="form-input py-1.5 text-[12px] w-44"
-        >
-          <option value="all">All products</option>
-          {productOptions.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select
-          value={filterCountry}
-          onChange={(e) => setFilterCountry(e.target.value)}
-          className="form-input py-1.5 text-[12px] w-44"
-        >
-          <option value="all">All countries</option>
-          {getCountries().map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="form-input py-1.5 text-[12px] w-36"
-        >
-          <option value="all">All status</option>
-          {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
-        <div className="ml-auto inline-flex items-center rounded-md border border-border bg-card p-0.5">
-          {(['product', 'country', 'flat'] as const).map((g) => (
-            <button
-              key={g}
-              type="button"
-              onClick={() => setGroupBy(g)}
-              className={cn(
-                'rounded-[5px] px-2.5 py-1 text-[11px] font-medium transition-colors',
-                groupBy === g ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {g === 'product' ? 'By product' : g === 'country' ? 'By country' : 'Flat'}
-            </button>
+        <div className="flex flex-wrap items-center gap-1">
+          <FilterPill label="All" count={statusCounts.all} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
+          {STATUS_OPTIONS.map((s) => (
+            <FilterPill
+              key={s.value}
+              label={s.label}
+              count={statusCounts[s.value]}
+              active={statusFilter === s.value}
+              onClick={() => setStatusFilter(s.value)}
+              tone={s.tone}
+            />
           ))}
+        </div>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <select
+            value={filterProduct}
+            onChange={(e) => setFilterProduct(e.target.value)}
+            className="form-input py-1.5 text-[12px] w-40"
+          >
+            <option value="all">All products</option>
+            {productOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select
+            value={filterCountry}
+            onChange={(e) => setFilterCountry(e.target.value)}
+            className="form-input py-1.5 text-[12px] w-40"
+          >
+            <option value="all">All countries</option>
+            {getCountries().map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search…"
+              className="form-input pl-8 py-1.5 text-[12px] w-44"
+            />
+          </div>
         </div>
       </div>
 
@@ -329,10 +318,12 @@ export default function FunnelsPage() {
         </div>
       )}
 
-      {/* List */}
+      {/* Card grid */}
       {loading ? (
-        <div className="flex items-center justify-center py-10">
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-[140px] rounded-xl border border-border bg-card animate-pulse" />
+          ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-10 text-center">
@@ -342,288 +333,250 @@ export default function FunnelsPage() {
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {funnels.length === 0
-              ? 'Click "Add Funnel" to register your first funnel.'
-              : 'Try adjusting the filters above.'}
+              ? 'Click "Add Funnel" to register your first one.'
+              : 'Try clearing a filter.'}
           </p>
         </div>
       ) : (
-        <div className="space-y-5">
-          {grouped.map((group) => (
-            <div key={group.key} className="space-y-2">
-              {group.label && (
-                <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">
-                  {group.label} · {group.rows.length}
-                </p>
-              )}
-              <div className="rounded-xl border border-border bg-card overflow-hidden">
-                <table className="tracker-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 30 }}></th>
-                      <th>Product</th>
-                      <th style={{ width: 160 }}>Market</th>
-                      <th style={{ width: 110 }}>Status</th>
-                      <th style={{ width: 90, textAlign: 'right' }}>BEROAS</th>
-                      <th style={{ width: 90, textAlign: 'right' }}>ROAS</th>
-                      <th style={{ width: 100 }}>Win</th>
-                      <th style={{ width: 110 }}>Last log</th>
-                      <th style={{ width: 90, textAlign: 'right' }}>&nbsp;</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.rows.map((f) => {
-                      const logs = logsByFunnel[f.id] ?? [];
-                      const agg = aggregateLogs(logs);
-                      const beroas = beroasFor(f);
-                      const winning = isWinning(agg.blendedRoas, beroas);
-                      const isOpen = expanded.has(f.id);
-                      return (
-                        <FunnelRow
-                          key={f.id}
-                          funnel={f}
-                          logs={logs}
-                          agg={agg}
-                          beroas={beroas}
-                          winning={winning}
-                          isOpen={isOpen}
-                          onToggle={() => toggleExpand(f.id)}
-                          onDelete={() => deleteFunnel(f.id)}
-                          onUpdate={(patch) => updateFunnel(f.id, patch)}
-                          onLogsChanged={() => refreshLogs(f.id)}
-                          fmt={fmt}
-                        />
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filtered.map((f, i) => {
+            const logs = logsByFunnel[f.id] ?? [];
+            const agg = aggregateLogs(logs);
+            const winning = isWinning(agg.latestRoas, f.beroas);
+            const tone = TONE[STATUS_OPTIONS.find((s) => s.value === f.status)?.tone ?? 'gray'];
+            return (
+              <FunnelCard
+                key={f.id}
+                funnel={f}
+                latestRoas={agg.latestRoas}
+                lastLogDate={agg.lastLogDate}
+                totalOrders={agg.totalOrders}
+                winning={winning}
+                tone={tone}
+                index={i}
+                onOpen={() => setOpenFunnelId(f.id)}
+              />
+            );
+          })}
         </div>
       )}
 
       <p className="text-[10px] text-muted-foreground/60">
-        Logged in as {user?.email ?? '—'} · {fx?.source === 'live' ? 'live FX' : fx?.source === 'cache' ? 'cached FX' : fx?.source === 'fallback' ? 'fallback FX' : 'FX loading'} · stored in USD, displayed in {currency}
+        Logged in as {user?.email ?? '—'} · money tracking lives in Finance (separate page)
       </p>
 
+      {/* Add funnel modal */}
       {showAddModal && (
         <AddFunnelModal
           onClose={() => setShowAddModal(false)}
           onSubmit={handleAddFunnel}
         />
       )}
+
+      {/* Detail drawer */}
+      <FunnelDrawer
+        funnel={openFunnel}
+        logs={openFunnel ? logsByFunnel[openFunnel.id] ?? [] : []}
+        onClose={() => setOpenFunnelId(null)}
+        onUpdate={(patch) => openFunnel && updateFunnel(openFunnel.id, patch)}
+        onDelete={() => openFunnel && deleteFunnel(openFunnel.id)}
+        onLogsChanged={() => openFunnel && refreshLogs(openFunnel.id)}
+      />
     </PageTransition>
   );
 }
 
-// ── KPI tile ────────────────────────────────────────────────────────────────
+// ── Compact stat cell ──────────────────────────────────────────────────────
 
-function KpiTile({
-  label, value, hint, accent, delay = 0,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
+function StatCell({ label, value, hint, accent }: {
+  label: string; value: string; hint?: string;
   accent: 'emerald' | 'amber' | 'sky' | 'violet';
-  delay?: number;
 }) {
   const map = {
-    emerald: { text: 'text-emerald-400', border: 'border-emerald-500/30', glow: '#34d399', dot: 'bg-emerald-400' },
-    amber:   { text: 'text-amber-400',   border: 'border-amber-500/30',   glow: '#fbbf24', dot: 'bg-amber-400' },
-    sky:     { text: 'text-sky-400',     border: 'border-sky-500/30',     glow: '#38bdf8', dot: 'bg-sky-400' },
-    violet:  { text: 'text-violet-400',  border: 'border-violet-500/30',  glow: '#a78bfa', dot: 'bg-violet-400' },
+    emerald: 'text-emerald-400',
+    amber:   'text-amber-400',
+    sky:     'text-sky-400',
+    violet:  'text-violet-400',
   };
-  const c = map[accent];
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, delay, ease: [0.22, 1, 0.36, 1] }}
-      whileHover={{ y: -3, boxShadow: `0 14px 40px -16px ${c.glow}55, 0 0 0 1px ${c.glow}33` }}
-      className={cn('group relative overflow-hidden rounded-xl border bg-card p-4 transition-colors', c.border)}
+    <div className="bg-card px-4 py-3">
+      <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+      <p className={cn('mt-1 text-[20px] font-semibold leading-none tabular-nums tracking-tight', map[accent])}>{value}</p>
+      {hint && <p className="mt-1 text-[10px] text-muted-foreground/70">{hint}</p>}
+    </div>
+  );
+}
+
+// ── Filter pill ────────────────────────────────────────────────────────────
+
+function FilterPill({ label, count, active, onClick, tone = 'gray' }: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+  tone?: 'gray' | 'amber' | 'emerald' | 'sky' | 'rose';
+}) {
+  const t = TONE[tone];
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition',
+        active
+          ? cn(t.bg, t.border, t.text)
+          : 'border-border bg-card text-muted-foreground hover:text-foreground'
+      )}
     >
-      <div
-        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-30 blur-2xl transition-opacity duration-500 group-hover:opacity-80"
-        style={{ background: `radial-gradient(circle, ${c.glow}66, transparent 70%)` }}
-        aria-hidden
-      />
-      <div className="relative z-10 flex items-center justify-between">
-        <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-        <span className={cn('h-1.5 w-1.5 rounded-full', c.dot)} aria-hidden />
-      </div>
-      <p className={cn('relative z-10 mt-2 text-[26px] font-semibold leading-none tabular-nums tracking-tight', c.text)}>
-        {value}
-      </p>
-      {hint && <p className="relative z-10 mt-1.5 text-[11px] text-muted-foreground">{hint}</p>}
-    </motion.div>
+      <span className={cn('h-1.5 w-1.5 rounded-full', t.dot, !active && 'opacity-60')} />
+      {label}
+      <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-semibold tabular-nums', active ? 'bg-black/20' : 'bg-border/50 text-foreground')}>
+        {count}
+      </span>
+    </button>
   );
 }
 
-// ── Funnel row + expanded daily log ─────────────────────────────────────────
+// ── Funnel card ────────────────────────────────────────────────────────────
 
-function FunnelRow({
-  funnel: f,
-  logs,
-  agg,
-  beroas,
-  winning,
-  isOpen,
-  onToggle,
-  onDelete,
-  onUpdate,
-  onLogsChanged,
-  fmt,
+function FunnelCard({
+  funnel: f, latestRoas, lastLogDate, totalOrders, winning, tone, index, onOpen,
 }: {
   funnel: Funnel;
-  logs: FunnelDailyLog[];
-  agg: ReturnType<typeof aggregateLogs>;
-  beroas: number;
+  latestRoas: number;
+  lastLogDate: string;
+  totalOrders: number;
   winning: boolean;
-  isOpen: boolean;
-  onToggle: () => void;
-  onDelete: () => void;
+  tone: { text: string; bg: string; border: string; bar: string; dot: string };
+  index: number;
+  onOpen: () => void;
+}) {
+  const hasData = latestRoas > 0;
+  const statusLabel = STATUS_OPTIONS.find((s) => s.value === f.status)?.label ?? f.status;
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: Math.min(index * 0.03, 0.3), ease: [0.22, 1, 0.36, 1] }}
+      whileHover={{ y: -3 }}
+      onClick={onOpen}
+      className="group relative flex flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 text-left transition-colors hover:border-border/80"
+    >
+      <div className={cn('absolute inset-x-0 top-0 h-[3px]', tone.bar)} aria-hidden />
+
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-semibold text-foreground">{f.productName}</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {f.country} · {f.language}
+          </p>
+        </div>
+        <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
+          <span className={cn('h-1 w-1 rounded-full', tone.dot)} />
+          {statusLabel}
+        </span>
+      </div>
+
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">ROAS</p>
+          <p className={cn(
+            'text-2xl font-semibold leading-none tabular-nums tracking-tight',
+            !hasData ? 'text-muted-foreground/50' : winning ? 'text-emerald-400' : 'text-foreground'
+          )}>
+            {hasData ? `${latestRoas.toFixed(2)}x` : '—'}
+          </p>
+        </div>
+        {!hasData ? (
+          <span className="text-[10px] text-muted-foreground/60">no logs</span>
+        ) : winning ? (
+          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Winning
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Below
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-border pt-2.5 text-[10px] text-muted-foreground">
+        <span>BEROAS <span className="font-semibold tabular-nums text-foreground">{f.beroas > 0 ? `${f.beroas.toFixed(2)}x` : '—'}</span></span>
+        <span>{totalOrders > 0 ? `${totalOrders} orders` : 'no orders'}</span>
+        <span>{lastLogDate || 'no logs'}</span>
+      </div>
+    </motion.button>
+  );
+}
+
+// ── Funnel detail drawer ────────────────────────────────────────────────────
+
+function FunnelDrawer({
+  funnel, logs, onClose, onUpdate, onDelete, onLogsChanged,
+}: {
+  funnel: Funnel | null;
+  logs: FunnelDailyLog[];
+  onClose: () => void;
   onUpdate: (patch: Partial<Funnel>) => void;
+  onDelete: () => void;
   onLogsChanged: () => void;
-  fmt: (usd: number) => string;
 }) {
   return (
-    <>
-      <tr>
-        <td>
-          <button onClick={onToggle} className="px-2 py-2 text-muted-foreground transition hover:text-foreground">
-            {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          </button>
-        </td>
-        <td>
-          <div className="px-3 py-2">
-            <p className="text-[13px] font-medium text-foreground">{f.productName}</p>
-            {f.funnelishUrl && (
-              <a
-                href={f.funnelishUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary"
-              >
-                <Globe className="h-3 w-3" /> Funnelish ↗
-              </a>
-            )}
-          </div>
-        </td>
-        <td>
-          <div className="px-3 py-2 text-[12px]">
-            <p className="text-foreground">{f.country}</p>
-            <p className="text-[10px] text-muted-foreground">{f.language}</p>
-          </div>
-        </td>
-        <td>
-          <select
-            value={f.status}
-            onChange={(e) => onUpdate({ status: e.target.value as FunnelStatus })}
-            className="tracker-select text-[12px]"
+    <AnimatePresence>
+      {funnel && (
+        <div className="fixed inset-0 z-[80] flex justify-end">
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+            className="relative z-10 flex h-full w-full max-w-xl flex-col overflow-hidden border-l border-border bg-card shadow-2xl"
           >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
-        </td>
-        <td>
-          <div className="px-3 py-2 text-right tabular-nums text-[12px] text-foreground">
-            {Number.isFinite(beroas) ? `${beroas.toFixed(2)}x` : '—'}
-          </div>
-        </td>
-        <td>
-          <div className="px-3 py-2 text-right tabular-nums text-[12px] text-foreground">
-            {agg.blendedRoas > 0 ? `${agg.blendedRoas.toFixed(2)}x` : '—'}
-          </div>
-        </td>
-        <td>
-          <div className="px-3 py-2">
-            {agg.totalSpend === 0 ? (
-              <span className="text-[10px] text-muted-foreground/60">no logs</span>
-            ) : winning ? (
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Winning
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-400" /> Below
-              </span>
-            )}
-          </div>
-        </td>
-        <td>
-          <div className="px-3 py-2 text-[11px] text-muted-foreground tabular-nums">
-            {agg.lastLogDate || '—'}
-          </div>
-        </td>
-        <td>
-          <div className="flex items-center justify-end gap-1 px-3 py-1.5">
-            <button onClick={onDelete}
-              className="rounded-md p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400">
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </td>
-      </tr>
-      <AnimatePresence initial={false}>
-        {isOpen && (
-          <tr>
-            <td colSpan={9} style={{ padding: 0 }}>
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.25 }}
-                className="overflow-hidden border-t border-border bg-background/40"
-              >
-                <DailyLogsSection funnel={f} logs={logs} onLogsChanged={onLogsChanged} fmt={fmt} />
-              </motion.div>
-            </td>
-          </tr>
-        )}
-      </AnimatePresence>
-    </>
+            <FunnelDrawerContent
+              funnel={funnel}
+              logs={logs}
+              onClose={onClose}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+              onLogsChanged={onLogsChanged}
+            />
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }
 
-// ── Daily logs section (inside expanded row) ────────────────────────────────
-
-function DailyLogsSection({
-  funnel,
-  logs,
-  onLogsChanged,
-  fmt,
+function FunnelDrawerContent({
+  funnel: f, logs, onClose, onUpdate, onDelete, onLogsChanged,
 }: {
   funnel: Funnel;
   logs: FunnelDailyLog[];
+  onClose: () => void;
+  onUpdate: (patch: Partial<Funnel>) => void;
+  onDelete: () => void;
   onLogsChanged: () => void;
-  fmt: (usd: number) => string;
 }) {
+  const agg = aggregateLogs(logs);
+  const winning = isWinning(agg.latestRoas, f.beroas);
+  const winThreshold = f.beroas > 0 ? f.beroas + 1 : 0;
+
   const [date, setDate] = useState(getISTDate());
-  const [spend, setSpend] = useState('');
-  const [revenue, setRevenue] = useState('');
-  const [profit, setProfit] = useState('');
-  const [orders, setOrders] = useState('');
   const [roas, setRoas] = useState('');
+  const [orders, setOrders] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Auto-compute ROAS when spend & revenue both present
-  useEffect(() => {
-    const s = parseFloat(spend);
-    const r = parseFloat(revenue);
-    if (Number.isFinite(s) && s > 0 && Number.isFinite(r)) {
-      setRoas((r / s).toFixed(2));
-    }
-  }, [spend, revenue]);
-
-  const margin = marginFor(funnel);
-  const beroas = beroasFor(funnel);
+  const tone = TONE[STATUS_OPTIONS.find((s) => s.value === f.status)?.tone ?? 'gray'];
 
   const addLog = async () => {
     if (!date) { setErr('Date is required.'); return; }
-    if (!spend && !revenue && !profit && !orders) { setErr('Enter at least one metric.'); return; }
+    if (!roas && !orders) { setErr('Enter at least ROAS or orders.'); return; }
     try {
       setSaving(true);
       setErr(null);
@@ -631,19 +584,16 @@ function DailyLogsSection({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          funnelId: funnel.id,
+          funnelId: f.id,
           date,
-          spend: parseFloat(spend) || 0,
-          revenue: parseFloat(revenue) || 0,
-          profit: parseFloat(profit) || 0,
-          orders: parseInt(orders, 10) || 0,
           roas: parseFloat(roas) || 0,
+          orders: parseInt(orders, 10) || 0,
           notes,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      setSpend(''); setRevenue(''); setProfit(''); setOrders(''); setRoas(''); setNotes('');
+      setRoas(''); setOrders(''); setNotes('');
       onLogsChanged();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed to add log.');
@@ -671,121 +621,163 @@ function DailyLogsSection({
   };
 
   return (
-    <div className="space-y-3 px-5 py-4">
-      {/* Pricing summary */}
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 text-[11px]">
-        <PricingCell label="Selling price" value={fmt(funnel.sellingPrice)} />
-        <PricingCell label="Cost" value={fmt(funnel.costPrice)} />
-        <PricingCell label="Margin" value={`${(margin * 100).toFixed(1)}%`} />
-        <PricingCell label="BEROAS" value={Number.isFinite(beroas) ? `${beroas.toFixed(2)}x` : '—'} />
-      </div>
-
-      {/* Add log inline form */}
-      <div className="rounded-lg border border-border bg-card/60 p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Plus className="h-3.5 w-3.5 text-primary" />
-          <span className="text-[11px] font-medium text-foreground">Log a day</span>
-          {err && <span className="ml-auto text-[10px] text-destructive">{err}</span>}
-        </div>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-7">
-          <div className="md:col-span-1">
-            <label className="text-[9px] uppercase tracking-wider text-muted-foreground">Date</label>
-            <DatePicker value={date} onChange={(d) => setDate(d || getISTDate())} max={getISTDate()} compact />
+    <>
+      {/* Header */}
+      <div className="relative">
+        <div className={cn('absolute inset-x-0 top-0 h-[3px]', tone.bar)} aria-hidden />
+        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold text-foreground">{f.productName}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {f.country} · {f.language}
+              {f.launchDate && <> · launched {f.launchDate}</>}
+              {f.funnelishUrl && (
+                <>
+                  {' · '}
+                  <a href={f.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:text-primary/80">
+                    <Globe className="h-3 w-3" /> Funnelish
+                  </a>
+                </>
+              )}
+            </p>
           </div>
-          <FormCell label="Spend (USD)">
-            <input type="number" min="0" inputMode="decimal" value={spend} onChange={(e) => setSpend(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-          </FormCell>
-          <FormCell label="Revenue (USD)">
-            <input type="number" min="0" inputMode="decimal" value={revenue} onChange={(e) => setRevenue(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-          </FormCell>
-          <FormCell label="Profit (USD)">
-            <input type="number" inputMode="decimal" value={profit} onChange={(e) => setProfit(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-          </FormCell>
-          <FormCell label="Orders">
-            <input type="number" min="0" inputMode="numeric" value={orders} onChange={(e) => setOrders(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-          </FormCell>
-          <FormCell label="ROAS (Meta)">
-            <input type="number" min="0" inputMode="decimal" step="0.01" value={roas} onChange={(e) => setRoas(e.target.value)} className="form-input tabular-nums" placeholder="auto" />
-          </FormCell>
-          <div className="flex items-end">
-            <button
-              onClick={addLog}
-              disabled={saving}
-              className="inline-flex h-[34px] w-full items-center justify-center gap-1 rounded-lg bg-primary/15 text-[12px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
+          <div className="flex items-center gap-2">
+            <select
+              value={f.status}
+              onChange={(e) => onUpdate({ status: e.target.value as FunnelStatus })}
+              className="form-input py-1 text-[11px] w-28"
             >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
+              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <button onClick={onDelete} className="rounded-md p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground transition hover:text-foreground">
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
-        <input
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Notes (optional)…"
-          className="form-input mt-2 text-[11px]"
-        />
       </div>
 
-      {/* Logs table */}
-      {logs.length === 0 ? (
-        <p className="px-1 py-3 text-[11px] text-muted-foreground/60">No logs yet — add the first day above.</p>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-border">
-          <table className="tracker-table">
-            <thead>
-              <tr>
-                <th style={{ width: 110 }}>Date</th>
-                <th style={{ textAlign: 'right' }}>Spend</th>
-                <th style={{ textAlign: 'right' }}>Revenue</th>
-                <th style={{ textAlign: 'right' }}>Profit</th>
-                <th style={{ textAlign: 'right', width: 70 }}>Orders</th>
-                <th style={{ textAlign: 'right', width: 80 }}>ROAS</th>
-                <th style={{ width: 60 }}>Win</th>
-                <th>Notes</th>
-                <th style={{ width: 50, textAlign: 'right' }}>&nbsp;</th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((l) => {
-                const win = isWinning(l.roas, beroas);
-                return (
-                  <tr key={l.id}>
-                    <td><div className="px-3 py-2 text-[11px] tabular-nums text-foreground">{l.date}</div></td>
-                    <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{fmt(l.spend)}</div></td>
-                    <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{fmt(l.revenue)}</div></td>
-                    <td>
-                      <div className={cn('px-3 py-2 text-right text-[11px] tabular-nums', l.profit < 0 ? 'text-rose-400' : 'text-emerald-400')}>
-                        {fmt(l.profit)}
-                      </div>
-                    </td>
-                    <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{l.orders}</div></td>
-                    <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{l.roas > 0 ? `${l.roas.toFixed(2)}x` : '—'}</div></td>
-                    <td>
-                      <div className="px-3 py-2">
-                        {l.spend === 0 ? <span className="text-[10px] text-muted-foreground/60">—</span> : win
-                          ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" title="Winning" />
-                          : <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-400" title="Below threshold" />}
-                      </div>
-                    </td>
-                    <td><div className="px-3 py-2 text-[11px] text-muted-foreground truncate max-w-[200px]">{l.notes || '—'}</div></td>
-                    <td>
-                      <div className="flex items-center justify-end px-3 py-1.5">
-                        <button onClick={() => removeLog(l.id)} className="rounded-md p-1 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400">
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="space-y-4 px-5 py-4">
+          {/* Performance summary */}
+          <div className="grid grid-cols-3 gap-2">
+            <PerfCell
+              label="Latest ROAS"
+              value={agg.latestRoas > 0 ? `${agg.latestRoas.toFixed(2)}x` : '—'}
+              accent={agg.latestRoas > 0 ? (winning ? 'emerald' : 'rose') : undefined}
+            />
+            <PerfCell
+              label="BEROAS"
+              value={f.beroas > 0 ? `${f.beroas.toFixed(2)}x` : '—'}
+              accent="primary"
+            />
+            <PerfCell
+              label="Win threshold"
+              value={winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'}
+              hint="BEROAS + 1"
+            />
+          </div>
 
-      {funnel.notes && (
-        <p className="text-[10px] text-muted-foreground/70">Funnel notes: {funnel.notes}</p>
-      )}
-    </div>
+          {/* Add log inline form — performance only */}
+          <div className="rounded-lg border border-border bg-background/40 p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <Plus className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[11px] font-medium text-foreground">Log a day</span>
+              {err && <span className="ml-auto text-[10px] text-destructive">{err}</span>}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <FormCell label="Date">
+                <DatePicker value={date} onChange={(d) => setDate(d || getISTDate())} max={getISTDate()} compact />
+              </FormCell>
+              <FormCell label="ROAS (Meta)">
+                <input type="number" min="0" inputMode="decimal" step="0.01" value={roas} onChange={(e) => setRoas(e.target.value)} className="form-input tabular-nums" placeholder="0.00" />
+              </FormCell>
+              <FormCell label="Orders">
+                <input type="number" min="0" inputMode="numeric" value={orders} onChange={(e) => setOrders(e.target.value)} className="form-input tabular-nums" placeholder="0" />
+              </FormCell>
+            </div>
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes (optional)…"
+              className="form-input mt-2 text-[11px]"
+            />
+            <button
+              onClick={addLog}
+              disabled={saving}
+              className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-primary/15 py-2 text-[12px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add log
+            </button>
+          </div>
+
+          {/* Logs table */}
+          {logs.length === 0 ? (
+            <p className="px-1 py-4 text-center text-[11px] text-muted-foreground/60">No logs yet — add the first day above.</p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-border">
+              <table className="tracker-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 100 }}>Date</th>
+                    <th style={{ textAlign: 'right', width: 80 }}>ROAS</th>
+                    <th style={{ textAlign: 'right', width: 70 }}>Orders</th>
+                    <th style={{ width: 50 }}>Win</th>
+                    <th>Notes</th>
+                    <th style={{ width: 36, textAlign: 'right' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {logs.map((l) => {
+                    const win = isWinning(l.roas, f.beroas);
+                    return (
+                      <tr key={l.id}>
+                        <td><div className="px-3 py-2 text-[11px] tabular-nums text-foreground">{l.date}</div></td>
+                        <td>
+                          <div className={cn('px-3 py-2 text-right text-[11px] tabular-nums', l.roas === 0 ? 'text-muted-foreground/60' : win ? 'text-emerald-400' : 'text-foreground')}>
+                            {l.roas > 0 ? `${l.roas.toFixed(2)}x` : '—'}
+                          </div>
+                        </td>
+                        <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{l.orders || '—'}</div></td>
+                        <td>
+                          <div className="px-3 py-2">
+                            {l.roas === 0 ? <span className="text-[10px] text-muted-foreground/60">—</span> : win
+                              ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" title="Winning" />
+                              : <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-400" title="Below threshold" />}
+                          </div>
+                        </td>
+                        <td><div className="px-3 py-2 text-[11px] text-muted-foreground truncate max-w-[160px]">{l.notes || '—'}</div></td>
+                        <td>
+                          <div className="flex items-center justify-end px-3 py-1.5">
+                            <button onClick={() => removeLog(l.id)} className="rounded-md p-1 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400">
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {f.notes && (
+            <div className="rounded-lg border border-border bg-background/40 p-3">
+              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Notes</p>
+              <p className="mt-1 text-[12px] text-foreground">{f.notes}</p>
+            </div>
+          )}
+
+          <p className="pt-2 text-[10px] text-muted-foreground/60">
+            Money tracking lives in Finance (separate page). This view is launches &amp; performance only.
+          </p>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -798,11 +790,20 @@ function FormCell({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-function PricingCell({ label, value }: { label: string; value: string }) {
+function PerfCell({ label, value, hint, accent }: {
+  label: string; value: string; hint?: string;
+  accent?: 'primary' | 'emerald' | 'rose';
+}) {
+  const map = {
+    primary: 'text-primary',
+    emerald: 'text-emerald-400',
+    rose:    'text-rose-400',
+  };
   return (
-    <div className="rounded-md border border-border bg-card/60 px-3 py-2">
+    <div className="rounded-md border border-border bg-background/40 px-3 py-2">
       <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-[13px] font-semibold tabular-nums text-foreground">{value}</p>
+      <p className={cn('mt-0.5 text-[16px] font-semibold tabular-nums', accent ? map[accent] : 'text-foreground')}>{value}</p>
+      {hint && <p className="mt-0.5 text-[9px] text-muted-foreground/60">{hint}</p>}
     </div>
   );
 }
@@ -816,9 +817,7 @@ type NewFunnelInput = {
   funnelishUrl: string;
   status: FunnelStatus;
   launchDate: string;
-  sellingPrice: number;
-  costPrice: number;
-  deliveryRate: number;
+  beroas: number;
   notes: string;
 };
 
@@ -835,9 +834,7 @@ function AddFunnelModal({
   const [funnelishUrl, setFunnelishUrl] = useState('');
   const [status, setStatus] = useState<FunnelStatus>('draft');
   const [launchDate, setLaunchDate] = useState('');
-  const [sellingPrice, setSellingPrice] = useState('');
-  const [costPrice, setCostPrice] = useState('');
-  const [deliveryRate, setDeliveryRate] = useState('95');
+  const [beroas, setBeroas] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -847,12 +844,8 @@ function AddFunnelModal({
     if (langs.length > 0 && !langs.includes(language)) setLanguage(langs[0]);
   }, [country, langs, language]);
 
-  // Live preview of margin & BEROAS
-  const sp = parseFloat(sellingPrice) || 0;
-  const cp = parseFloat(costPrice) || 0;
-  const dr = parseFloat(deliveryRate) || 0;
-  const margin = sp > 0 ? ((sp - cp) / sp) * (dr / 100) : 0;
-  const beroas = margin > 0 ? 1 / margin : 0;
+  const beroasNum = parseFloat(beroas) || 0;
+  const winThreshold = beroasNum > 0 ? beroasNum + 1 : 0;
 
   const submit = async () => {
     if (!productName.trim()) { setErr('Product name is required.'); return; }
@@ -868,9 +861,7 @@ function AddFunnelModal({
         funnelishUrl: funnelishUrl.trim(),
         status,
         launchDate,
-        sellingPrice: sp,
-        costPrice: cp,
-        deliveryRate: dr,
+        beroas: beroasNum,
         notes: notes.trim(),
       });
     } catch (e) {
@@ -888,7 +879,7 @@ function AddFunnelModal({
         initial={{ opacity: 0, scale: 0.95, y: 16 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="relative z-10 w-full max-w-xl mx-4 rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl overflow-hidden"
+        className="relative z-10 w-full max-w-lg mx-4 rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl overflow-hidden"
       >
         <div className="flex items-center justify-between border-b border-border/50 px-5 py-3">
           <div className="flex items-center gap-2">
@@ -939,32 +930,31 @@ function AddFunnelModal({
             </FormCell>
           </div>
 
-          {/* Pricing for BEROAS */}
+          {/* BEROAS — single number */}
           <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
-            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-primary/80">
-              Pricing (USD) — drives BEROAS
+            <div className="grid grid-cols-2 gap-2">
+              <FormCell label="BEROAS">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={beroas}
+                  onChange={(e) => setBeroas(e.target.value)}
+                  className="form-input tabular-nums"
+                  placeholder="e.g. 1.67"
+                />
+              </FormCell>
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] uppercase tracking-wider text-muted-foreground">Win threshold</label>
+                <div className="flex h-[34px] items-center rounded-lg border border-border bg-background/40 px-3 text-[12px] tabular-nums text-primary">
+                  {winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'}
+                </div>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] text-muted-foreground/70">
+              Breakeven ROAS for this product. A funnel is considered <em>winning</em> when its ROAS hits BEROAS + 1.
             </p>
-            <div className="grid grid-cols-3 gap-2">
-              <FormCell label="Selling price">
-                <input type="number" min="0" inputMode="decimal" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-              </FormCell>
-              <FormCell label="Cost price">
-                <input type="number" min="0" inputMode="decimal" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-              </FormCell>
-              <FormCell label="Delivery rate %">
-                <input type="number" min="0" max="100" inputMode="decimal" value={deliveryRate} onChange={(e) => setDeliveryRate(e.target.value)} className="form-input tabular-nums" />
-              </FormCell>
-            </div>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
-              <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
-                <span className="text-muted-foreground">Margin: </span>
-                <span className="font-semibold tabular-nums text-foreground">{(margin * 100).toFixed(1)}%</span>
-              </div>
-              <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
-                <span className="text-muted-foreground">BEROAS: </span>
-                <span className="font-semibold tabular-nums text-primary">{beroas > 0 ? `${beroas.toFixed(2)}x` : '—'}</span>
-              </div>
-            </div>
           </div>
 
           <FormCell label="Notes (optional)">

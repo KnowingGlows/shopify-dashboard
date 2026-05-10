@@ -1,5 +1,6 @@
-// Funnel + daily log + creative types for international expansion.
-// All monetary values stored in USD; display layer handles EUR/INR conversion.
+// Funnel + creative types for international launch tracking.
+// MONEY (cost, revenue, profit, currency) is OUT OF SCOPE here — that lives in
+// the future Finance page. This page only tracks launches and performance.
 
 export type FunnelStatus = 'draft' | 'testing' | 'live' | 'paused' | 'killed';
 export type CreativeStatus = 'testing' | 'live' | 'killed';
@@ -9,16 +10,11 @@ export interface Funnel {
   id: string;
   productName: string;          // free-text for now; will link to product tracker in Round 3
   country: string;              // long form, e.g. "Netherlands"
-  language: string;             // e.g. "Dutch"
+  language: string;
   funnelishUrl: string;
   status: FunnelStatus;
   launchDate: string;           // YYYY-MM-DD or ''
-
-  // Pricing/margin (USD) — drives BEROAS computation
-  sellingPrice: number;
-  costPrice: number;
-  deliveryRate: number;         // 0–100 percentage (e.g. 95 for 95%)
-
+  beroas: number;               // breakeven ROAS — single number; future will pull from Finance
   notes: string;
   createdBy: string;
   createdAt: string;
@@ -29,11 +25,8 @@ export interface FunnelDailyLog {
   id: string;
   funnelId: string;
   date: string;                 // YYYY-MM-DD (IST)
-  spend: number;                // USD
-  revenue: number;              // USD
-  profit: number;               // USD (manually entered)
-  orders: number;
-  roas: number;                 // entered from Meta or computed = revenue / spend
+  roas: number;                 // entered from Meta
+  orders: number;               // optional sales count
   notes: string;
   createdBy: string;
   createdAt: string;
@@ -47,9 +40,9 @@ export interface Creative {
   country: string;
   language: string;
   batchName: string;
-  creativeType: string;         // 'video' | 'image' | 'UGC' | 'carousel' | etc.
+  creativeType: string;
   folderLink: string;
-  launchDate: string;           // YYYY-MM-DD or ''
+  launchDate: string;
   status: CreativeStatus;
   result: CreativeResult;
   notes: string;
@@ -57,5 +50,3 @@ export interface Creative {
   createdAt: string;
   updatedAt: string;
 }
-
-export type DisplayCurrency = 'USD' | 'EUR' | 'INR';

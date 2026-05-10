@@ -1,73 +1,46 @@
-// Funnel math helpers — margin, BEROAS, win check, daily-log aggregation.
-// All amounts are USD; conversion happens at the display layer.
+// Funnel math helpers — win check, daily-log aggregation, hit rate.
+// Money math (margin, BEROAS-from-pricing, spend/revenue) lives elsewhere
+// (the future Finance page). Here BEROAS is a stored number on the funnel.
 
-import type { Funnel, FunnelDailyLog } from '@/types/funnel';
-
-type PricingInputs = Pick<Funnel, 'sellingPrice' | 'costPrice' | 'deliveryRate'>;
-
-/**
- * Margin = (SP − CP) / SP × (deliveryRate%).
- * Same formula as the calculator's Margin section. Returns 0 when SP ≤ 0.
- */
-export function marginFor(p: PricingInputs): number {
-  const sp = Number(p.sellingPrice) || 0;
-  const cp = Number(p.costPrice) || 0;
-  const dr = (Number(p.deliveryRate) || 0) / 100;
-  if (sp <= 0) return 0;
-  return ((sp - cp) / sp) * dr;
-}
+import type { FunnelDailyLog } from '@/types/funnel';
 
 /**
- * Breakeven ROAS = 1 / margin. Returns Infinity when margin ≤ 0
- * (caller should treat as "not computable").
- */
-export function beroasFor(p: PricingInputs): number {
-  const m = marginFor(p);
-  if (m <= 0) return Infinity;
-  return 1 / m;
-}
-
-/**
- * Per the user's definition: a funnel is "winning" when ROAS ≥ BEROAS + 1.
- * Returns false if BEROAS isn't computable (e.g. zero margin).
+ * A funnel is "winning" when its ROAS is at least BEROAS + 1.
+ * Returns false when either input is missing/non-positive.
  */
 export function isWinning(roas: number, beroas: number): boolean {
-  if (!Number.isFinite(beroas)) return false;
-  if (!Number.isFinite(roas)) return false;
+  if (!Number.isFinite(beroas) || beroas <= 0) return false;
+  if (!Number.isFinite(roas) || roas <= 0) return false;
   return roas >= beroas + 1;
 }
 
 export interface AggregatedLog {
-  totalSpend: number;
-  totalRevenue: number;
-  totalProfit: number;
+  latestRoas: number;     // most recent log's ROAS
   totalOrders: number;
-  blendedRoas: number;
   daysLogged: number;
   lastLogDate: string;
 }
 
 export function aggregateLogs(logs: FunnelDailyLog[]): AggregatedLog {
   if (logs.length === 0) {
-    return { totalSpend: 0, totalRevenue: 0, totalProfit: 0, totalOrders: 0, blendedRoas: 0, daysLogged: 0, lastLogDate: '' };
+    return { latestRoas: 0, totalOrders: 0, daysLogged: 0, lastLogDate: '' };
   }
-  let totalSpend = 0, totalRevenue = 0, totalProfit = 0, totalOrders = 0;
+  let totalOrders = 0;
   let lastLogDate = '';
   for (const l of logs) {
-    totalSpend += Number(l.spend) || 0;
-    totalRevenue += Number(l.revenue) || 0;
-    totalProfit += Number(l.profit) || 0;
     totalOrders += Number(l.orders) || 0;
     if (l.date > lastLogDate) lastLogDate = l.date;
   }
-  const blendedRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-  return { totalSpend, totalRevenue, totalProfit, totalOrders, blendedRoas, daysLogged: logs.length, lastLogDate };
+  // Latest ROAS = ROAS from the most recent date
+  const sorted = [...logs].sort((a, b) => b.date.localeCompare(a.date));
+  const latestRoas = Number(sorted[0]?.roas) || 0;
+  return { latestRoas, totalOrders, daysLogged: logs.length, lastLogDate };
 }
 
 /**
- * Hit rate = % of funnels with ROAS ≥ BEROAS + 1. Caller passes pre-computed
- * { roas, beroas } pairs (typically blendedRoas from aggregateLogs and BEROAS
- * from the funnel's own pricing).
+ * Hit rate = % of funnels with latest ROAS ≥ BEROAS + 1.
+ * Caller decides which funnels to include (typically only those with at least
+ * one log entry — funnels with no data are excluded).
  */
 export function hitRate(funnels: Array<{ roas: number; beroas: number }>): number {
   if (funnels.length === 0) return 0;

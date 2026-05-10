@@ -21,11 +21,8 @@ function sanitize(input: Record<string, unknown>, base?: Partial<FunnelDailyLog>
     if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error('Invalid date format (YYYY-MM-DD).');
     out.date = d;
   }
-  if ('spend' in input) out.spend = Math.max(0, Number(input.spend) || 0);
-  if ('revenue' in input) out.revenue = Math.max(0, Number(input.revenue) || 0);
-  if ('profit' in input) out.profit = Number(input.profit) || 0; // allow negative
-  if ('orders' in input) out.orders = Math.max(0, Number(input.orders) || 0);
   if ('roas' in input) out.roas = Math.max(0, Number(input.roas) || 0);
+  if ('orders' in input) out.orders = Math.max(0, Number(input.orders) || 0);
   if ('notes' in input) out.notes = String(input.notes ?? '').trim();
   return out;
 }
@@ -54,11 +51,8 @@ export async function GET(request: Request) {
           id: data.id ?? doc.id,
           funnelId: data.funnelId ?? '',
           date: data.date ?? '',
-          spend: Number(data.spend) || 0,
-          revenue: Number(data.revenue) || 0,
-          profit: Number(data.profit) || 0,
-          orders: Number(data.orders) || 0,
           roas: Number(data.roas) || 0,
+          orders: Number(data.orders) || 0,
           notes: data.notes ?? '',
           createdBy: data.createdBy ?? '',
           createdAt: data.createdAt ?? '',
@@ -93,21 +87,13 @@ export async function POST(request: Request) {
     }
     if (!sanitized.date) return NextResponse.json({ error: 'Date is required.' }, { status: 400 });
 
-    // If ROAS not provided but spend & revenue are, compute it.
-    if (sanitized.roas == null && sanitized.spend != null && sanitized.revenue != null && sanitized.spend > 0) {
-      sanitized.roas = sanitized.revenue / sanitized.spend;
-    }
-
     const now = new Date().toISOString();
     const entry: FunnelDailyLog = {
       id: crypto.randomUUID(),
       funnelId,
       date: sanitized.date,
-      spend: sanitized.spend ?? 0,
-      revenue: sanitized.revenue ?? 0,
-      profit: sanitized.profit ?? 0,
-      orders: sanitized.orders ?? 0,
       roas: sanitized.roas ?? 0,
+      orders: sanitized.orders ?? 0,
       notes: sanitized.notes ?? '',
       createdBy: session.email ?? '',
       createdAt: now,
