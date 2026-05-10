@@ -21,12 +21,24 @@ export interface Funnel {
   updatedAt: string;
 }
 
+// One log per (funnel, date). Two pages edit it:
+//   • Funnels page edits roas / orders / notes (launch performance).
+//   • Finance page edits spend / revenue / profit / notes (money).
+// PATCH semantics let either page update its fields without disturbing the other.
 export interface FunnelDailyLog {
   id: string;
   funnelId: string;
   date: string;                 // YYYY-MM-DD (IST)
+
+  // Performance (Funnels page)
   roas: number;                 // entered from Meta
-  orders: number;               // optional sales count
+  orders: number;
+
+  // Money (Finance page) — all USD
+  spend: number;
+  revenue: number;
+  profit: number;               // can be negative
+
   notes: string;
   createdBy: string;
   createdAt: string;

@@ -21,8 +21,14 @@ function sanitize(input: Record<string, unknown>, base?: Partial<FunnelDailyLog>
     if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error('Invalid date format (YYYY-MM-DD).');
     out.date = d;
   }
+  // Performance
   if ('roas' in input) out.roas = Math.max(0, Number(input.roas) || 0);
   if ('orders' in input) out.orders = Math.max(0, Number(input.orders) || 0);
+  // Money (USD)
+  if ('spend' in input) out.spend = Math.max(0, Number(input.spend) || 0);
+  if ('revenue' in input) out.revenue = Math.max(0, Number(input.revenue) || 0);
+  if ('profit' in input) out.profit = Number(input.profit) || 0; // allow negative
+  // Shared
   if ('notes' in input) out.notes = String(input.notes ?? '').trim();
   return out;
 }
@@ -53,6 +59,9 @@ export async function GET(request: Request) {
           date: data.date ?? '',
           roas: Number(data.roas) || 0,
           orders: Number(data.orders) || 0,
+          spend: Number(data.spend) || 0,
+          revenue: Number(data.revenue) || 0,
+          profit: Number(data.profit) || 0,
           notes: data.notes ?? '',
           createdBy: data.createdBy ?? '',
           createdAt: data.createdAt ?? '',
@@ -87,6 +96,11 @@ export async function POST(request: Request) {
     }
     if (!sanitized.date) return NextResponse.json({ error: 'Date is required.' }, { status: 400 });
 
+    // Auto-compute ROAS from spend & revenue when both provided and roas isn't.
+    if (sanitized.roas == null && sanitized.spend != null && sanitized.revenue != null && sanitized.spend > 0) {
+      sanitized.roas = sanitized.revenue / sanitized.spend;
+    }
+
     const now = new Date().toISOString();
     const entry: FunnelDailyLog = {
       id: crypto.randomUUID(),
@@ -94,6 +108,9 @@ export async function POST(request: Request) {
       date: sanitized.date,
       roas: sanitized.roas ?? 0,
       orders: sanitized.orders ?? 0,
+      spend: sanitized.spend ?? 0,
+      revenue: sanitized.revenue ?? 0,
+      profit: sanitized.profit ?? 0,
       notes: sanitized.notes ?? '',
       createdBy: session.email ?? '',
       createdAt: now,
