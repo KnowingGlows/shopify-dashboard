@@ -42,10 +42,15 @@ function getISTDate(date?: Date): string {
 
 function useCountUp(value: number, duration = 600) {
   const [display, setDisplay] = useState(0);
-  const prevRef = useRef(0);
+  // Mirror the displayed value into a ref so the next animation starts from
+  // wherever we are *now*, not from the last target. Prevents visible jumps
+  // when value changes mid-animation (filter swaps, refreshes, etc.).
+  const displayRef = useRef(0);
+  displayRef.current = display;
   useEffect(() => {
-    const from = prevRef.current;
+    const from = displayRef.current;
     const to = Number.isFinite(value) ? value : 0;
+    if (from === to) return;
     const start = performance.now();
     let raf = 0;
     const tick = (now: number) => {
@@ -53,7 +58,6 @@ function useCountUp(value: number, duration = 600) {
       const eased = 1 - Math.pow(1 - t, 3);
       setDisplay(from + (to - from) * eased);
       if (t < 1) raf = requestAnimationFrame(tick);
-      else prevRef.current = to;
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);

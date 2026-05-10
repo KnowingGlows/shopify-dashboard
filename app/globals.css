@@ -251,7 +251,11 @@
   color: var(--foreground);
 }
 
-/* Form input styles for card-based tracker pages */
+/* Form input styles for card-based tracker pages.
+   Wrapped in @layer components so Tailwind utilities (pl-8, py-1.5, etc.)
+   in @layer utilities can override these defaults — root-level CSS would
+   otherwise beat utilities in the cascade. */
+@layer components {
 .form-input {
   width: 100%;
   padding: 8px 12px;
@@ -284,6 +288,7 @@ select.form-input option {
   background: #111113;
   color: var(--foreground);
 }
+} /* end @layer components */
 
 /* ── Ambient effects ─────────────────────────────────────────────────────── */
 
