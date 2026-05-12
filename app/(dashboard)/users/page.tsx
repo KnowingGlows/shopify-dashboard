@@ -35,7 +35,6 @@ const PAGES = [
   { path: '/dispatch', label: 'Dispatch' },
   { path: '/orders', label: 'Logistics' },
   { path: '/transactions', label: 'Transactions' },
-  { path: '/tasks', label: 'Tasks' },
   { path: '/settings', label: 'Settings' },
   { path: '/logs', label: 'Daily Logs' },
 ];

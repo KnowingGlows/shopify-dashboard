@@ -8,7 +8,11 @@
       "Bash(grep -nA 8 \"function FormField\" /Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/app/\\\\\\(dashboard\\\\\\)/product-tracker/page.tsx)",
       "Bash(grep -n \"FunnelDrawerContent\\\\|<a href={f.funnelishUrl}\\\\|onClose, onUpdate, onDelete\\\\|Funnelish\\\\b\" /Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/app/\\\\\\(dashboard\\\\\\)/funnels/page.tsx)",
       "Bash(grep -nA 6 \"^function FormCell\" /Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/app/\\\\\\(dashboard\\\\\\)/funnels/page.tsx)",
-      "Bash(grep -nA 8 \"^function PerfCell\" /Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/app/\\\\\\(dashboard\\\\\\)/funnels/page.tsx)"
+      "Bash(grep -nA 8 \"^function PerfCell\" /Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/app/\\\\\\(dashboard\\\\\\)/funnels/page.tsx)",
+      "Bash(cp 'app/\\(dashboard\\)/funnels/page.tsx' /tmp/funnels-page-backup.tsx && wc -l 'app/\\(dashboard\\)/funnels/page.tsx')"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }

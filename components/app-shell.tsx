@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  BarChart3, Box, CheckSquare, ClipboardList, Home, LogOut,
+  BarChart3, Box, ClipboardList, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Truck, Users, X,
   Calculator, PackageCheck, PackageX, Funnel as FunnelIcon, Globe, Wallet, Trophy,
 } from 'lucide-react';
@@ -39,7 +39,6 @@ const navItems: NavItem[] = [
   { href: '/funnels', label: 'Funnels', icon: FunnelIcon, section: 'marketing' },
   { href: '/ads-international', label: 'Ads', icon: Globe, section: 'marketing' },
   { href: '/ads-tracker', label: 'OPS Ads — India', icon: Megaphone, section: 'marketing' },
-  { href: '/tasks', label: 'Tasks', icon: CheckSquare, section: 'ops' },
   { href: '/inventory', label: 'Inventory', icon: Box, section: 'ops' },
   { href: '/rto', label: 'RTO', icon: PackageX, section: 'ops' },
   { href: '/dispatch', label: 'Dispatch', icon: PackageCheck, section: 'ops' },
@@ -171,7 +170,10 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
               <div className="space-y-0.5">
                 {items.map((item) => {
                   const idx = globalIndex++;
-                  return <NavLink key={item.href} item={item} isActive={activePath === item.href} onNavigate={onNavigate} index={idx} />;
+                  // Active = exact match OR prefix match (so detail pages like /funnels/[id]
+                  // highlight their parent /funnels). Skip prefix on '/' to avoid always-active home.
+                  const isActive = activePath === item.href || (item.href !== '/' && activePath.startsWith(item.href + '/'));
+                  return <NavLink key={item.href} item={item} isActive={isActive} onNavigate={onNavigate} index={idx} />;
                 })}
               </div>
             </div>

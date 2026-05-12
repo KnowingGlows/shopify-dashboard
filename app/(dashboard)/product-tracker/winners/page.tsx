@@ -77,6 +77,7 @@ export default function WinnersPage() {
   const [error, setError] = useState<string | null>(null);
   const [currency, setCurrency] = useState<SupportedCurrency>('USD');
   const [filterDate, setFilterDate] = useState<string>('');
+  const [activeOnly, setActiveOnly] = useState(true);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -287,11 +288,59 @@ export default function WinnersPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {summaries.map((s, idx) => (
-            <WinnerCard key={s.product.id} summary={s} fmt={fmt} index={idx} />
-          ))}
-        </div>
+        <>
+          {/* Active-only filter toggle */}
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Show</p>
+            <button
+              onClick={() => setActiveOnly(true)}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition',
+                activeOnly ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <span className={cn('h-1.5 w-1.5 rounded-full', activeOnly ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-muted-foreground/40')} />
+              Actively spending
+            </button>
+            <button
+              onClick={() => setActiveOnly(false)}
+              className={cn(
+                'inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-medium transition',
+                !activeOnly ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+              )}
+            >
+              All winners
+            </button>
+            <span className="text-[10px] text-muted-foreground/60">
+              {(() => {
+                const shown = activeOnly ? summaries.filter((s) => s.totalSpend > 0).length : summaries.length;
+                return `${shown} of ${summaries.length}`;
+              })()}
+            </span>
+          </div>
+
+          {(() => {
+            const visible = activeOnly ? summaries.filter((s) => s.totalSpend > 0) : summaries;
+            if (visible.length === 0) {
+              return (
+                <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
+                  <p className="text-[12px] text-muted-foreground">
+                    {activeOnly
+                      ? 'No winners currently spending. Toggle "All winners" to see all.'
+                      : 'No winners match.'}
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {visible.map((s, idx) => (
+                  <WinnerCard key={s.product.id} summary={s} fmt={fmt} index={idx} />
+                ))}
+              </div>
+            );
+          })()}
+        </>
       )}
 
       <p className="pt-1 text-[10px] text-muted-foreground/60">

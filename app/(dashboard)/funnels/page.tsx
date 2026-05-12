@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
-  Funnel as FunnelIcon, Plus, Trash2, Check, X, Loader2,
+  Funnel as FunnelIcon, Plus, Check, X, Loader2,
   AlertTriangle, Globe, Search, ArrowRight, BarChart3,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
@@ -13,7 +13,7 @@ import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { MARKETS, getLanguagesForCountry, getCountries } from '@/lib/markets';
 // (DatePicker is already imported below for the daily log entry)
-import { isWinning, aggregateLogs, hitRate, effectiveBeroas, isBeroasAutoComputed } from '@/lib/funnels';
+import { isWinning, aggregateLogs, hitRate, effectiveBeroas } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
 
@@ -36,10 +36,6 @@ const TONE: Record<'gray' | 'amber' | 'emerald' | 'sky' | 'rose', { text: string
   sky:     { text: 'text-sky-400',          bg: 'bg-sky-500/10',     border: 'border-sky-500/30',     bar: 'bg-sky-400',             dot: 'bg-sky-400' },
   rose:    { text: 'text-rose-400',         bg: 'bg-rose-500/10',    border: 'border-rose-500/30',    bar: 'bg-rose-400',            dot: 'bg-rose-400' },
 };
-
-function getISTDate(date?: Date): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date ?? new Date());
-}
 
 function useCountUp(value: number, duration = 600) {
   const [display, setDisplay] = useState(0);
@@ -84,7 +80,6 @@ export default function FunnelsPage() {
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
-  const [openFunnelId, setOpenFunnelId] = useState<string | null>(null);
 
   useEffect(() => { loadAll(); }, []);
 
@@ -135,14 +130,6 @@ export default function FunnelsPage() {
     return id ? productById.get(id) : undefined;
   };
   const beroasFor = (f: Funnel): number => effectiveBeroas(f, resolveProduct(f));
-
-  const refreshLogs = async (funnelId: string) => {
-    try {
-      const res = await fetch(`/api/funnels/logs?funnelId=${encodeURIComponent(funnelId)}`);
-      const data = await res.json();
-      setLogsByFunnel((prev) => ({ ...prev, [funnelId]: data.logs ?? [] }));
-    } catch { /* ignore */ }
-  };
 
   // ── Derived data ─────────────────────────────────────────────────────────
   const productOptions = useMemo(
@@ -238,41 +225,6 @@ export default function FunnelsPage() {
       setError(err instanceof Error ? err.message : 'Failed to add funnel.');
     }
   };
-
-  const updateFunnel = async (id: string, patch: Partial<Funnel>) => {
-    try {
-      const res = await fetch('/api/funnels', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, ...patch }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      setFunnels((prev) => prev.map((f) => (f.id === id ? { ...f, ...data.funnel } : f)));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update funnel.');
-    }
-  };
-
-  const deleteFunnel = async (id: string) => {
-    if (!confirm('Delete this funnel and all its logs?')) return;
-    try {
-      const res = await fetch('/api/funnels', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      setFunnels((prev) => prev.filter((f) => f.id !== id));
-      setLogsByFunnel((prev) => { const next = { ...prev }; delete next[id]; return next; });
-      setOpenFunnelId(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete funnel.');
-    }
-  };
-
-  const openFunnel = openFunnelId ? funnels.find((f) => f.id === openFunnelId) ?? null : null;
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-4">
@@ -433,7 +385,6 @@ export default function FunnelsPage() {
                 tone={tone}
                 linked={linked}
                 index={i}
-                onOpen={() => setOpenFunnelId(f.id)}
               />
             );
           })}
@@ -456,19 +407,6 @@ export default function FunnelsPage() {
         />
       )}
 
-      {/* Detail drawer */}
-      <FunnelDrawer
-        funnel={openFunnel}
-        logs={openFunnel ? logsByFunnel[openFunnel.id] ?? [] : []}
-        productId={openFunnel ? resolveProductId(openFunnel) : undefined}
-        product={openFunnel ? resolveProduct(openFunnel) : undefined}
-        products={products}
-        beroas={openFunnel ? beroasFor(openFunnel) : 0}
-        onClose={() => setOpenFunnelId(null)}
-        onUpdate={(patch) => openFunnel && updateFunnel(openFunnel.id, patch)}
-        onDelete={() => openFunnel && deleteFunnel(openFunnel.id)}
-        onLogsChanged={() => openFunnel && refreshLogs(openFunnel.id)}
-      />
     </PageTransition>
   );
 }
@@ -594,7 +532,7 @@ function FilterPill({ label, count, active, onClick, tone = 'gray' }: {
 // ── Funnel card ────────────────────────────────────────────────────────────
 
 function FunnelCard({
-  funnel: f, beroas, latestRoas, lastLogDate, totalOrders, winning, tone, linked, index, onOpen,
+  funnel: f, beroas, latestRoas, lastLogDate, totalOrders, winning, tone, linked, index,
 }: {
   funnel: Funnel;
   beroas: number;
@@ -605,24 +543,22 @@ function FunnelCard({
   tone: { text: string; bg: string; border: string; bar: string; dot: string };
   linked: boolean;
   index: number;
-  onOpen: () => void;
 }) {
   const hasData = latestRoas > 0;
   const statusLabel = STATUS_OPTIONS.find((s) => s.value === f.status)?.label ?? f.status;
   const winThreshold = beroas > 0 ? beroas + 1 : 0;
-  // Progress 0..1 of how close ROAS is to the win threshold (capped at 1.5x for headroom)
-  const progress = winThreshold > 0 && latestRoas > 0
-    ? Math.min(1, latestRoas / (winThreshold * 1.1))
-    : 0;
+  const progress = winThreshold > 0 && latestRoas > 0 ? Math.min(1, latestRoas / (winThreshold * 1.1)) : 0;
   const winBorder = winning ? 'border-emerald-500/40 hover:border-emerald-500/60' : 'border-border hover:border-border/80';
   const winGlow = winning ? '0 14px 40px -16px #34d39955, 0 0 0 1px #34d39933' : undefined;
   return (
-    <motion.button
+    <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: Math.min(index * 0.03, 0.3), ease: [0.22, 1, 0.36, 1] }}
       whileHover={{ y: -3, boxShadow: winGlow }}
-      onClick={onOpen}
+    >
+    <Link
+      href={`/funnels/${f.id}`}
       className={cn(
         'group relative flex flex-col gap-3 overflow-hidden rounded-xl border bg-card p-4 text-left transition-colors',
         winBorder
@@ -717,509 +653,11 @@ function FunnelCard({
         <span>{totalOrders > 0 ? `${totalOrders} orders` : 'no orders'}</span>
         <span>{lastLogDate || '—'}</span>
       </div>
-    </motion.button>
+    </Link>
+    </motion.div>
   );
 }
 
-// ── Funnel detail drawer ────────────────────────────────────────────────────
-
-function FunnelDrawer({
-  funnel, logs, productId, product, products, beroas, onClose, onUpdate, onDelete, onLogsChanged,
-}: {
-  funnel: Funnel | null;
-  logs: FunnelDailyLog[];
-  productId: string | undefined;
-  product: ProductTrackerEntry | undefined;
-  products: ProductTrackerEntry[];
-  beroas: number;
-  onClose: () => void;
-  onUpdate: (patch: Partial<Funnel>) => void;
-  onDelete: () => void;
-  onLogsChanged: () => void;
-}) {
-  return (
-    <AnimatePresence>
-      {funnel && (
-        <div className="fixed inset-0 z-[80] flex justify-end">
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={onClose}
-          />
-          <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-            className="relative z-10 flex h-full w-full max-w-xl flex-col overflow-hidden border-l border-border bg-card shadow-2xl"
-          >
-            <FunnelDrawerContent
-              funnel={funnel}
-              logs={logs}
-              productId={productId}
-              product={product}
-              products={products}
-              beroas={beroas}
-              onClose={onClose}
-              onUpdate={onUpdate}
-              onDelete={onDelete}
-              onLogsChanged={onLogsChanged}
-            />
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
-  );
-}
-
-function FunnelDrawerContent({
-  funnel: f, logs, productId, product, products, beroas, onClose, onUpdate, onDelete, onLogsChanged,
-}: {
-  funnel: Funnel;
-  logs: FunnelDailyLog[];
-  productId: string | undefined;
-  product: ProductTrackerEntry | undefined;
-  products: ProductTrackerEntry[];
-  beroas: number;
-  onClose: () => void;
-  onUpdate: (patch: Partial<Funnel>) => void;
-  onDelete: () => void;
-  onLogsChanged: () => void;
-}) {
-  const agg = aggregateLogs(logs);
-  const winning = isWinning(agg.latestRoas, beroas);
-  const winThreshold = beroas > 0 ? beroas + 1 : 0;
-  const beroasAuto = isBeroasAutoComputed(f, product);
-
-  const [date, setDate] = useState(getISTDate());
-  const [roas, setRoas] = useState('');
-  const [orders, setOrders] = useState('');
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const tone = TONE[STATUS_OPTIONS.find((s) => s.value === f.status)?.tone ?? 'gray'];
-
-  const addLog = async () => {
-    if (!date) { setErr('Date is required.'); return; }
-    if (!roas && !orders) { setErr('Enter at least ROAS or orders.'); return; }
-    try {
-      setSaving(true);
-      setErr(null);
-      const res = await fetch('/api/funnels/logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          funnelId: f.id,
-          date,
-          roas: parseFloat(roas) || 0,
-          orders: parseInt(orders, 10) || 0,
-          notes,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      setRoas(''); setOrders(''); setNotes('');
-      onLogsChanged();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to add log.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const removeLog = async (id: string) => {
-    if (!confirm('Delete this log entry?')) return;
-    try {
-      const res = await fetch('/api/funnels/logs', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || `HTTP ${res.status}`);
-      }
-      onLogsChanged();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to delete log.');
-    }
-  };
-
-  return (
-    <>
-      {/* Header */}
-      <div className="relative">
-        <div className={cn('absolute inset-x-0 top-0 h-[3px]', tone.bar)} aria-hidden />
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
-          <div className="min-w-0">
-            {productId ? (
-              <Link
-                href={`/product-tracker/${productId}`}
-                className="group inline-flex max-w-full items-center gap-1.5 truncate text-base font-semibold text-foreground hover:text-primary"
-              >
-                <span className="truncate">{f.productName}</span>
-                <ArrowRight className="h-3.5 w-3.5 opacity-0 transition group-hover:opacity-100" />
-              </Link>
-            ) : (
-              <p className="truncate text-base font-semibold text-foreground">{f.productName}</p>
-            )}
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {f.country} · {f.language}
-              {f.launchDate && <> · launched {f.launchDate}</>}
-              {f.funnelishUrl && (
-                <>
-                  {' · '}
-                  <a href={f.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:text-primary/80">
-                    <Globe className="h-3 w-3" /> Funnelish
-                  </a>
-                </>
-              )}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={f.status}
-              onChange={(e) => onUpdate({ status: e.target.value as FunnelStatus })}
-              className="form-input py-1 text-[11px] w-28"
-            >
-              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-            <button onClick={onDelete} className="rounded-md p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400">
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-            <button onClick={onClose} className="rounded-md p-1.5 text-muted-foreground transition hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="space-y-4 px-5 py-4">
-          {/* Product link warning — surfaces unlinked legacy funnels */}
-          {!productId && (
-            <ProductLinkChip
-              currentName={f.productName}
-              products={products}
-              onLink={(p) => onUpdate({ productId: p.id, productName: p.productName })}
-            />
-          )}
-
-          {/* Per-market pricing editor — drives BEROAS auto-compute.
-              Keyed on funnel.id so input state resets when switching funnels. */}
-          <PricingEditor key={f.id} funnel={f} product={product} onSave={onUpdate} />
-
-          {/* Performance summary */}
-          <div className="grid grid-cols-3 gap-2">
-            <PerfCell
-              label="Latest ROAS"
-              value={agg.latestRoas > 0 ? `${agg.latestRoas.toFixed(2)}x` : '—'}
-              accent={agg.latestRoas > 0 ? (winning ? 'emerald' : 'rose') : undefined}
-            />
-            <PerfCell
-              label="BEROAS"
-              value={beroas > 0 ? `${beroas.toFixed(2)}x` : '—'}
-              accent="primary"
-              hint={beroasAuto ? 'auto from pricing' : beroas > 0 ? 'manual' : 'no pricing yet'}
-            />
-            <PerfCell
-              label="Win threshold"
-              value={winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'}
-              hint="BEROAS + 1"
-            />
-          </div>
-
-          {/* Add log inline form — performance only */}
-          <div className="rounded-lg border border-border bg-background/40 p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <Plus className="h-3.5 w-3.5 text-primary" />
-              <span className="text-[11px] font-medium text-foreground">Log a day</span>
-              {err && <span className="ml-auto text-[10px] text-destructive">{err}</span>}
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              <FormCell label="Date">
-                <DatePicker value={date} onChange={(d) => setDate(d || getISTDate())} max={getISTDate()} compact />
-              </FormCell>
-              <FormCell label="ROAS (Meta)">
-                <input type="number" min="0" inputMode="decimal" step="0.01" value={roas} onChange={(e) => setRoas(e.target.value)} className="form-input tabular-nums" placeholder="0.00" />
-              </FormCell>
-              <FormCell label="Orders">
-                <input type="number" min="0" inputMode="numeric" value={orders} onChange={(e) => setOrders(e.target.value)} className="form-input tabular-nums" placeholder="0" />
-              </FormCell>
-            </div>
-            <input
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notes (optional)…"
-              className="form-input mt-2 text-[11px]"
-            />
-            <button
-              onClick={addLog}
-              disabled={saving}
-              className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-lg bg-primary/15 py-2 text-[12px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
-            >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add log
-            </button>
-          </div>
-
-          {/* Logs table */}
-          {logs.length === 0 ? (
-            <p className="px-1 py-4 text-center text-[11px] text-muted-foreground/60">No logs yet — add the first day above.</p>
-          ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="tracker-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 100 }}>Date</th>
-                    <th style={{ textAlign: 'right', width: 80 }}>ROAS</th>
-                    <th style={{ textAlign: 'right', width: 70 }}>Orders</th>
-                    <th style={{ width: 50 }}>Win</th>
-                    <th>Notes</th>
-                    <th style={{ width: 36, textAlign: 'right' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.map((l) => {
-                    const win = isWinning(l.roas, beroas);
-                    return (
-                      <tr key={l.id}>
-                        <td><div className="px-3 py-2 text-[11px] tabular-nums text-foreground">{l.date}</div></td>
-                        <td>
-                          <div className={cn('px-3 py-2 text-right text-[11px] tabular-nums', l.roas === 0 ? 'text-muted-foreground/60' : win ? 'text-emerald-400' : 'text-foreground')}>
-                            {l.roas > 0 ? `${l.roas.toFixed(2)}x` : '—'}
-                          </div>
-                        </td>
-                        <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{l.orders || '—'}</div></td>
-                        <td>
-                          <div className="px-3 py-2">
-                            {l.roas === 0 ? <span className="text-[10px] text-muted-foreground/60">—</span> : win
-                              ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" title="Winning" />
-                              : <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-400" title="Below threshold" />}
-                          </div>
-                        </td>
-                        <td><div className="px-3 py-2 text-[11px] text-muted-foreground truncate max-w-[160px]">{l.notes || '—'}</div></td>
-                        <td>
-                          <div className="flex items-center justify-end px-3 py-1.5">
-                            <button onClick={() => removeLog(l.id)} className="rounded-md p-1 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400">
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {f.notes && (
-            <div className="rounded-lg border border-border bg-background/40 p-3">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Notes</p>
-              <p className="mt-1 text-[12px] text-foreground">{f.notes}</p>
-            </div>
-          )}
-
-          <p className="pt-2 text-[10px] text-muted-foreground/60">
-            Money tracking lives in Finance (separate page). This view is launches &amp; performance only.
-          </p>
-        </div>
-      </div>
-    </>
-  );
-}
-
-// Per-market pricing editor inside the drawer. Local state for live preview
-// of margin/BEROAS as the user types; saves on blur so values flow back into
-// the funnel's effectiveBeroas immediately.
-function PricingEditor({
-  funnel: f,
-  product,
-  onSave,
-}: {
-  funnel: Funnel;
-  product: ProductTrackerEntry | undefined;
-  onSave: (patch: Partial<Funnel>) => void;
-}) {
-  // Component is keyed on funnel.id by the parent, so this initial state
-  // is correct each time the user opens a different funnel.
-  const [editSP, setEditSP] = useState<string>(f.sellingPrice ? String(f.sellingPrice) : '');
-  const [editDR, setEditDR] = useState<string>(f.deliveryRate ? String(f.deliveryRate) : '95');
-  const [savedTick, setSavedTick] = useState(false);
-
-  const sp = parseFloat(editSP) || 0;
-  const dr = parseFloat(editDR) || 0;
-  const cost = product ? (Number(product.cogs) || 0) + (Number(product.shipping) || 0) : 0;
-  const margin = sp > 0 && sp > cost && dr > 0 ? ((sp - cost) / sp) * (dr / 100) : 0;
-  const beroas = margin > 0 ? 1 / margin : 0;
-  const winThreshold = beroas > 0 ? beroas + 1 : 0;
-
-  const flush = () => {
-    const nextSP = parseFloat(editSP) || 0;
-    const nextDR = parseFloat(editDR) || 0;
-    const changed = nextSP !== (f.sellingPrice || 0) || nextDR !== (f.deliveryRate || 0);
-    if (!changed) return;
-    onSave({ sellingPrice: nextSP, deliveryRate: nextDR });
-    setSavedTick(true);
-    setTimeout(() => setSavedTick(false), 1200);
-  };
-
-  return (
-    <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-primary/80">
-            Pricing for this market
-          </p>
-          {savedTick && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
-              <Check className="h-3 w-3" /> saved
-            </span>
-          )}
-        </div>
-        {!product ? (
-          <span className="text-[10px] text-amber-400">Link a product first</span>
-        ) : cost > 0 ? (
-          <span className="text-[10px] text-muted-foreground">Cost ${cost.toFixed(2)} from product</span>
-        ) : (
-          <span className="text-[10px] text-amber-400">Product has no cost — set COGS + shipping in Products</span>
-        )}
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <FormCell label="Selling price (USD)" hint="varies per market">
-          <input
-            type="number" min="0" step="0.01" inputMode="decimal"
-            value={editSP}
-            onChange={(e) => setEditSP(e.target.value)}
-            onBlur={flush}
-            className="form-input tabular-nums"
-            placeholder="0.00"
-          />
-        </FormCell>
-        <FormCell label="Delivery rate %">
-          <input
-            type="number" min="0" max="100" step="0.1" inputMode="decimal"
-            value={editDR}
-            onChange={(e) => setEditDR(e.target.value)}
-            onBlur={flush}
-            className="form-input tabular-nums"
-          />
-        </FormCell>
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
-        <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
-          <span className="text-muted-foreground">Margin: </span>
-          <span className="font-semibold tabular-nums text-foreground">
-            {(margin * 100).toFixed(1)}%
-          </span>
-        </div>
-        <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
-          <span className="text-muted-foreground">BEROAS: </span>
-          <span className="font-semibold tabular-nums text-primary">
-            {beroas > 0 ? `${beroas.toFixed(2)}x` : '—'}
-          </span>
-        </div>
-        <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
-          <span className="text-muted-foreground">Win at: </span>
-          <span className="font-semibold tabular-nums text-emerald-400">
-            {winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Surfaces in the drawer when a funnel has no productId. Lets the user
-// pick the right product manually so we never silently mis-match.
-function ProductLinkChip({
-  currentName, products, onLink,
-}: {
-  currentName: string;
-  products: ProductTrackerEntry[];
-  onLink: (p: ProductTrackerEntry) => void;
-}) {
-  // Suggest products whose name shares any token with the funnel's productName.
-  const suggested = useMemo(() => {
-    const tokens = currentName.toLowerCase().split(/[\s\-_]+/).filter((t) => t.length > 2);
-    if (tokens.length === 0) return [];
-    return products
-      .map((p) => {
-        const name = p.productName.toLowerCase();
-        const score = tokens.reduce((s, t) => s + (name.includes(t) ? 1 : 0), 0);
-        return { p, score };
-      })
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-      .map((x) => x.p);
-  }, [currentName, products]);
-
-  const [picking, setPicking] = useState(false);
-  const [selectedId, setSelectedId] = useState<string>('');
-
-  return (
-    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-      <div className="flex items-start gap-2">
-        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
-        <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-medium text-amber-300">Not linked to a product</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            This funnel was created before product linking. Pick the matching product so it shows up on the dossier.
-          </p>
-
-          {suggested.length > 0 && !picking && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Suggested:</span>
-              {suggested.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => onLink(p)}
-                  className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400 transition hover:bg-emerald-500/20"
-                >
-                  <Check className="h-3 w-3" /> {p.productName}
-                </button>
-              ))}
-              <button
-                onClick={() => setPicking(true)}
-                className="text-[10px] text-muted-foreground hover:text-foreground"
-              >
-                Or pick another →
-              </button>
-            </div>
-          )}
-
-          {(picking || suggested.length === 0) && (
-            <div className="mt-2 flex items-center gap-2">
-              <select
-                value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value)}
-                className="form-input flex-1 py-1 text-[11px]"
-              >
-                <option value="">Choose a product…</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>{p.productName || '(unnamed)'}</option>
-                ))}
-              </select>
-              <button
-                onClick={() => {
-                  const p = products.find((x) => x.id === selectedId);
-                  if (p) onLink(p);
-                }}
-                disabled={!selectedId}
-                className="inline-flex items-center gap-1 rounded-md bg-primary/15 px-3 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
-              >
-                <Check className="h-3 w-3" /> Link
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function FormCell({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
@@ -1233,23 +671,6 @@ function FormCell({ label, children, hint }: { label: string; children: React.Re
   );
 }
 
-function PerfCell({ label, value, hint, accent }: {
-  label: string; value: string; hint?: string;
-  accent?: 'primary' | 'emerald' | 'rose';
-}) {
-  const map = {
-    primary: 'text-primary',
-    emerald: 'text-emerald-400',
-    rose:    'text-rose-400',
-  };
-  return (
-    <div className="rounded-md border border-border bg-background/40 px-3 py-2">
-      <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className={cn('mt-0.5 text-[16px] font-semibold tabular-nums', accent ? map[accent] : 'text-foreground')}>{value}</p>
-      {hint && <p className="mt-0.5 text-[9px] text-muted-foreground/60">{hint}</p>}
-    </div>
-  );
-}
 
 // ── Performance view ────────────────────────────────────────────────────────
 
@@ -1270,34 +691,80 @@ function PerformanceView({
     products.forEach((p) => { if (p.productName) m.set(p.productName, p); });
     return m;
   }, [products]);
+
+  type EnrichedFunnel = {
+    funnel: Funnel;
+    roasShown: number;
+    beroas: number;
+    spend: number;
+    revenue: number;
+    profit: number;
+    orders: number;
+    hasData: boolean;
+    winning: boolean;
+  };
+
   type Aggregate = {
     funnelCount: number;
     funnelsWithData: number;
     winners: number;
     spend: number;
     revenue: number;
+    orders: number;
   };
 
-  const enriched = useMemo(() => {
+  const enriched: EnrichedFunnel[] = useMemo(() => {
     return funnels.map((f) => {
       const logs = logsByFunnel[f.id] ?? [];
       const agg = aggregateLogs(logs);
-      let spend = 0, revenue = 0;
-      for (const l of logs) { spend += Number(l.spend) || 0; revenue += Number(l.revenue) || 0; }
+      let spend = 0, revenue = 0, expense = 0, orders = 0;
+      for (const l of logs) {
+        spend += Number(l.spend) || 0;
+        revenue += Number(l.revenue) || 0;
+        expense += Number(l.expense) || 0;
+        orders += Number(l.orders) || 0;
+      }
+      const profit = revenue - spend - expense;
       const blendedRoas = spend > 0 ? revenue / spend : 0;
       const roasShown = agg.latestRoas > 0 ? agg.latestRoas : blendedRoas;
       const hasData = roasShown > 0 || spend > 0;
       const product = (f.productId && productById.get(f.productId)) || productByName.get(f.productName);
-      const winning = isWinning(roasShown, effectiveBeroas(f, product));
-      return { funnel: f, roasShown, spend, revenue, hasData, winning };
+      const beroas = effectiveBeroas(f, product);
+      const winning = isWinning(roasShown, beroas);
+      return { funnel: f, roasShown, beroas, spend, revenue, profit, orders, hasData, winning };
     });
   }, [funnels, logsByFunnel, productById, productByName]);
+
+  const grand = useMemo(() => {
+    let spend = 0, revenue = 0, profit = 0, winners = 0, withData = 0;
+    enriched.forEach((e) => {
+      spend += e.spend;
+      revenue += e.revenue;
+      profit += e.profit;
+      if (e.hasData) {
+        withData++;
+        if (e.winning) winners++;
+      }
+    });
+    return {
+      spend, revenue, profit,
+      blendedRoas: spend > 0 ? revenue / spend : 0,
+      hitRate: withData > 0 ? (winners / withData) * 100 : 0,
+      winners,
+      withData,
+    };
+  }, [enriched]);
+
+  const animSpend = useCountUp(grand.spend, 600);
+  const animRevenue = useCountUp(grand.revenue, 600);
+  const animProfit = useCountUp(grand.profit, 600);
+  const animRoas = useCountUp(grand.blendedRoas, 600);
 
   const byCountry = useMemo(() => {
     const map = new Map<string, Aggregate>();
     enriched.forEach((e) => {
       const key = e.funnel.country || '—';
-      const a = map.get(key) ?? { funnelCount: 0, funnelsWithData: 0, winners: 0, spend: 0, revenue: 0 };
+      const a = map.get(key) ?? { funnelCount: 0, funnelsWithData: 0, winners: 0, spend: 0, revenue: 0, orders: 0 };
       a.funnelCount++;
       if (e.hasData) {
         a.funnelsWithData++;
@@ -1305,11 +772,13 @@ function PerformanceView({
       }
       a.spend += e.spend;
       a.revenue += e.revenue;
+      a.orders += e.orders;
       map.set(key, a);
     });
     return Array.from(map.entries())
       .map(([country, a]) => ({
         country, ...a,
+        profit: a.revenue - a.spend,
         blendedRoas: a.spend > 0 ? a.revenue / a.spend : 0,
         hitRate: a.funnelsWithData > 0 ? (a.winners / a.funnelsWithData) * 100 : 0,
       }))
@@ -1320,7 +789,7 @@ function PerformanceView({
     const map = new Map<string, Aggregate>();
     enriched.forEach((e) => {
       const key = e.funnel.productName || '—';
-      const a = map.get(key) ?? { funnelCount: 0, funnelsWithData: 0, winners: 0, spend: 0, revenue: 0 };
+      const a = map.get(key) ?? { funnelCount: 0, funnelsWithData: 0, winners: 0, spend: 0, revenue: 0, orders: 0 };
       a.funnelCount++;
       if (e.hasData) {
         a.funnelsWithData++;
@@ -1328,11 +797,13 @@ function PerformanceView({
       }
       a.spend += e.spend;
       a.revenue += e.revenue;
+      a.orders += e.orders;
       map.set(key, a);
     });
     return Array.from(map.entries())
       .map(([product, a]) => ({
         product, ...a,
+        profit: a.revenue - a.spend,
         blendedRoas: a.spend > 0 ? a.revenue / a.spend : 0,
         hitRate: a.funnelsWithData > 0 ? (a.winners / a.funnelsWithData) * 100 : 0,
       }))
@@ -1348,113 +819,298 @@ function PerformanceView({
   const top5 = ranked.slice(0, 5);
   const bottom5 = [...ranked].reverse().slice(0, 5);
 
+  const hasAnyData = grand.spend > 0 || grand.revenue > 0;
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <PerfTable
-          title="By country"
-          rows={byCountry.map((b) => ({
-            label: b.country,
-            funnelCount: b.funnelCount,
-            roas: b.blendedRoas,
-            hit: b.hitRate,
-            spend: b.spend,
-          }))}
-        />
-        <PerfTable
-          title="By product"
-          rows={byProduct.map((b) => ({
-            label: b.product,
-            funnelCount: b.funnelCount,
-            roas: b.blendedRoas,
-            hit: b.hitRate,
-            spend: b.spend,
-          }))}
-        />
+      {/* Money KPI strip */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <PerfMoneyTile label="Ad spend" value={animSpend} accent="amber" delay={0} />
+        <PerfMoneyTile label="Revenue" value={animRevenue} accent="sky" delay={0.05} />
+        <PerfMoneyTile label="Profit" value={animProfit} accent={animProfit >= 0 ? 'emerald' : 'rose'} delay={0.1} signed />
+        <PerfRoasTile label="Blended ROAS" roas={animRoas} hit={grand.hitRate} winners={grand.winners} delay={0.15} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <RankingTable title="Top performers" emoji="🏆" funnels={top5} />
-        <RankingTable title="Underperformers" emoji="🔻" funnels={bottom5} muted />
-      </div>
+      {!hasAnyData && (
+        <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
+          <BarChart3 className="mx-auto h-7 w-7 text-muted-foreground/30" />
+          <p className="mt-2 text-[13px] font-medium text-foreground">No performance data yet</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Log daily ROAS / spend / revenue inside any funnel to populate this view.</p>
+        </div>
+      )}
+
+      {hasAnyData && (
+        <>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <PerfBreakdown
+              title="By country"
+              icon={<Globe className="h-3.5 w-3.5" />}
+              rows={byCountry.map((b) => ({
+                label: b.country,
+                funnelCount: b.funnelCount,
+                roas: b.blendedRoas,
+                hit: b.hitRate,
+                spend: b.spend,
+                revenue: b.revenue,
+                profit: b.profit,
+              }))}
+            />
+            <PerfBreakdown
+              title="By product"
+              icon={<FunnelIcon className="h-3.5 w-3.5" />}
+              rows={byProduct.map((b) => ({
+                label: b.product,
+                funnelCount: b.funnelCount,
+                roas: b.blendedRoas,
+                hit: b.hitRate,
+                spend: b.spend,
+                revenue: b.revenue,
+                profit: b.profit,
+              }))}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <FunnelRanking title="Top performers" tone="emerald" funnels={top5} />
+            <FunnelRanking title="Underperformers" tone="rose" funnels={bottom5} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-function PerfTable({ title, rows }: {
-  title: string;
-  rows: Array<{ label: string; funnelCount: number; roas: number; hit: number; spend: number }>;
+// ── Money KPI tile (used inside PerformanceView) ───────────────────────────
+
+function PerfMoneyTile({ label, value, accent, delay = 0, signed }: {
+  label: string;
+  value: number;
+  accent: 'emerald' | 'amber' | 'sky' | 'rose';
+  delay?: number;
+  signed?: boolean;
 }) {
+  const text = { emerald: 'text-emerald-400', amber: 'text-amber-400', sky: 'text-sky-400', rose: 'text-rose-400' }[accent];
+  const border = { emerald: 'border-emerald-500/30', amber: 'border-amber-500/30', sky: 'border-sky-500/30', rose: 'border-rose-500/30' }[accent];
+  const glow = { emerald: '#34d399', amber: '#fbbf24', sky: '#38bdf8', rose: '#fb7185' }[accent];
+  const display = `${signed && value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="border-b border-border px-4 py-2.5">
-        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3, boxShadow: `0 14px 40px -16px ${glow}55, 0 0 0 1px ${glow}33` }}
+      transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={cn('group relative overflow-hidden rounded-xl border bg-card p-4 transition-colors', border)}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-30 blur-2xl transition-opacity duration-500 group-hover:opacity-80"
+        style={{ background: `radial-gradient(circle, ${glow}66, transparent 70%)` }}
+        aria-hidden
+      />
+      <div className="relative z-10 flex items-center justify-between">
+        <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: glow }} aria-hidden />
+      </div>
+      <p className={cn('relative z-10 mt-2 text-[22px] font-semibold leading-none tabular-nums tracking-tight', text)}>{display}</p>
+      <p className="relative z-10 mt-1.5 text-[10px] text-muted-foreground/70">USD across funnels</p>
+    </motion.div>
+  );
+}
+
+function PerfRoasTile({ label, roas, hit, winners, delay = 0 }: {
+  label: string; roas: number; hit: number; winners: number; delay?: number;
+}) {
+  const tone = roas >= 2 ? 'emerald' : roas >= 1 ? 'amber' : 'rose';
+  const text = { emerald: 'text-emerald-400', amber: 'text-amber-400', rose: 'text-rose-400' }[tone];
+  const border = { emerald: 'border-emerald-500/30', amber: 'border-amber-500/30', rose: 'border-rose-500/30' }[tone];
+  const glow = { emerald: '#34d399', amber: '#fbbf24', rose: '#fb7185' }[tone];
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -3, boxShadow: `0 14px 40px -16px ${glow}55, 0 0 0 1px ${glow}33` }}
+      transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={cn('group relative overflow-hidden rounded-xl border bg-card p-4 transition-colors', border)}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-30 blur-2xl transition-opacity duration-500 group-hover:opacity-80"
+        style={{ background: `radial-gradient(circle, ${glow}66, transparent 70%)` }}
+        aria-hidden
+      />
+      <div className="relative z-10 flex items-center justify-between">
+        <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: glow }} aria-hidden />
+      </div>
+      <p className={cn('relative z-10 mt-2 text-[22px] font-semibold leading-none tabular-nums tracking-tight', text)}>
+        {roas > 0 ? `${roas.toFixed(2)}x` : '—'}
+      </p>
+      <p className="relative z-10 mt-1.5 text-[10px] text-muted-foreground/70">
+        Hit rate <span className="font-semibold text-foreground">{hit.toFixed(0)}%</span> · {winners} winning
+      </p>
+    </motion.div>
+  );
+}
+
+// ── Breakdown card — country / product, with visual share bars ──────────────
+
+function PerfBreakdown({ title, icon, rows }: {
+  title: string;
+  icon: React.ReactNode;
+  rows: Array<{ label: string; funnelCount: number; roas: number; hit: number; spend: number; revenue: number; profit: number }>;
+}) {
+  const maxSpend = useMemo(() => Math.max(0, ...rows.map((r) => r.spend)), [rows]);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="overflow-hidden rounded-xl border border-border bg-card"
+    >
+      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <h3 className="inline-flex items-center gap-2 text-[13px] font-semibold text-foreground">
+          <span className="text-muted-foreground">{icon}</span>
+          {title}
+        </h3>
+        <span className="text-[10px] text-muted-foreground">{rows.length}</span>
       </div>
       {rows.length === 0 ? (
         <p className="px-4 py-6 text-center text-[12px] text-muted-foreground">No data yet.</p>
       ) : (
-        <table className="tracker-table">
-          <thead>
-            <tr>
-              <th>{title.split(' ').pop()}</th>
-              <th style={{ textAlign: 'right', width: 70 }}>Funnels</th>
-              <th style={{ textAlign: 'right', width: 80 }}>ROAS</th>
-              <th style={{ textAlign: 'right', width: 80 }}>Hit rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.label}>
-                <td><div className="px-3 py-2 text-[12px] text-foreground truncate max-w-[200px]">{r.label}</div></td>
-                <td><div className="px-3 py-2 text-right text-[12px] tabular-nums text-muted-foreground">{r.funnelCount}</div></td>
-                <td><div className="px-3 py-2 text-right text-[12px] tabular-nums text-foreground">{r.roas > 0 ? `${r.roas.toFixed(2)}x` : '—'}</div></td>
-                <td><div className="px-3 py-2 text-right text-[12px] tabular-nums text-foreground">{r.hit.toFixed(0)}%</div></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ul className="divide-y divide-border/60">
+          {rows.map((r, i) => {
+            const sharePct = maxSpend > 0 ? (r.spend / maxSpend) * 100 : 0;
+            const roasTone = r.roas >= 2 ? 'text-emerald-400' : r.roas >= 1 ? 'text-amber-400' : r.roas > 0 ? 'text-rose-400' : 'text-muted-foreground/50';
+            const profitTone = r.profit > 0 ? 'text-emerald-400' : r.profit < 0 ? 'text-rose-400' : 'text-muted-foreground';
+            return (
+              <motion.li
+                key={r.label}
+                initial={{ opacity: 0, x: -4 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: Math.min(i * 0.03, 0.25) }}
+                className="group relative px-4 py-3 transition-colors hover:bg-white/[0.02]"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-medium text-foreground">{r.label}</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                      {r.funnelCount} funnel{r.funnelCount === 1 ? '' : 's'}
+                      <span className="text-muted-foreground/40"> · </span>
+                      hit <span className="tabular-nums text-foreground">{r.hit.toFixed(0)}%</span>
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className={cn('text-[14px] font-semibold leading-none tabular-nums', roasTone)}>
+                      {r.roas > 0 ? `${r.roas.toFixed(2)}x` : '—'}
+                    </p>
+                    <p className={cn('mt-1 text-[10px] tabular-nums', profitTone)}>
+                      {r.profit >= 0 ? '+' : '−'}${Math.abs(r.profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
+                </div>
+                {/* Spend share bar */}
+                <div className="relative mt-2 h-1 overflow-hidden rounded-full bg-border/40">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${sharePct}%` }}
+                    transition={{ duration: 0.7, delay: Math.min(i * 0.04, 0.3), ease: [0.22, 1, 0.36, 1] }}
+                    className={cn('h-full rounded-full', r.roas >= 2 ? 'bg-gradient-to-r from-emerald-500 to-emerald-300' : r.roas >= 1 ? 'bg-gradient-to-r from-amber-500 to-amber-300' : 'bg-gradient-to-r from-rose-500/80 to-rose-400/60')}
+                  />
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[9px] text-muted-foreground/70">
+                  <span>spend ${r.spend.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                  <span>rev ${r.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                </div>
+              </motion.li>
+            );
+          })}
+        </ul>
       )}
-    </div>
+    </motion.div>
   );
 }
 
-function RankingTable({
-  title, emoji, funnels, muted,
-}: {
+// ── Ranking list — top / bottom performing funnels ─────────────────────────
+
+function FunnelRanking({ title, tone, funnels }: {
   title: string;
-  emoji: string;
-  funnels: Array<{ funnel: Funnel; roasShown: number; winning: boolean }>;
-  muted?: boolean;
+  tone: 'emerald' | 'rose';
+  funnels: Array<{ funnel: Funnel; roasShown: number; beroas: number; profit: number; winning: boolean }>;
 }) {
+  const accent = tone === 'emerald' ? '#34d399' : '#fb7185';
+  const borderTone = tone === 'emerald' ? 'border-emerald-500/30' : 'border-rose-500/30';
+  const maxRoas = useMemo(() => Math.max(0.01, ...funnels.map((f) => f.roasShown)), [funnels]);
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <h3 className="text-sm font-medium text-foreground">
-          <span className="mr-1.5">{emoji}</span> {title}
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className={cn('relative overflow-hidden rounded-xl border bg-card', borderTone)}
+    >
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-20 blur-2xl"
+        style={{ background: `radial-gradient(circle, ${accent}66, transparent 70%)` }}
+        aria-hidden
+      />
+      <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-2.5">
+        <h3 className="inline-flex items-center gap-2 text-[13px] font-semibold text-foreground">
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} aria-hidden />
+          {title}
         </h3>
-        <span className="text-[11px] text-muted-foreground">{funnels.length}</span>
+        <span className="text-[10px] text-muted-foreground">{funnels.length}</span>
       </div>
       {funnels.length === 0 ? (
-        <p className="px-4 py-6 text-center text-[12px] text-muted-foreground">No funnels with data yet.</p>
+        <p className="relative z-10 px-4 py-6 text-center text-[12px] text-muted-foreground">No funnels with data yet.</p>
       ) : (
-        <ul className="divide-y divide-border">
-          {funnels.map(({ funnel: f, roasShown, winning }) => (
-            <li key={f.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-              <div className="min-w-0">
-                <p className="truncate text-[12px] font-medium text-foreground">{f.productName}</p>
-                <p className="text-[10px] text-muted-foreground">{f.country} · {f.language}</p>
-              </div>
-              <span className={cn(
-                'shrink-0 text-[14px] font-semibold tabular-nums',
-                muted ? 'text-rose-400' : winning ? 'text-emerald-400' : 'text-foreground'
-              )}>
-                {roasShown.toFixed(2)}x
-              </span>
-            </li>
-          ))}
+        <ul className="relative z-10 divide-y divide-border/60">
+          {funnels.map(({ funnel: f, roasShown, beroas, profit, winning }, i) => {
+            const pct = (roasShown / maxRoas) * 100;
+            const profitTone = profit > 0 ? 'text-emerald-400' : profit < 0 ? 'text-rose-400' : 'text-muted-foreground';
+            return (
+              <motion.li
+                key={f.id}
+                initial={{ opacity: 0, x: -4 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.3) }}
+              >
+                <Link
+                  href={`/funnels/${f.id}`}
+                  className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.03]"
+                >
+                  <span className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold tabular-nums',
+                    tone === 'emerald' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400')}>
+                    {i + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-medium text-foreground group-hover:text-primary">{f.productName}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {f.country} <span className="text-muted-foreground/40">·</span> {f.language}
+                      {beroas > 0 && <span className="text-muted-foreground/40"> · BE {beroas.toFixed(2)}x</span>}
+                    </p>
+                    <div className="relative mt-1 h-1 overflow-hidden rounded-full bg-border/40">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.7, delay: Math.min(i * 0.05, 0.3) }}
+                        className="h-full rounded-full"
+                        style={{ background: accent }}
+                      />
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className={cn('text-[14px] font-semibold leading-none tabular-nums',
+                      winning ? 'text-emerald-400' : tone === 'rose' ? 'text-rose-400' : 'text-foreground')}>
+                      {roasShown.toFixed(2)}x
+                    </p>
+                    <p className={cn('mt-0.5 text-[10px] tabular-nums', profitTone)}>
+                      {profit >= 0 ? '+' : '−'}${Math.abs(profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
+                </Link>
+              </motion.li>
+            );
+          })}
         </ul>
       )}
-    </div>
+    </motion.div>
   );
 }
 

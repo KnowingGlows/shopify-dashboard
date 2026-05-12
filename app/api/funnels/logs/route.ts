@@ -27,6 +27,7 @@ function sanitize(input: Record<string, unknown>, base?: Partial<FunnelDailyLog>
   // Money (USD)
   if ('spend' in input) out.spend = Math.max(0, Number(input.spend) || 0);
   if ('revenue' in input) out.revenue = Math.max(0, Number(input.revenue) || 0);
+  if ('expense' in input) out.expense = Math.max(0, Number(input.expense) || 0);
   if ('profit' in input) out.profit = Number(input.profit) || 0; // allow negative
   // Shared
   if ('notes' in input) out.notes = String(input.notes ?? '').trim();
@@ -61,6 +62,7 @@ export async function GET(request: Request) {
           orders: Number(data.orders) || 0,
           spend: Number(data.spend) || 0,
           revenue: Number(data.revenue) || 0,
+          expense: Number(data.expense) || 0,
           profit: Number(data.profit) || 0,
           notes: data.notes ?? '',
           createdBy: data.createdBy ?? '',
@@ -110,6 +112,7 @@ export async function POST(request: Request) {
       orders: sanitized.orders ?? 0,
       spend: sanitized.spend ?? 0,
       revenue: sanitized.revenue ?? 0,
+      expense: sanitized.expense ?? 0,
       profit: sanitized.profit ?? 0,
       notes: sanitized.notes ?? '',
       createdBy: session.email ?? '',

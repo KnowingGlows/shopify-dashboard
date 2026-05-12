@@ -48,8 +48,9 @@ export interface FunnelDailyLog {
   orders: number;
 
   // Money (Finance page) — all USD
-  spend: number;
+  spend: number;                // ad spend
   revenue: number;
+  expense: number;              // other operating expenses (refunds, tools, payouts, etc.)
   profit: number;               // can be negative
 
   notes: string;
