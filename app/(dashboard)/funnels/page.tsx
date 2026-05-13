@@ -172,7 +172,7 @@ export default function FunnelsPage() {
     const roasValues: number[] = [];
     const winRows: Array<{ roas: number; beroas: number }> = [];
     funnels.forEach((f) => {
-      if (f.status === 'live') liveCount++;
+      if (f.status === 'live' || f.status === 'testing') liveCount++;
       const logs = logsScoped[f.id] ?? [];
       const agg = aggregateLogs(logs);
       if (agg.latestRoas > 0) {
@@ -586,9 +586,12 @@ function FunnelCard({
               </span>
             )}
           </div>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {f.country} <span className="text-muted-foreground/50">·</span> {f.language}
-          </p>
+          <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2 py-0.5">
+            <Globe className="h-3 w-3 text-sky-400" aria-hidden />
+            <span className="text-[11px] font-semibold tracking-tight text-foreground">{f.country}</span>
+            <span className="text-sky-500/40">·</span>
+            <span className="text-[11px] font-medium text-sky-300/90">{f.language}</span>
+          </div>
         </div>
         <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
           <span className={cn('h-1 w-1 rounded-full', tone.dot)} />
@@ -810,14 +813,16 @@ function PerformanceView({
       .sort((a, b) => b.spend - a.spend);
   }, [enriched]);
 
-  const ranked = useMemo(() => {
-    return enriched
-      .filter((e) => e.hasData)
-      .sort((a, b) => b.roasShown - a.roasShown);
+  // Partition funnels with data by whether they're WINNING (ROAS ≥ BEROAS+1),
+  // not just by ranking. This way a winning funnel never appears in
+  // Underperformers, and a losing funnel never appears in Top performers —
+  // a funnel can only be in one bucket.
+  const { top5, bottom5 } = useMemo(() => {
+    const withData = enriched.filter((e) => e.hasData);
+    const winners = withData.filter((e) => e.winning).sort((a, b) => b.roasShown - a.roasShown);
+    const losers = withData.filter((e) => !e.winning).sort((a, b) => a.roasShown - b.roasShown);
+    return { top5: winners.slice(0, 5), bottom5: losers.slice(0, 5) };
   }, [enriched]);
-
-  const top5 = ranked.slice(0, 5);
-  const bottom5 = [...ranked].reverse().slice(0, 5);
 
   const hasAnyData = grand.spend > 0 || grand.revenue > 0;
 
@@ -1081,10 +1086,15 @@ function FunnelRanking({ title, tone, funnels }: {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12px] font-medium text-foreground group-hover:text-primary">{f.productName}</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {f.country} <span className="text-muted-foreground/40">·</span> {f.language}
-                      {beroas > 0 && <span className="text-muted-foreground/40"> · BE {beroas.toFixed(2)}x</span>}
-                    </p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-md border border-sky-500/25 bg-sky-500/10 px-1.5 py-0.5 text-[10px]">
+                        <Globe className="h-2.5 w-2.5 text-sky-400" aria-hidden />
+                        <span className="font-semibold text-foreground">{f.country}</span>
+                        <span className="text-sky-500/40">·</span>
+                        <span className="text-sky-300/90">{f.language}</span>
+                      </span>
+                      {beroas > 0 && <span className="text-[10px] text-muted-foreground">BE {beroas.toFixed(2)}x</span>}
+                    </div>
                     <div className="relative mt-1 h-1 overflow-hidden rounded-full bg-border/40">
                       <motion.div
                         initial={{ width: 0 }}

@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import { effectiveBeroas, isWinning } from '@/lib/funnels';
 import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
-import type { Funnel, FunnelDailyLog } from '@/types/funnel';
+import type { Funnel, FunnelDailyLog, Creative } from '@/types/funnel';
 import type { FxRates } from '@/lib/fx-rates';
 
 function useCountUp(value: number, duration = 700) {
@@ -71,6 +71,7 @@ export default function WinnersPage() {
   const { user } = useAuth();
   const [products, setProducts] = useState<ProductTrackerEntry[]>([]);
   const [funnels, setFunnels] = useState<Funnel[]>([]);
+  const [creatives, setCreatives] = useState<Creative[]>([]);
   const [logsByFunnel, setLogsByFunnel] = useState<Record<string, FunnelDailyLog[]>>({});
   const [fx, setFx] = useState<FxRates | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,10 +86,11 @@ export default function WinnersPage() {
     try {
       setLoading(true);
       setError(null);
-      const [productsRes, funnelsRes, fxRes] = await Promise.all([
+      const [productsRes, funnelsRes, fxRes, creativesRes] = await Promise.all([
         fetch('/api/product-tracker').then((r) => r.json()),
         fetch('/api/funnels').then((r) => r.json()),
         fetch('/api/fx').then((r) => r.json()),
+        fetch('/api/creatives-intl').then((r) => r.json()),
       ]);
       const all: ProductTrackerEntry[] = productsRes.entries ?? [];
       const winners = all.filter((p) => p.productStage === 'Winner - Moved To OPS');
@@ -103,6 +105,8 @@ export default function WinnersPage() {
       );
       setFunnels(myFunnels);
       setFx(fxRes ?? null);
+      const myFunnelIds = new Set(myFunnels.map((f) => f.id));
+      setCreatives((creativesRes.creatives ?? []).filter((c: Creative) => myFunnelIds.has(c.funnelId)));
 
       const logsRes = await Promise.all(
         myFunnels.map((f) => fetch(`/api/funnels/logs?funnelId=${encodeURIComponent(f.id)}`).then((r) => r.json()))
@@ -155,7 +159,8 @@ export default function WinnersPage() {
       });
 
       const blendedRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-      const liveCount = myFunnels.filter((f) => f.status === 'live').length;
+      // Testing funnels count as live for "active" tally
+      const liveCount = myFunnels.filter((f) => f.status === 'live' || f.status === 'testing').length;
       const withData = perFunnel.filter((x) => x.hasData);
       const winningFunnels = perFunnel.filter((x) => x.winning).length;
       const hitRate = withData.length > 0 ? (winningFunnels / withData.length) * 100 : 0;
@@ -191,26 +196,39 @@ export default function WinnersPage() {
     let spend = 0, revenue = 0, profit = 0;
     let activeFunnels = 0;
     let totalFunnels = 0;
+    let activeProducts = 0;
     summaries.forEach((s) => {
       spend += s.totalSpend;
       revenue += s.totalRevenue;
       profit += s.totalProfit;
       activeFunnels += s.liveCount;
       totalFunnels += s.funnels.length;
+      if (s.totalSpend > 0) activeProducts++;
     });
+    // Hit rate: creatives marked as winner divided by (winners + killed).
+    // A creative being killed (status === 'killed') counts as a "decided loss".
+    const creativeWinners = creatives.filter((c) => c.result === 'winner').length;
+    const creativeKilled = creatives.filter((c) => c.status === 'killed').length;
+    const decided = creativeWinners + creativeKilled;
+    const creativeHitRate = decided > 0 ? (creativeWinners / decided) * 100 : 0;
     return {
       spend, revenue, profit,
       blendedRoas: spend > 0 ? revenue / spend : 0,
       profitMargin: revenue > 0 ? (profit / revenue) * 100 : 0,
       activeFunnels,
       totalFunnels,
+      activeProducts,
+      totalProducts: summaries.length,
+      creativeHitRate,
+      creativeWinners,
+      creativeDecided: decided,
     };
-  }, [summaries]);
+  }, [summaries, creatives]);
 
-  const animatedSpend = useCountUp(grand.spend);
   const animatedProfit = useCountUp(grand.profit);
   const animatedRoas = useCountUp(grand.blendedRoas, 500);
-  const animatedActive = useCountUp(grand.activeFunnels, 400);
+  const animatedActive = useCountUp(grand.activeProducts, 400);
+  const animatedHit = useCountUp(grand.creativeHitRate, 500);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -251,16 +269,22 @@ export default function WinnersPage() {
 
       {/* Grand-total KPIs — modern card-style instead of rigid grid-px */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KpiTile label="Active funnels" value={Math.round(animatedActive).toLocaleString('en-IN')} accent="emerald" hint={`of ${grand.totalFunnels}`} delay={0} />
-        <KpiTile label="Total spend"   value={fmt(animatedSpend)}  accent="amber" delay={0.05} />
+        <KpiTile label="Active products" value={Math.round(animatedActive).toLocaleString('en-IN')} accent="emerald" hint={`of ${grand.totalProducts}`} delay={0} />
         <KpiTile
           label="Total profit"
           value={fmt(animatedProfit)}
           accent={grand.profit < 0 ? 'rose' : 'emerald'}
           hint={grand.revenue > 0 ? `${grand.profitMargin.toFixed(1)}% margin` : undefined}
-          delay={0.1}
+          delay={0.05}
         />
-        <KpiTile label="Blended ROAS" value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="violet" delay={0.15} />
+        <KpiTile label="Blended ROAS" value={animatedRoas > 0 ? `${animatedRoas.toFixed(2)}x` : '—'} accent="sky" delay={0.1} />
+        <KpiTile
+          label="Funnel hit"
+          value={grand.creativeDecided > 0 ? `${Math.round(animatedHit)}%` : '—'}
+          accent="violet"
+          hint={grand.creativeWinners > 0 ? `${grand.creativeWinners} winning creative${grand.creativeWinners === 1 ? '' : 's'}` : 'no decided creatives'}
+          delay={0.15}
+        />
       </div>
 
       {/* Error */}
@@ -373,6 +397,12 @@ function WinnerCard({
       whileHover={{ y: -2 }}
       className="group relative flex flex-col overflow-hidden rounded-xl border border-emerald-500/20 bg-card transition-colors hover:border-emerald-500/40"
     >
+      {/* Full-card click target */}
+      <Link
+        href={`/product-tracker/${product.id}`}
+        aria-label={`Open ${product.productName || 'product'} dossier`}
+        className="absolute inset-0 z-20 rounded-xl"
+      />
       {/* Top accent + winner ribbon */}
       <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-emerald-500/60 via-emerald-400 to-emerald-500/60" aria-hidden />
 
@@ -399,12 +429,9 @@ function WinnerCard({
             {lastActivity && <> · last log {lastActivity}</>}
           </p>
         </div>
-        <Link
-          href={`/product-tracker/${product.id}`}
-          className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-400 transition hover:bg-emerald-500/25"
-        >
-          Open <ArrowRight className="h-3 w-3" />
-        </Link>
+        <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-400 transition group-hover:bg-emerald-500/25">
+          Open <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
+        </span>
       </div>
 
       {/* Mini KPI grid inside card */}

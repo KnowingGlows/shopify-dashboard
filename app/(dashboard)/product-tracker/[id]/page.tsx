@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { isWinning, effectiveBeroas } from '@/lib/funnels';
 import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
-import type { Funnel, FunnelDailyLog, Creative, FunnelStatus, CreativeResult } from '@/types/funnel';
+import type { Funnel, FunnelDailyLog, Creative, FunnelStatus } from '@/types/funnel';
 import type { FxRates } from '@/lib/fx-rates';
 
 const STATUS_LABEL: Record<FunnelStatus, string> = {
@@ -48,12 +48,6 @@ const STAGE_CONFIG: Record<string, { color: string; bg: string; border: string; 
 };
 
 const STAGE_FALLBACK = { color: 'text-muted-foreground', bg: 'bg-border/40', border: 'border-border', dot: 'bg-muted-foreground', gradient: 'from-muted-foreground/30 via-muted-foreground/40 to-muted-foreground/30' };
-
-const RESULT_TONE: Record<CreativeResult, { text: string; bg: string; border: string }> = {
-  winner:       { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
-  loser:        { text: 'text-rose-400',    bg: 'bg-rose-500/10',    border: 'border-rose-500/30' },
-  inconclusive: { text: 'text-muted-foreground', bg: 'bg-border/40', border: 'border-border' },
-};
 
 function useCountUp(value: number, duration = 600) {
   const [display, setDisplay] = useState(0);
@@ -479,197 +473,18 @@ export default function ProductDetailPage() {
         <KpiTile label="Funnel hit"    value={`${animatedFunnelHit.toFixed(0)}%`} hint={`${hitRates.creativeWinners} winning creatives`} accent="violet" />
       </motion.div>
 
-      {/* Funnels for this product */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.12 }}
-        className="rounded-xl border border-border bg-card overflow-hidden"
-      >
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            <FunnelIcon className="h-3.5 w-3.5 text-primary" />
-            <h2 className="text-sm font-medium text-foreground">Funnels across markets</h2>
-          </div>
-          <span className="text-[11px] text-muted-foreground">{funnels.length}</span>
-        </div>
+      {/* Funnels segment — compact mini view; full list lives on the sub-page */}
+      <FunnelsMiniSegment
+        productId={id ?? ''}
+        funnelAggs={funnelAggs}
+        product={product}
+      />
 
-        {funnels.length === 0 ? (
-          <div className="px-4 py-10 text-center">
-            <FunnelIcon className="mx-auto h-7 w-7 text-muted-foreground/30" />
-            <p className="mt-2 text-[12px] text-muted-foreground">No funnels for this product yet.</p>
-            <Link href="/funnels" className="mt-3 inline-flex items-center gap-1 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/25">
-              Create one <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
-        ) : (
-          <div className="divide-y divide-border/60">
-            {funnelAggs.map(({ funnel: f, spend, profit, blendedRoas, latestRoas, lastLogDate }, idx) => {
-              const tone = STATUS_TONE[f.status];
-              const roasShown = latestRoas > 0 ? latestRoas : blendedRoas;
-              const fb = effectiveBeroas(f, product ?? undefined);
-              const winning = isWinning(roasShown, fb);
-              const hasData = roasShown > 0 || spend > 0;
-              const winThreshold = fb > 0 ? fb + 1 : 0;
-              const progress = winThreshold > 0 && roasShown > 0
-                ? Math.min(1, roasShown / (winThreshold * 1.1))
-                : 0;
-              return (
-                <motion.div
-                  key={f.id}
-                  initial={{ opacity: 0, x: -6 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3, delay: Math.min(idx * 0.04, 0.3) }}
-                  className="group relative px-5 py-3 transition-colors hover:bg-foreground/[0.02]"
-                >
-                  {/* Left status accent bar */}
-                  <div className={cn('absolute inset-y-2 left-0 w-[2px] rounded-r', tone.dot)} aria-hidden />
-
-                  <div className="grid grid-cols-12 items-center gap-3">
-                    {/* Market */}
-                    <div className="col-span-3">
-                      <p className="text-[13px] font-medium text-foreground">{f.country}</p>
-                      <p className="text-[10px] text-muted-foreground">{f.language}</p>
-                    </div>
-
-                    {/* Status */}
-                    <div className="col-span-2">
-                      <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
-                        <span className={cn('h-1 w-1 rounded-full', tone.dot)} />
-                        {STATUS_LABEL[f.status]}
-                      </span>
-                    </div>
-
-                    {/* ROAS + threshold bar */}
-                    <div className="col-span-4">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className={cn('text-[14px] font-semibold tabular-nums', !hasData ? 'text-muted-foreground/40' : winning ? 'text-emerald-400' : 'text-foreground')}>
-                          {roasShown > 0 ? `${roasShown.toFixed(2)}x` : '—'}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground/70 tabular-nums">
-                          BEROAS {fb > 0 ? `${fb.toFixed(2)}x` : '—'}
-                        </span>
-                      </div>
-                      {hasData && winThreshold > 0 ? (
-                        <div className="relative mt-1 h-1 overflow-hidden rounded-full bg-border/60">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${progress * 100}%` }}
-                            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-                            className={cn('h-full rounded-full', winning ? 'bg-gradient-to-r from-emerald-500 to-emerald-300' : 'bg-rose-400/70')}
-                          />
-                          <span className="absolute top-0 h-full w-px bg-foreground/40" style={{ left: `${(1 / 1.1) * 100}%` }} aria-hidden />
-                        </div>
-                      ) : (
-                        <div className="mt-1 h-1 rounded-full bg-border/30" />
-                      )}
-                    </div>
-
-                    {/* Win badge + numbers */}
-                    <div className="col-span-3 flex items-center justify-end gap-3">
-                      {!hasData ? (
-                        <span className="text-[10px] text-muted-foreground/60">no data</span>
-                      ) : winning ? (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                          <span className="h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" /> Win
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
-                          <span className="h-1 w-1 rounded-full bg-rose-400" /> Below
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Secondary row: $ + last log */}
-                  {(spend > 0 || lastLogDate) && (
-                    <div className="mt-1 flex items-center gap-3 pl-0 text-[10px] text-muted-foreground">
-                      {spend > 0 && (
-                        <>
-                          <span>Spend <span className="font-semibold tabular-nums text-foreground">{fmt(spend)}</span></span>
-                          <span className="text-muted-foreground/40">·</span>
-                          <span>Profit <span className={cn('font-semibold tabular-nums', profit < 0 ? 'text-rose-400' : profit > 0 ? 'text-emerald-400' : 'text-foreground')}>{fmt(profit)}</span></span>
-                        </>
-                      )}
-                      {lastLogDate && (
-                        <span className="ml-auto tabular-nums">{lastLogDate}</span>
-                      )}
-                    </div>
-                  )}
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-      </motion.div>
-
-      {/* Creatives for this product */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.18 }}
-        className="rounded-xl border border-border bg-card overflow-hidden"
-      >
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            <Globe className="h-3.5 w-3.5 text-primary" />
-            <h2 className="text-sm font-medium text-foreground">Creatives</h2>
-          </div>
-          <span className="text-[11px] text-muted-foreground">
-            {creatives.length} · {hitRates.decidedCreatives > 0 ? `${hitRates.creativeHitRate.toFixed(0)}% winners` : 'none decided'}
-          </span>
-        </div>
-
-        {creatives.length === 0 ? (
-          <div className="px-4 py-8 text-center">
-            <p className="text-[12px] text-muted-foreground">No creatives logged for this product yet.</p>
-            <Link href="/ads-international" className="mt-2 inline-block text-[11px] text-primary hover:text-primary/80">
-              Add one →
-            </Link>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="tracker-table">
-              <thead>
-                <tr>
-                  <th>Batch</th>
-                  <th style={{ width: 140 }}>Market</th>
-                  <th style={{ width: 90 }}>Type</th>
-                  <th style={{ width: 110 }}>Status</th>
-                  <th style={{ width: 130 }}>Result</th>
-                  <th style={{ width: 110 }}>Launch</th>
-                </tr>
-              </thead>
-              <tbody>
-                {creatives.map((c) => {
-                  const rTone = RESULT_TONE[c.result];
-                  return (
-                    <tr key={c.id}>
-                      <td>
-                        <div className="px-3 py-2">
-                          <p className="text-[13px] font-medium text-foreground">{c.batchName}</p>
-                          {c.notes && <p className="mt-0.5 text-[10px] text-muted-foreground/70 truncate max-w-[280px]">{c.notes}</p>}
-                        </div>
-                      </td>
-                      <td><div className="px-3 py-2 text-[11px] text-muted-foreground">{c.country} · {c.language}</div></td>
-                      <td><div className="px-3 py-2 text-[11px] text-muted-foreground">{c.creativeType || '—'}</div></td>
-                      <td><div className="px-3 py-2 text-[11px] capitalize text-foreground">{c.status}</div></td>
-                      <td>
-                        <div className="px-3 py-2">
-                          <span className={cn('inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-medium capitalize', rTone.bg, rTone.border, rTone.text)}>
-                            {c.result}
-                          </span>
-                        </div>
-                      </td>
-                      <td><div className="px-3 py-2 text-[11px] tabular-nums text-muted-foreground">{c.launchDate || '—'}</div></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </motion.div>
+      {/* Creatives segment — compact mini view; full list lives on the sub-page */}
+      <CreativesMiniSegment
+        productId={id ?? ''}
+        creatives={creatives}
+      />
 
       <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground/60">
         <span>Logged in as {user?.email ?? '—'}</span>
@@ -868,5 +683,249 @@ function InlineField({
         className="mt-0.5 w-full bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/40"
       />
     </div>
+  );
+}
+
+// ── Funnels mini segment — top-line summary + scrollable market chips + view-all link ─
+
+type FunnelAgg = {
+  funnel: Funnel;
+  spend: number;
+  revenue: number;
+  profit: number;
+  blendedRoas: number;
+  latestRoas: number;
+  lastLogDate: string;
+  daysLogged: number;
+};
+
+function FunnelsMiniSegment({
+  productId, funnelAggs, product,
+}: {
+  productId: string;
+  funnelAggs: FunnelAgg[];
+  product: ProductTrackerEntry | null;
+}) {
+  const total = funnelAggs.length;
+  const live = funnelAggs.filter((a) => a.funnel.status === 'live' || a.funnel.status === 'testing').length;
+  const winners = funnelAggs.filter((a) => {
+    const roas = a.latestRoas > 0 ? a.latestRoas : a.blendedRoas;
+    if (roas <= 0) return false;
+    const be = effectiveBeroas(a.funnel, product ?? undefined);
+    return isWinning(roas, be);
+  }).length;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.12 }}
+      className="group relative overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-primary/30"
+    >
+      {productId && (
+        <Link
+          href={`/product-tracker/${productId}/funnels`}
+          aria-label="Open full funnels detail"
+          className="absolute inset-0 z-20 rounded-xl"
+        />
+      )}
+      <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <FunnelIcon className="h-3.5 w-3.5 text-primary" />
+          <h2 className="text-sm font-medium text-foreground">Funnels across markets</h2>
+        </div>
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition group-hover:text-primary">
+          View all <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
+        </span>
+      </div>
+
+      {total === 0 ? (
+        <div className="relative z-10 px-4 py-10 text-center">
+          <FunnelIcon className="mx-auto h-7 w-7 text-muted-foreground/30" />
+          <p className="mt-2 text-[12px] text-muted-foreground">No funnels for this product yet.</p>
+        </div>
+      ) : (
+        <div className="relative z-10 px-4 py-4 space-y-3">
+          {/* Summary line */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <SummaryPill label="Total" value={total} tone="violet" />
+            <SummaryPill label="Active" value={live} tone="emerald" />
+            <SummaryPill label="Winning" value={winners} tone="amber" />
+          </div>
+
+          {/* Horizontal market chips */}
+          <div className="-mx-1 flex flex-wrap gap-1.5 px-1">
+            {funnelAggs.slice(0, 8).map(({ funnel: f, spend, blendedRoas, latestRoas }) => {
+              const tone = STATUS_TONE[f.status];
+              const roasShown = latestRoas > 0 ? latestRoas : blendedRoas;
+              const be = effectiveBeroas(f, product ?? undefined);
+              const winning = roasShown > 0 && isWinning(roasShown, be);
+              const hasData = roasShown > 0 || spend > 0;
+              return (
+                <div
+                  key={f.id}
+                  className={cn(
+                    'relative inline-flex shrink-0 items-center gap-2 rounded-md border px-2.5 py-1.5',
+                    winning ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : 'border-border bg-background/40'
+                  )}
+                  title={`${f.country} · ${f.language} — ${STATUS_LABEL[f.status]}`}
+                >
+                  <span className={cn('h-1.5 w-1.5 rounded-full', tone.dot)} aria-hidden />
+                  <div className="leading-tight">
+                    <p className="text-[11px] font-semibold text-foreground">{f.country}</p>
+                    <p className="text-[9px] text-muted-foreground">{f.language}</p>
+                  </div>
+                  <span className={cn('ml-1 text-[12px] font-semibold tabular-nums', !hasData ? 'text-muted-foreground/40' : winning ? 'text-emerald-400' : 'text-foreground')}>
+                    {roasShown > 0 ? `${roasShown.toFixed(2)}x` : '—'}
+                  </span>
+                </div>
+              );
+            })}
+            {funnelAggs.length > 8 && (
+              <span className="inline-flex items-center rounded-md border border-dashed border-border px-2.5 py-1.5 text-[10px] text-muted-foreground">
+                +{funnelAggs.length - 8} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function SummaryPill({ label, value, tone }: {
+  label: string; value: number; tone: 'violet' | 'emerald' | 'amber' | 'sky' | 'rose';
+}) {
+  const c = {
+    violet:  { text: 'text-violet-400',  bg: 'bg-violet-500/10',  border: 'border-violet-500/25' },
+    emerald: { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/25' },
+    amber:   { text: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/25' },
+    sky:     { text: 'text-sky-400',     bg: 'bg-sky-500/10',     border: 'border-sky-500/25' },
+    rose:    { text: 'text-rose-400',    bg: 'bg-rose-500/10',    border: 'border-rose-500/25' },
+  }[tone];
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium', c.bg, c.border, c.text)}>
+      {label}
+      <span className="font-semibold tabular-nums">{value}</span>
+    </span>
+  );
+}
+
+// ── Creatives mini segment — batch-level chips + view-all link ────────────
+
+function CreativesMiniSegment({
+  productId, creatives,
+}: {
+  productId: string;
+  creatives: Creative[];
+}) {
+  const total = creatives.length;
+  const winners = creatives.filter((c) => c.result === 'winner').length;
+  const killed = creatives.filter((c) => c.status === 'killed').length;
+  const decided = winners + killed;
+  const hitPct = decided > 0 ? (winners / decided) * 100 : 0;
+
+  // Group creatives into batches for chip view
+  const batches = useMemo(() => {
+    const map = new Map<string, { name: string; total: number; winners: number; killed: number; live: number; testing: number }>();
+    for (const c of creatives) {
+      const key = c.batchName || '(unbatched)';
+      const b = map.get(key) ?? { name: key, total: 0, winners: 0, killed: 0, live: 0, testing: 0 };
+      b.total++;
+      if (c.result === 'winner') b.winners++;
+      if (c.status === 'killed') b.killed++;
+      if (c.status === 'live') b.live++;
+      if (c.status === 'testing') b.testing++;
+      map.set(key, b);
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [creatives]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.18 }}
+      className="group relative overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-primary/30"
+    >
+      {productId && (
+        <Link
+          href={`/product-tracker/${productId}/creatives`}
+          aria-label="Open full creatives detail"
+          className="absolute inset-0 z-20 rounded-xl"
+        />
+      )}
+      <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <Globe className="h-3.5 w-3.5 text-primary" />
+          <h2 className="text-sm font-medium text-foreground">Creatives</h2>
+        </div>
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition group-hover:text-primary">
+          View all <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
+        </span>
+      </div>
+
+      {total === 0 ? (
+        <div className="relative z-10 px-4 py-8 text-center">
+          <p className="text-[12px] text-muted-foreground">No creatives logged for this product yet.</p>
+        </div>
+      ) : (
+        <div className="relative z-10 px-4 py-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <SummaryPill label="Total" value={total} tone="violet" />
+            <SummaryPill label="Winners" value={winners} tone="emerald" />
+            <SummaryPill label="Killed" value={killed} tone="rose" />
+            <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-400">
+              Hit
+              <span className="font-semibold tabular-nums">{decided > 0 ? `${hitPct.toFixed(0)}%` : '—'}</span>
+            </span>
+          </div>
+
+          {/* Batch chips */}
+          <div className="-mx-1 flex flex-wrap gap-1.5 px-1">
+            {batches.slice(0, 8).map((b) => {
+              const hot = b.winners > 0;
+              return (
+                <div
+                  key={b.name}
+                  className={cn(
+                    'inline-flex shrink-0 items-center gap-2 rounded-md border px-2.5 py-1.5',
+                    hot ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : 'border-border bg-background/40'
+                  )}
+                  title={`${b.name} — ${b.total} creatives`}
+                >
+                  <div className="leading-tight">
+                    <p className="text-[11px] font-semibold text-foreground">{b.name}</p>
+                    <p className="text-[9px] text-muted-foreground">{b.total} creative{b.total === 1 ? '' : 's'}</p>
+                  </div>
+                  <span className="flex items-center gap-1">
+                    {b.winners > 0 && (
+                      <span className="inline-flex items-center gap-0.5 rounded-sm bg-emerald-500/15 px-1 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-400">
+                        {b.winners}W
+                      </span>
+                    )}
+                    {b.killed > 0 && (
+                      <span className="inline-flex items-center gap-0.5 rounded-sm bg-rose-500/15 px-1 py-0.5 text-[10px] font-semibold tabular-nums text-rose-400">
+                        {b.killed}K
+                      </span>
+                    )}
+                    {b.live > 0 && (
+                      <span className="inline-flex items-center gap-0.5 rounded-sm bg-sky-500/15 px-1 py-0.5 text-[10px] font-semibold tabular-nums text-sky-400">
+                        {b.live}L
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+            {batches.length > 8 && (
+              <span className="inline-flex items-center rounded-md border border-dashed border-border px-2.5 py-1.5 text-[10px] text-muted-foreground">
+                +{batches.length - 8} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </motion.div>
   );
 }

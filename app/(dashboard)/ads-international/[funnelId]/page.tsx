@@ -308,17 +308,20 @@ export default function AdsFunnelDetailPage() {
                 ) : (
                   <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{funnel.productName}</h1>
                 )}
-                <p className="mt-1 text-[12px] text-muted-foreground">
-                  {funnel.country} <span className="text-muted-foreground/40">·</span> {funnel.language}
-                  <span className="mx-1.5 text-muted-foreground/40">·</span>
-                  <span className={cn('inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1">
+                    <Globe className="h-3.5 w-3.5 text-sky-400" aria-hidden />
+                    <span className="text-[13px] font-semibold tracking-tight text-foreground">{funnel.country}</span>
+                    <span className="text-sky-500/40">·</span>
+                    <span className="text-[13px] font-medium text-sky-300/90">{funnel.language}</span>
+                  </span>
+                  <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium', tone.bg, tone.border, tone.text)}>
                     {funnel.status}
                   </span>
-                  <span className="mx-1.5 text-muted-foreground/40">·</span>
-                  <Link href={`/funnels/${funnel.id}`} className="text-primary hover:text-primary/80">
-                    <FunnelIcon className="inline h-3 w-3" /> Funnel
+                  <Link href={`/funnels/${funnel.id}`} className="inline-flex items-center gap-0.5 text-[12px] text-primary hover:text-primary/80">
+                    <FunnelIcon className="h-3 w-3" /> Funnel
                   </Link>
-                </p>
+                </div>
               </div>
             </div>
 

@@ -218,23 +218,22 @@ export default function FunnelDetailPage() {
                 ) : (
                   <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{funnel.productName}</h1>
                 )}
-                <p className="mt-1 text-[12px] text-muted-foreground">
-                  {funnel.country} <span className="text-muted-foreground/40">·</span> {funnel.language}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1">
+                    <Globe className="h-3.5 w-3.5 text-sky-400" aria-hidden />
+                    <span className="text-[13px] font-semibold tracking-tight text-foreground">{funnel.country}</span>
+                    <span className="text-sky-500/40">·</span>
+                    <span className="text-[13px] font-medium text-sky-300/90">{funnel.language}</span>
+                  </span>
                   {funnel.funnelishUrl && (
-                    <>
-                      <span className="mx-1.5 text-muted-foreground/40">·</span>
-                      <a href={funnel.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:text-primary/80">
-                        <Globe className="h-3 w-3" /> Funnelish
-                      </a>
-                    </>
+                    <a href={funnel.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-[12px] text-primary hover:text-primary/80">
+                      <Globe className="h-3 w-3" /> Funnelish
+                    </a>
                   )}
                   {funnel.launchDate && (
-                    <>
-                      <span className="mx-1.5 text-muted-foreground/40">·</span>
-                      launched {funnel.launchDate}
-                    </>
+                    <span className="text-[12px] text-muted-foreground">launched {funnel.launchDate}</span>
                   )}
-                </p>
+                </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <select
                     value={funnel.status}

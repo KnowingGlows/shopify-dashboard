@@ -111,6 +111,21 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
     { key: 'system', label: 'System' },
   ];
 
+  // Pick the single nav item whose href is the longest prefix of the current
+  // path. This prevents a parent (e.g. /product-tracker) from staying lit
+  // when a child route (/product-tracker/winners) should own the highlight.
+  const activeHref = (() => {
+    let best: string | null = null;
+    for (const item of navItems) {
+      if (item.href === activePath) return item.href;
+      if (item.href === '/') continue;
+      if (activePath.startsWith(item.href + '/')) {
+        if (!best || item.href.length > best.length) best = item.href;
+      }
+    }
+    return best ?? '/';
+  })();
+
   let globalIndex = 0;
 
   return (
@@ -170,9 +185,7 @@ function SideNavContent({ activePath, onNavigate, showClose }: { activePath: str
               <div className="space-y-0.5">
                 {items.map((item) => {
                   const idx = globalIndex++;
-                  // Active = exact match OR prefix match (so detail pages like /funnels/[id]
-                  // highlight their parent /funnels). Skip prefix on '/' to avoid always-active home.
-                  const isActive = activePath === item.href || (item.href !== '/' && activePath.startsWith(item.href + '/'));
+                  const isActive = item.href === activeHref;
                   return <NavLink key={item.href} item={item} isActive={isActive} onNavigate={onNavigate} index={idx} />;
                 })}
               </div>

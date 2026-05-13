@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Wallet, X, AlertTriangle, Search,
+  Wallet, X, AlertTriangle, Search, Globe,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -478,7 +478,12 @@ function FinanceCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-foreground">{f.productName}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{f.country} · {f.language}</p>
+          <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2 py-0.5">
+            <Globe className="h-3 w-3 text-sky-400" aria-hidden />
+            <span className="text-[11px] font-semibold tracking-tight text-foreground">{f.country}</span>
+            <span className="text-sky-500/40">·</span>
+            <span className="text-[11px] font-medium text-sky-300/90">{f.language}</span>
+          </div>
         </div>
         <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
           <span className={cn('h-1 w-1 rounded-full', tone.dot)} />

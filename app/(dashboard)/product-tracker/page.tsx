@@ -422,10 +422,18 @@ export default function ProductTrackerPage() {
               <StaggerItem key={entry.id}>
                 <motion.div
                   layout
-                  className={`group rounded-xl border border-border bg-card transition-all hover:border-border/80 hover:shadow-[0_0_20px_rgba(167,139,250,0.04)] ${isEditing ? 'ring-1 ring-primary/20' : ''}`}
+                  className={`group relative rounded-xl border border-border bg-card transition-all hover:border-primary/40 hover:shadow-[0_0_20px_rgba(167,139,250,0.08)] ${isEditing ? 'ring-1 ring-primary/20' : ''}`}
                 >
+                  {/* Full-card click target — overlay link covers the row; interactive controls escape via z-10 */}
+                  {!isEditing && (
+                    <Link
+                      href={`/product-tracker/${entry.id}`}
+                      aria-label={`Open ${entry.productName || 'product'} dossier`}
+                      className="absolute inset-0 rounded-xl"
+                    />
+                  )}
                   {/* Card header - always visible */}
-                  <div className="flex items-center gap-3 px-4 py-3">
+                  <div className={`flex items-center gap-3 px-4 py-3 ${!isEditing ? 'pointer-events-none' : ''}`}>
                     <span className={`h-2 w-2 rounded-full shrink-0 ${cfg.dot}`} />
                     <div className="flex-1 min-w-0">
                       {isEditing ? (
@@ -479,29 +487,33 @@ export default function ProductTrackerPage() {
                       {/* Status indicator */}
                       <span className="w-4">{getStatusIcon(entry.id)}</span>
 
-                      {/* Link */}
+                      {/* External file link */}
                       {entry.productFileLink && (
-                        <a href={entry.productFileLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-primary transition">
+                        <a
+                          href={entry.productFileLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="pointer-events-auto relative z-10 text-muted-foreground/40 hover:text-primary transition"
+                        >
                           <ExternalLink className="h-3.5 w-3.5" />
                         </a>
                       )}
 
-                      {/* Open detail dossier */}
-                      <Link
-                        href={`/product-tracker/${entry.id}`}
-                        className="rounded-md p-1 text-muted-foreground/40 hover:text-primary transition"
-                        title="Open product dossier"
-                      >
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Link>
-
-                      {/* Expand/Collapse */}
+                      {/* Expand/Collapse inline editor */}
                       <button
-                        onClick={() => setEditingId(isEditing ? null : entry.id)}
-                        className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition"
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditingId(isEditing ? null : entry.id); }}
+                        className="pointer-events-auto relative z-10 rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition"
+                        title={isEditing ? 'Close editor' : 'Quick edit'}
                       >
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
                       </button>
+
+                      {/* Open hint — purely visual, the whole card is clickable */}
+                      <span className="text-muted-foreground/30 transition group-hover:text-primary group-hover:translate-x-0.5">
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </span>
                     </div>
                   </div>
 
