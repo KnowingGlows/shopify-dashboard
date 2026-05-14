@@ -331,19 +331,19 @@ export default function AdsFunnelDetailPage() {
 
             <motion.button
               onClick={() => setShowAddForm((v) => !v)}
-              whileHover={{ y: -2, boxShadow: showAddForm ? '0 12px 30px -10px #fb718577, 0 0 0 1px #fb718544' : '0 12px 30px -10px #a78bfa88, 0 0 0 1px #a78bfa66' }}
+              whileHover={{ y: -2, boxShadow: showAddForm ? '0 12px 30px -10px #fb718577, 0 0 0 1px #fb718544' : '0 12px 30px -10px #34d39988, 0 0 0 1px #34d39966' }}
               whileTap={{ scale: 0.97 }}
               transition={{ duration: 0.2 }}
               className={cn(
                 'group relative inline-flex items-center gap-2 overflow-hidden rounded-xl px-5 py-2.5 text-[13px] font-semibold shadow-lg transition-all',
                 showAddForm
                   ? 'bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/40'
-                  : 'bg-gradient-to-r from-violet-500 via-violet-400 to-fuchsia-500 text-white ring-1 ring-violet-300/30'
+                  : 'bg-emerald-500 text-emerald-950 ring-1 ring-emerald-300/40 hover:bg-emerald-400'
               )}
             >
               {!showAddForm && (
                 <span
-                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full"
                   aria-hidden
                 />
               )}

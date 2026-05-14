@@ -267,13 +267,13 @@ export default function FunnelsPage() {
           </div>
           <motion.button
             onClick={() => setShowAddModal(true)}
-            whileHover={{ y: -2, boxShadow: '0 12px 30px -10px #a78bfa88, 0 0 0 1px #a78bfa66' }}
+            whileHover={{ y: -2, boxShadow: '0 12px 30px -10px #34d39988, 0 0 0 1px #34d39966' }}
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.2 }}
-            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-violet-500 via-violet-400 to-fuchsia-500 px-5 py-2.5 text-[13px] font-semibold text-white shadow-lg ring-1 ring-violet-300/30 transition-all"
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-emerald-500 px-5 py-2.5 text-[13px] font-semibold text-emerald-950 shadow-lg ring-1 ring-emerald-300/40 transition-all hover:bg-emerald-400"
           >
             <span
-              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full"
               aria-hidden
             />
             <span className="relative z-10 flex items-center gap-2">
@@ -1227,31 +1227,19 @@ function AddFunnelModal({
         initial={{ opacity: 0, scale: 0.94, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-        className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl border border-violet-500/20 bg-card/95 shadow-[0_30px_80px_-20px_rgba(167,139,250,0.35),0_0_0_1px_rgba(167,139,250,0.15)] backdrop-blur-xl"
+        className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
       >
-        {/* Animated gradient hero */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-violet-500/15 via-violet-500/[0.06] to-fuchsia-500/10 px-7 pt-6 pb-5">
-          <motion.div
-            initial={{ x: '-100%' }}
-            animate={{ x: '100%' }}
-            transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 4, ease: 'easeInOut' }}
-            className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/[0.04] to-transparent"
-            aria-hidden
-          />
-          <div
-            className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full opacity-50 blur-3xl"
-            style={{ background: 'radial-gradient(circle, #a78bfa66, transparent 70%)' }}
-            aria-hidden
-          />
+        {/* Header — neutral steel tone */}
+        <div className="relative overflow-hidden border-b border-border bg-gradient-to-b from-zinc-900/60 to-zinc-950/40 px-7 pt-6 pb-5">
           <div className="relative z-10 flex items-start justify-between gap-4">
             <div className="flex items-start gap-3">
               <motion.div
-                initial={{ scale: 0.8, rotate: -10 }}
-                animate={{ scale: 1, rotate: 0 }}
+                initial={{ scale: 0.85 }}
+                animate={{ scale: 1 }}
                 transition={{ type: 'spring', damping: 14, stiffness: 220 }}
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 shadow-lg ring-1 ring-violet-300/30"
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 shadow-inner"
               >
-                <FunnelIcon className="h-5 w-5 text-white" />
+                <FunnelIcon className="h-5 w-5 text-emerald-400" />
               </motion.div>
               <div>
                 <h2 className="text-[18px] font-semibold tracking-tight text-foreground">Launch a new funnel</h2>
@@ -1367,16 +1355,11 @@ function AddFunnelModal({
             <input value={funnelishUrl} onChange={(e) => setFunnelishUrl(e.target.value)} className="form-input" placeholder="https://…" />
           </FormCell>
 
-          {/* Per-market pricing — gradient panel with live BEROAS preview */}
-          <div className="relative overflow-hidden rounded-xl border border-violet-500/25 bg-gradient-to-br from-violet-500/[0.06] to-fuchsia-500/[0.04] p-4">
-            <div
-              className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-30 blur-2xl"
-              style={{ background: 'radial-gradient(circle, #a78bfa66, transparent 70%)' }}
-              aria-hidden
-            />
+          {/* Per-market pricing — clean panel with live BEROAS preview */}
+          <div className="relative overflow-hidden rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-4">
             <div className="relative z-10 mb-3 flex items-center justify-between">
-              <p className="inline-flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.08em] text-violet-300/90">
-                <span className="h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_6px_#a78bfa]" />
+              <p className="inline-flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.08em] text-emerald-300/90">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
                 Pricing for {country}
               </p>
               {productHasCost ? (
@@ -1437,13 +1420,13 @@ function AddFunnelModal({
           <motion.button
             onClick={submit}
             disabled={saving || products.length === 0}
-            whileHover={!saving && products.length > 0 ? { y: -2, boxShadow: '0 12px 30px -10px #a78bfa88, 0 0 0 1px #a78bfa66' } : undefined}
+            whileHover={!saving && products.length > 0 ? { y: -2, boxShadow: '0 12px 30px -10px #34d39988, 0 0 0 1px #34d39966' } : undefined}
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.2 }}
-            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-violet-500 via-violet-400 to-fuchsia-500 px-5 py-2 text-[13px] font-semibold text-white shadow-lg ring-1 ring-violet-300/30 transition-all disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-lg"
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-emerald-500 px-5 py-2 text-[13px] font-semibold text-emerald-950 shadow-lg ring-1 ring-emerald-300/40 transition-all hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-lg"
           >
             <span
-              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full"
               aria-hidden
             />
             <span className="relative z-10 flex items-center gap-2">

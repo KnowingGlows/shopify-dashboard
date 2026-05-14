@@ -6,15 +6,16 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   Package, ArrowLeft, ArrowRight, ExternalLink, Loader2, AlertTriangle,
-  Globe, Funnel as FunnelIcon, Wallet, Pencil, Check, Trophy,
+  Globe, Funnel as FunnelIcon, Wallet, Pencil, Check, Trophy, Plus, Trash2,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { isWinning, effectiveBeroas } from '@/lib/funnels';
+import { isWinning, effectiveBeroas, resolveProductCost } from '@/lib/funnels';
 import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
-import type { ProductTrackerEntry } from '@/types/shopify';
+import { getCountries } from '@/lib/markets';
+import type { ProductTrackerEntry, ProductCostOverride } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, Creative, FunnelStatus } from '@/types/funnel';
 import type { FxRates } from '@/lib/fx-rates';
 
@@ -412,6 +413,14 @@ export default function ProductDetailPage() {
                   tone={liveCount > 0 ? 'emerald' : 'neutral'}
                 />
               </div>
+
+              {/* Per-market cost overrides */}
+              <PerMarketCostsEditor
+                product={product}
+                funnels={funnels}
+                fmt={fmt}
+                onSave={(map) => saveProductField('costsByCountry', map)}
+              />
             </div>
           </motion.div>
         );
@@ -927,5 +936,291 @@ function CreativesMiniSegment({
         </div>
       )}
     </motion.div>
+  );
+}
+
+// ── Per-market cost overrides ────────────────────────────────────────────
+// Lets you tweak COGS or Shipping per country. Empty inputs inherit the
+// product's base cost. Suggests countries from existing funnels first.
+
+function PerMarketCostsEditor({
+  product, funnels, fmt, onSave,
+}: {
+  product: ProductTrackerEntry;
+  funnels: Funnel[];
+  fmt: (usd: number) => string;
+  onSave: (map: Record<string, ProductCostOverride>) => void;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [pickCountry, setPickCountry] = useState('');
+
+  const baseCogs = Number(product.cogs) || 0;
+  const baseShip = Number(product.shipping) || 0;
+  const baseTotal = baseCogs + baseShip;
+  const overrides = useMemo(() => product.costsByCountry ?? {}, [product.costsByCountry]);
+  const usedCountries = useMemo(
+    () => Array.from(new Set(funnels.map((f) => f.country).filter(Boolean))).sort(),
+    [funnels]
+  );
+  const allCountries = useMemo(() => getCountries(), []);
+
+  const orderedRows = useMemo(() => {
+    const withOverride = Object.keys(overrides).sort();
+    const withFunnelNoOverride = usedCountries.filter((c) => !overrides[c]).sort();
+    return [...withOverride, ...withFunnelNoOverride];
+  }, [overrides, usedCountries]);
+
+  const setOverride = (country: string, patch: ProductCostOverride) => {
+    const next = { ...overrides };
+    const existing = next[country] ?? {};
+    const merged: ProductCostOverride = { ...existing, ...patch };
+    if (merged.cogs == null || !Number.isFinite(merged.cogs)) delete merged.cogs;
+    if (merged.shipping == null || !Number.isFinite(merged.shipping)) delete merged.shipping;
+    if (merged.cogs == null && merged.shipping == null) {
+      delete next[country];
+    } else {
+      next[country] = merged;
+    }
+    onSave(next);
+  };
+
+  const removeCountry = (country: string) => {
+    const next = { ...overrides };
+    delete next[country];
+    onSave(next);
+  };
+
+  const addCountry = () => {
+    if (!pickCountry) return;
+    if (!overrides[pickCountry]) {
+      onSave({ ...overrides, [pickCountry]: { cogs: baseCogs, shipping: baseShip } });
+    }
+    setPickCountry('');
+    setShowAdd(false);
+  };
+
+  const remainingCountries = allCountries.filter((c) => !overrides[c]);
+
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-background/40 p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">
+            <Globe className="h-3 w-3 text-sky-400" />
+            Per-market cost overrides
+          </p>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Different shipping zones or duties per country? Override here — empty fields inherit the base cost above.
+          </p>
+        </div>
+        {!showAdd && remainingCountries.length > 0 && (
+          <button
+            onClick={() => setShowAdd(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-emerald-500/40 hover:text-emerald-400"
+          >
+            <Plus className="h-3 w-3" /> Add country
+          </button>
+        )}
+      </div>
+
+      {showAdd && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-2.5">
+          <select
+            value={pickCountry}
+            onChange={(e) => setPickCountry(e.target.value)}
+            className="form-input flex-1 min-w-[160px] py-1.5 text-[12px]"
+            autoFocus
+          >
+            <option value="">Pick a country…</option>
+            {remainingCountries.map((c) => (
+              <option key={c} value={c}>{c}{usedCountries.includes(c) ? ' (has funnel)' : ''}</option>
+            ))}
+          </select>
+          <button
+            onClick={addCountry}
+            disabled={!pickCountry}
+            className="rounded-md bg-emerald-500 px-3 py-1.5 text-[11px] font-semibold text-emerald-950 transition hover:bg-emerald-400 disabled:opacity-40"
+          >
+            Add
+          </button>
+          <button
+            onClick={() => { setShowAdd(false); setPickCountry(''); }}
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-[11px] text-muted-foreground transition hover:text-foreground"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {orderedRows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-card/40 p-4 text-center">
+          <p className="text-[11px] text-muted-foreground">
+            No per-market overrides yet — every market uses the base cost{baseTotal > 0 ? <> of <span className="font-semibold tabular-nums text-foreground">{fmt(baseTotal)}</span></> : null}.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          <div className="grid grid-cols-12 gap-2 px-2 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            <div className="col-span-3">Country</div>
+            <div className="col-span-3">COGS / unit</div>
+            <div className="col-span-3">Shipping / unit</div>
+            <div className="col-span-2 text-right">Total</div>
+            <div className="col-span-1" />
+          </div>
+          {orderedRows.map((country) => {
+            const ov = overrides[country];
+            const hasOverride = !!ov;
+            const resolved = resolveProductCost(product, country);
+            const usedByFunnel = usedCountries.includes(country);
+            return (
+              <CostRow
+                key={country}
+                country={country}
+                hasOverride={hasOverride}
+                usedByFunnel={usedByFunnel}
+                cogs={ov?.cogs}
+                shipping={ov?.shipping}
+                resolvedCogs={resolved.cogs}
+                resolvedShipping={resolved.shipping}
+                total={resolved.total}
+                baseCogs={baseCogs}
+                baseShip={baseShip}
+                fmt={fmt}
+                onPatch={(patch) => setOverride(country, patch)}
+                onRemove={() => removeCountry(country)}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CostRow({
+  country, hasOverride, usedByFunnel, cogs, shipping, resolvedCogs, resolvedShipping, total,
+  baseCogs, baseShip, fmt, onPatch, onRemove,
+}: {
+  country: string;
+  hasOverride: boolean;
+  usedByFunnel: boolean;
+  cogs?: number;
+  shipping?: number;
+  resolvedCogs: number;
+  resolvedShipping: number;
+  total: number;
+  baseCogs: number;
+  baseShip: number;
+  fmt: (usd: number) => string;
+  onPatch: (patch: ProductCostOverride) => void;
+  onRemove: () => void;
+}) {
+  const diff = total - (baseCogs + baseShip);
+  const diffTone = diff > 0 ? 'text-amber-400' : diff < 0 ? 'text-emerald-400' : 'text-muted-foreground/60';
+  const isBase = resolvedCogs === baseCogs && resolvedShipping === baseShip && diff === 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -4 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.2 }}
+      className={cn(
+        'group grid grid-cols-12 items-center gap-2 rounded-lg border bg-card/40 px-2 py-1.5 transition-colors',
+        hasOverride ? 'border-sky-500/20 hover:border-sky-500/40' : 'border-border hover:border-border/80'
+      )}
+    >
+      <div className="col-span-3 flex items-center gap-1.5 min-w-0">
+        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', hasOverride ? 'bg-sky-400 shadow-[0_0_6px_#38bdf8]' : 'bg-muted-foreground/40')} />
+        <div className="min-w-0">
+          <p className="truncate text-[12px] font-medium text-foreground">{country}</p>
+          {usedByFunnel && !hasOverride && (
+            <p className="text-[9px] text-amber-400/80">has funnel · using base</p>
+          )}
+        </div>
+      </div>
+      <div className="col-span-3">
+        <CostInput
+          value={cogs}
+          placeholderValue={baseCogs}
+          onCommit={(v) => onPatch({ cogs: v })}
+        />
+      </div>
+      <div className="col-span-3">
+        <CostInput
+          value={shipping}
+          placeholderValue={baseShip}
+          onCommit={(v) => onPatch({ shipping: v })}
+        />
+      </div>
+      <div className="col-span-2 text-right">
+        <p className="text-[12px] font-semibold tabular-nums text-foreground">{fmt(total)}</p>
+        {diff !== 0 ? (
+          <p className={cn('text-[9px] tabular-nums', diffTone)}>
+            {diff > 0 ? '+' : '−'}{fmt(Math.abs(diff))}
+          </p>
+        ) : isBase ? (
+          <p className="text-[9px] text-muted-foreground/50">= base</p>
+        ) : null}
+      </div>
+      <div className="col-span-1 flex justify-end">
+        {hasOverride && (
+          <button
+            onClick={onRemove}
+            className="rounded-md p-1 text-muted-foreground/40 transition hover:bg-rose-500/10 hover:text-rose-400"
+            title={`Remove ${country} override`}
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function CostInput({
+  value, placeholderValue, onCommit,
+}: {
+  value: number | undefined;
+  placeholderValue: number;
+  onCommit: (v: number | undefined) => void;
+}) {
+  const [draft, setDraft] = useState<string>('');
+  const [focused, setFocused] = useState(false);
+  // Controlled-uncontrolled toggle: while focused use local draft, otherwise
+  // display the live prop value. Avoids effect-driven state sync.
+  const display = focused ? draft : (value != null ? String(value) : '');
+
+  const flush = () => {
+    setFocused(false);
+    const trimmed = draft.trim();
+    if (trimmed === '') {
+      onCommit(undefined);
+      return;
+    }
+    const n = parseFloat(trimmed);
+    if (!Number.isFinite(n) || n < 0) return;
+    onCommit(n);
+  };
+
+  return (
+    <div className="flex items-center gap-1 rounded-md border border-border bg-background/60 px-2 py-1 transition-colors focus-within:border-emerald-500/40">
+      <span className="text-[10px] text-muted-foreground">$</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        step="0.01"
+        min="0"
+        value={display}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => { setDraft(value != null ? String(value) : ''); setFocused(true); }}
+        onBlur={flush}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Escape') { setFocused(false); (e.target as HTMLInputElement).blur(); }
+        }}
+        placeholder={placeholderValue > 0 ? placeholderValue.toFixed(2) : '0.00'}
+        className="w-full bg-transparent text-[12px] tabular-nums text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+    </div>
   );
 }
