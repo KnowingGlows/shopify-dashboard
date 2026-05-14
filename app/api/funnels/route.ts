@@ -166,7 +166,8 @@ export async function PATCH(request: Request) {
   }
 }
 
-// DELETE /api/funnels — also cascades the daily logs for that funnel
+// DELETE /api/funnels — cascades daily logs AND creatives for that funnel
+// so neither leaves orphans on the ads page.
 export async function DELETE(request: Request) {
   try {
     const session = await getSession();
@@ -187,14 +188,21 @@ export async function DELETE(request: Request) {
     const doc = await ref.get();
     if (!doc.exists) return NextResponse.json({ error: 'Funnel not found.' }, { status: 404 });
 
-    // Cascade-delete logs for this funnel
-    const logsSnap = await firestore.collection(COLLECTIONS.FUNNEL_DAILY_LOGS).where('funnelId', '==', id).get();
+    // Cascade: daily logs + creatives bound to this funnel
+    const [logsSnap, creativesSnap] = await Promise.all([
+      firestore.collection(COLLECTIONS.FUNNEL_DAILY_LOGS).where('funnelId', '==', id).get(),
+      firestore.collection(COLLECTIONS.CREATIVES_INTL).where('funnelId', '==', id).get(),
+    ]);
     const batch = firestore.batch();
     logsSnap.docs.forEach((d) => batch.delete(d.ref));
+    creativesSnap.docs.forEach((d) => batch.delete(d.ref));
     batch.delete(ref);
     await batch.commit();
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      cascaded: { logs: logsSnap.size, creatives: creativesSnap.size },
+    });
   } catch (error) {
     console.error('Error deleting funnel:', error);
     return NextResponse.json({ error: 'Failed to delete funnel.' }, { status: 500 });

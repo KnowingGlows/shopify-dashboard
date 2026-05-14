@@ -7,19 +7,42 @@ import type { Funnel, FunnelDailyLog } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
 
 /**
+ * Resolve the per-unit cost (cogs + shipping) for a product in a given market.
+ * Looks up `product.costsByCountry[country]` first, falling back to the base
+ * `product.cogs` / `product.shipping` for any field the country override leaves
+ * unset. Returns 0 if the product is missing.
+ */
+export function resolveProductCost(product: ProductTrackerEntry | null | undefined, country?: string): {
+  cogs: number;
+  shipping: number;
+  total: number;
+  fromOverride: boolean;
+} {
+  if (!product) return { cogs: 0, shipping: 0, total: 0, fromOverride: false };
+  const baseCogs = Number(product.cogs) || 0;
+  const baseShip = Number(product.shipping) || 0;
+  const override = country ? product.costsByCountry?.[country] : undefined;
+  const cogs = override?.cogs != null ? Number(override.cogs) || 0 : baseCogs;
+  const shipping = override?.shipping != null ? Number(override.shipping) || 0 : baseShip;
+  const fromOverride = !!override && (override.cogs != null || override.shipping != null);
+  return { cogs, shipping, total: cogs + shipping, fromOverride };
+}
+
+/**
  * Compute the effective BEROAS for a funnel.
  *
  *   margin = (SP − productCost) / SP × deliveryRate
  *   BEROAS = 1 / margin
  *
  * Auto-compute when the funnel has SP+deliveryRate AND the linked product
- * has cost (cogs + shipping). Otherwise fall back to the manual
- * `funnel.beroas` field. Returns 0 if neither path yields a value.
+ * has cost (cogs + shipping). The product cost is resolved per funnel's
+ * country, falling back to the product's base cost. Otherwise fall back to
+ * the manual `funnel.beroas` field. Returns 0 if neither path yields a value.
  */
 export function effectiveBeroas(funnel: Funnel, product?: ProductTrackerEntry | null): number {
   const sp = Number(funnel.sellingPrice) || 0;
   const dr = (Number(funnel.deliveryRate) || 0) / 100;
-  const cost = product ? (Number(product.cogs) || 0) + (Number(product.shipping) || 0) : 0;
+  const { total: cost } = resolveProductCost(product, funnel.country);
 
   if (sp > 0 && cost >= 0 && dr > 0 && sp > cost) {
     const margin = ((sp - cost) / sp) * dr;
@@ -27,17 +50,6 @@ export function effectiveBeroas(funnel: Funnel, product?: ProductTrackerEntry | 
   }
   // Fallback: manually-entered value (legacy / when pricing isn't set yet)
   return Math.max(0, Number(funnel.beroas) || 0);
-}
-
-/**
- * Whether the auto-compute path produced the value (vs the manual fallback).
- * Useful for showing a small "auto" badge in the UI.
- */
-export function isBeroasAutoComputed(funnel: Funnel, product?: ProductTrackerEntry | null): boolean {
-  const sp = Number(funnel.sellingPrice) || 0;
-  const dr = (Number(funnel.deliveryRate) || 0) / 100;
-  const cost = product ? (Number(product.cogs) || 0) + (Number(product.shipping) || 0) : 0;
-  return sp > 0 && dr > 0 && sp > cost;
 }
 
 /**

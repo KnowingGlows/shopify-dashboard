@@ -53,7 +53,6 @@ export async function GET(request: Request) {
 
     const cache = doc.data()!;
     const perStoreDailyDelivered: Record<string, Record<string, number>> = cache.perStoreDailyDelivered ?? {};
-    const storeAnalytics: Record<string, { avgDeliveryDays: number | null; codDeliveredAmount: number }> = cache.storeAnalytics ?? {};
 
     // ── Build projections per store ───────────────────────────────────
     const storeProjections: Record<string, {

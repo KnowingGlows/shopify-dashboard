@@ -58,7 +58,3 @@ export function getCountries(): string[] {
 export function getLanguagesForCountry(country: string): string[] {
   return MARKETS.find((m) => m.country === country)?.languages ?? [];
 }
-
-export function getPhaseForCountry(country: string): Phase | null {
-  return MARKETS.find((m) => m.country === country)?.phase ?? null;
-}

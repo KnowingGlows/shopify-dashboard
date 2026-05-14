@@ -152,12 +152,16 @@ export default function AdsFunnelDetailPage() {
 
   const summary = useMemo(() => {
     const total = creatives.length;
-    const live = creatives.filter((c) => c.status === 'live').length;
+    // Live = still spending (live + testing + winners) — winners stay "live"
+    // until explicitly killed.
+    const live = creatives.filter((c) => c.status === 'live' || c.status === 'testing' || c.result === 'winner').length;
     const testing = creatives.filter((c) => c.status === 'testing').length;
     const killed = creatives.filter((c) => c.status === 'killed').length;
     const winners = creatives.filter((c) => c.result === 'winner').length;
     const losers = creatives.filter((c) => c.result === 'loser').length;
-    const decided = winners + losers;
+    // Hit rate = winners / (winners + killed). A creative being killed is the
+    // signal it didn't pan out.
+    const decided = winners + killed;
     const hitRate = decided > 0 ? (winners / decided) * 100 : 0;
     const batches = new Set(creatives.map((c) => c.batchName).filter(Boolean)).size;
     const lastLaunch = creatives.map((c) => c.launchDate).filter(Boolean).sort().pop() || '';
@@ -325,13 +329,29 @@ export default function AdsFunnelDetailPage() {
               </div>
             </div>
 
-            <button
+            <motion.button
               onClick={() => setShowAddForm((v) => !v)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/25"
+              whileHover={{ y: -2, boxShadow: showAddForm ? '0 12px 30px -10px #fb718577, 0 0 0 1px #fb718544' : '0 12px 30px -10px #a78bfa88, 0 0 0 1px #a78bfa66' }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.2 }}
+              className={cn(
+                'group relative inline-flex items-center gap-2 overflow-hidden rounded-xl px-5 py-2.5 text-[13px] font-semibold shadow-lg transition-all',
+                showAddForm
+                  ? 'bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/40'
+                  : 'bg-gradient-to-r from-violet-500 via-violet-400 to-fuchsia-500 text-white ring-1 ring-violet-300/30'
+              )}
             >
-              {showAddForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-              {showAddForm ? 'Cancel' : 'Add Creative'}
-            </button>
+              {!showAddForm && (
+                <span
+                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                  aria-hidden
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-2">
+                {showAddForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" strokeWidth={2.5} />}
+                <span className="tracking-tight">{showAddForm ? 'Cancel' : 'Add Creative'}</span>
+              </span>
+            </motion.button>
           </div>
         </div>
       </motion.div>
@@ -418,150 +438,243 @@ export default function AdsFunnelDetailPage() {
           <p className="text-[12px] text-muted-foreground">No creatives match your filters.</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {byBatch.map(({ batch, items }, idx) => {
             const bWinners = items.filter((c) => c.result === 'winner').length;
-            const bLosers = items.filter((c) => c.result === 'loser').length;
-            const bDecided = bWinners + bLosers;
+            const bKilled = items.filter((c) => c.status === 'killed').length;
+            const bDecided = bWinners + bKilled;
             const bHit = bDecided > 0 ? (bWinners / bDecided) * 100 : 0;
-            const bLive = items.filter((c) => c.status === 'live').length;
+            const bLive = items.filter((c) => c.status === 'live' || c.status === 'testing' || c.result === 'winner').length;
+            const hotBatch = bWinners > 0 && bHit >= 50;
             return (
               <motion.div
                 key={batch}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35, delay: Math.min(idx * 0.04, 0.3) }}
-                className="overflow-hidden rounded-2xl border border-border bg-card"
+                className={cn(
+                  'group relative overflow-hidden rounded-2xl border bg-card transition-colors',
+                  hotBatch ? 'border-emerald-500/30' : 'border-border hover:border-border/80'
+                )}
               >
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-violet-500/15 text-violet-400">
-                      <Layers className="h-3.5 w-3.5" />
+                {/* Top accent */}
+                <div className={cn('absolute inset-x-0 top-0 h-[3px]', hotBatch ? 'bg-gradient-to-r from-emerald-500/60 via-emerald-400 to-emerald-500/60' : 'bg-gradient-to-r from-violet-500/40 via-violet-400/60 to-violet-500/40')} aria-hidden />
+
+                {/* Ambient corner glow when hot */}
+                {hotBatch && (
+                  <div
+                    className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full opacity-25 blur-3xl transition-opacity duration-500 group-hover:opacity-50"
+                    style={{ background: 'radial-gradient(circle, #34d39966, transparent 70%)' }}
+                    aria-hidden
+                  />
+                )}
+
+                {/* Batch header */}
+                <div className="relative z-10 flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-5 py-3.5">
+                  <div className="flex items-center gap-3">
+                    <span className={cn('flex h-9 w-9 items-center justify-center rounded-lg', hotBatch ? 'bg-emerald-500/15 text-emerald-400' : 'bg-violet-500/15 text-violet-400')}>
+                      <Layers className="h-4 w-4" />
                     </span>
                     <div>
-                      <p className="text-[13px] font-semibold text-foreground">{batch}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {items.length} creative{items.length === 1 ? '' : 's'} ·
-                        {' '}{bLive} live
-                        {bDecided > 0 && <> · {bWinners}W / {bLosers}L · <span className={cn(bHit >= 50 ? 'text-emerald-400' : 'text-rose-400')}>{bHit.toFixed(0)}% hit</span></>}
+                      <p className="text-[14px] font-semibold tracking-tight text-foreground">{batch}</p>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        {items.length} creative{items.length === 1 ? '' : 's'} <span className="text-muted-foreground/40">·</span> last activity {(items.map((c) => c.launchDate).filter(Boolean).sort().pop() || '—')}
                       </p>
                     </div>
                   </div>
+
+                  {/* Right-side stat chips */}
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                    <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-400">
+                      <span className="h-1 w-1 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" /> {bLive} live
+                    </span>
+                    {bWinners > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-400">
+                        <Trophy className="h-2.5 w-2.5" /> {bWinners}W
+                      </span>
+                    )}
+                    {bKilled > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-md border border-rose-500/25 bg-rose-500/10 px-2 py-0.5 font-medium text-rose-400">
+                        {bKilled}K
+                      </span>
+                    )}
+                    {bDecided > 0 && (
+                      <span className={cn(
+                        'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-semibold tabular-nums',
+                        bHit >= 50 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+                      )}>
+                        {bHit.toFixed(0)}% hit
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="tracker-table">
-                    <thead>
-                      <tr>
-                        <th>Creative</th>
-                        <th style={{ width: 90 }}>Type</th>
-                        <th style={{ width: 100 }}>Status</th>
-                        <th style={{ width: 130 }}>Result</th>
-                        <th style={{ width: 110 }}>Launch</th>
-                        <th style={{ width: 70, textAlign: 'center' }}>Folder</th>
-                        <th style={{ width: 90, textAlign: 'right' }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((c) => {
-                        const sTone = TONE[STATUS_OPTIONS.find((s) => s.value === c.status)?.tone ?? 'amber'];
-                        const rTone = TONE[RESULT_OPTIONS.find((r) => r.value === c.result)?.tone ?? 'gray'];
-                        const isEditing = editingId === c.id;
-                        return (
-                          <tr key={c.id}>
-                            <td>
-                              {isEditing ? (
-                                <input value={editBatch} onChange={(e) => setEditBatch(e.target.value)} className="tracker-input" />
-                              ) : (
-                                <div className="px-3 py-2">
-                                  <p className="text-[12px] text-foreground">{c.batchName}</p>
-                                  {c.notes && <p className="mt-0.5 text-[10px] text-muted-foreground/70 truncate max-w-[260px]">{c.notes}</p>}
-                                </div>
-                              )}
-                            </td>
-                            <td>
-                              {isEditing ? (
-                                <select value={editType} onChange={(e) => setEditType(e.target.value)} className="tracker-select">
-                                  <option value="">—</option>
-                                  {CREATIVE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                              ) : (
-                                <div className="px-3 py-2 text-[11px] text-muted-foreground">{c.creativeType || '—'}</div>
-                              )}
-                            </td>
-                            <td>
-                              <select
-                                value={c.status}
-                                onChange={(e) => updateCreative(c.id, { status: e.target.value as CreativeStatus })}
-                                className={cn('tracker-select text-[11px] font-medium', sTone.text)}
-                              >
-                                {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                              </select>
-                            </td>
-                            <td>
-                              <div className="px-3 py-1.5">
-                                <select
-                                  value={c.result}
-                                  onChange={(e) => updateCreative(c.id, { result: e.target.value as CreativeResult })}
-                                  className={cn(
-                                    'w-full rounded-md border bg-card px-2 py-1 text-[11px] font-medium outline-none transition',
-                                    rTone.bg, rTone.border, rTone.text
-                                  )}
-                                >
-                                  {RESULT_OPTIONS.map((r) => <option key={r.value} value={r.value} className="bg-card text-foreground">{r.label}</option>)}
-                                </select>
+                {/* Hit-rate progress bar — wins / killed */}
+                {bDecided > 0 && (
+                  <div className="relative z-10 px-5 pt-3">
+                    <div className="relative h-1.5 overflow-hidden rounded-full bg-border/50">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${bHit}%` }}
+                        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                        className={cn('h-full rounded-full', bHit >= 50 ? 'bg-gradient-to-r from-emerald-500 to-emerald-300' : 'bg-rose-400/70')}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Creative rows — card style, no table */}
+                <div className="relative z-10 divide-y divide-border/60 px-3 py-3">
+                  {items.map((c, ci) => {
+                    const sTone = TONE[STATUS_OPTIONS.find((s) => s.value === c.status)?.tone ?? 'amber'];
+                    const rTone = TONE[RESULT_OPTIONS.find((r) => r.value === c.result)?.tone ?? 'gray'];
+                    const isEditing = editingId === c.id;
+                    const isWinner = c.result === 'winner';
+                    return (
+                      <motion.div
+                        key={c.id}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.25, delay: Math.min(ci * 0.03, 0.2) }}
+                        className={cn(
+                          'group/row relative grid grid-cols-12 items-center gap-3 rounded-xl px-3 py-2.5 transition-colors',
+                          isEditing ? 'bg-primary/[0.04] ring-1 ring-primary/30' : 'hover:bg-white/[0.025]'
+                        )}
+                      >
+                        {/* Left winner accent */}
+                        {isWinner && (
+                          <span className="absolute inset-y-2 left-0 w-[2px] rounded-r bg-gradient-to-b from-amber-400 to-amber-300 shadow-[0_0_8px_#fbbf24]" aria-hidden />
+                        )}
+
+                        {/* Creative name + meta */}
+                        <div className="col-span-12 min-w-0 md:col-span-4">
+                          {isEditing ? (
+                            <input
+                              value={editBatch}
+                              onChange={(e) => setEditBatch(e.target.value)}
+                              placeholder="Batch / creative name"
+                              className="w-full rounded-md border border-border bg-background/40 px-2.5 py-1.5 text-[12px] text-foreground outline-none transition focus:border-primary/50"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[10px] font-semibold uppercase',
+                                isWinner ? 'bg-amber-500/15 text-amber-400' : 'bg-border/40 text-muted-foreground')}>
+                                {isWinner ? <Trophy className="h-3.5 w-3.5" /> : c.creativeType?.[0] ?? '·'}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate text-[12.5px] font-medium text-foreground">{c.batchName || batch}</p>
+                                {c.notes && <p className="mt-0.5 truncate text-[10px] text-muted-foreground/70">{c.notes}</p>}
                               </div>
-                            </td>
-                            <td>
-                              {isEditing ? (
-                                <div className="px-2 py-1.5">
-                                  <DatePicker value={editLaunchDate} onChange={setEditLaunchDate} compact />
-                                </div>
-                              ) : (
-                                <div className="px-3 py-2 text-[11px] tabular-nums text-muted-foreground">{c.launchDate || '—'}</div>
-                              )}
-                            </td>
-                            <td>
-                              <div className="px-3 py-2 text-center">
-                                {isEditing ? (
-                                  <input value={editFolder} onChange={(e) => setEditFolder(e.target.value)} placeholder="https://…" className="tracker-input text-[11px]" />
-                                ) : c.folderLink ? (
-                                  <a href={c.folderLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-primary hover:text-primary/80">
-                                    <ExternalLink className="h-3 w-3" /> open
-                                  </a>
-                                ) : (
-                                  <span className="text-muted-foreground/40 text-[10px]">—</span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              <div className="flex items-center justify-end gap-1 px-3 py-1.5">
-                                {isEditing ? (
-                                  <>
-                                    <button onClick={() => saveEdit(c.id)} disabled={saving} className="rounded-md p-1.5 text-emerald-400 transition hover:bg-emerald-500/10 disabled:opacity-40">
-                                      <Check className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button onClick={cancelEdit} className="rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/30 hover:text-foreground">
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <button onClick={() => beginEdit(c)} className="rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/30 hover:text-foreground">
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button onClick={() => deleteCreative(c.id)} className="rounded-md p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400">
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Type chip */}
+                        <div className="col-span-4 md:col-span-2">
+                          {isEditing ? (
+                            <select
+                              value={editType}
+                              onChange={(e) => setEditType(e.target.value)}
+                              className="w-full rounded-md border border-border bg-background/40 px-2 py-1.5 text-[11px] outline-none focus:border-primary/50"
+                            >
+                              <option value="">—</option>
+                              {CREATIVE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          ) : (
+                            <span className="inline-flex items-center rounded-md border border-border bg-background/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              {c.creativeType || 'video'}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Status pill */}
+                        <div className="col-span-4 md:col-span-2">
+                          <select
+                            value={c.status}
+                            onChange={(e) => updateCreative(c.id, { status: e.target.value as CreativeStatus })}
+                            className={cn(
+                              'w-full cursor-pointer rounded-full border bg-no-repeat px-3 py-1 pr-7 text-[11px] font-semibold appearance-none outline-none transition',
+                              sTone.bg, sTone.border, sTone.text
+                            )}
+                            style={{
+                              backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+                              backgroundPosition: 'right 8px center',
+                            }}
+                          >
+                            {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value} className="bg-card text-foreground">{s.label}</option>)}
+                          </select>
+                        </div>
+
+                        {/* Result pill */}
+                        <div className="col-span-4 md:col-span-2">
+                          <select
+                            value={c.result}
+                            onChange={(e) => updateCreative(c.id, { result: e.target.value as CreativeResult })}
+                            className={cn(
+                              'w-full cursor-pointer rounded-full border bg-no-repeat px-3 py-1 pr-7 text-[11px] font-semibold appearance-none outline-none transition',
+                              rTone.bg, rTone.border, rTone.text
+                            )}
+                            style={{
+                              backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")",
+                              backgroundPosition: 'right 8px center',
+                            }}
+                          >
+                            {RESULT_OPTIONS.map((r) => <option key={r.value} value={r.value} className="bg-card text-foreground">{r.label}</option>)}
+                          </select>
+                        </div>
+
+                        {/* Launch + folder */}
+                        <div className="col-span-8 md:col-span-1">
+                          {isEditing ? (
+                            <DatePicker value={editLaunchDate} onChange={setEditLaunchDate} compact />
+                          ) : (
+                            <span className="text-[10px] tabular-nums text-muted-foreground/80">{c.launchDate || '—'}</span>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="col-span-4 flex items-center justify-end gap-1 md:col-span-1">
+                          {!isEditing && c.folderLink && (
+                            <a
+                              href={c.folderLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="rounded-md p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                              title="Open folder"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                          )}
+                          {isEditing ? (
+                            <>
+                              <input
+                                value={editFolder}
+                                onChange={(e) => setEditFolder(e.target.value)}
+                                placeholder="folder url…"
+                                className="hidden w-32 rounded-md border border-border bg-background/40 px-2 py-1 text-[10px] outline-none lg:inline-block"
+                              />
+                              <button onClick={() => saveEdit(c.id)} disabled={saving} className="rounded-md p-1.5 text-emerald-400 transition hover:bg-emerald-500/10 disabled:opacity-40" title="Save">
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={cancelEdit} className="rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/30 hover:text-foreground" title="Cancel">
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => beginEdit(c)} className="rounded-md p-1.5 text-muted-foreground transition hover:bg-accent/30 hover:text-foreground" title="Edit">
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => deleteCreative(c.id)} className="rounded-md p-1.5 text-muted-foreground transition hover:bg-rose-500/10 hover:text-rose-400" title="Delete">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
                 </div>
               </motion.div>
             );

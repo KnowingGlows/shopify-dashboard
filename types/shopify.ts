@@ -77,16 +77,24 @@ export interface ExchangeRates {
 }
 
 // Product Tracker
+export interface ProductCostOverride {
+  cogs?: number;       // optional override (USD per unit)
+  shipping?: number;   // optional override (USD per unit)
+}
+
 export interface ProductTrackerEntry {
   id: string;
   productName: string;
   productFileLink: string;
   productStage: string;
   totalSpent: number;
-  // Per-product cost (USD) — drives BEROAS reference on product detail page.
+  // Per-product BASE cost (USD) — drives BEROAS when no country override exists.
   // Leave at 0 if you haven't sourced the product yet.
   cogs: number;        // unit cost from supplier
   shipping: number;    // shipping per unit
+  // Per-country cost overrides. Looked up by funnel.country before falling
+  // back to base cogs/shipping above. Either field may be omitted to inherit.
+  costsByCountry?: Record<string, ProductCostOverride>;
   remarks: string;
   createdAt: string;
   updatedAt: string;
@@ -134,39 +142,6 @@ export interface InventoryEntry {
   dailyAvgOrders: number; // rolling 7-day avg from dispatch logs
   notes: string;            // free-text notes
   lastRestockedDate: string; // YYYY-MM-DD when stock was last topped up
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Task Management
-export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
-export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done';
-
-export interface TaskLinkedEntity {
-  type: 'product' | 'inventory' | 'ads' | 'prs' | 'expense';
-  id: string;
-  label: string; // display name at time of linking
-}
-
-export interface TaskComment {
-  id: string;
-  text: string;
-  author: string; // email
-  createdAt: string;
-}
-
-export interface Task {
-  id: string;
-  title: string;
-  description: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  assignee: string; // email
-  createdBy: string; // email
-  dueDate: string; // YYYY-MM-DD or ''
-  linkedEntities: TaskLinkedEntity[];
-  comments: TaskComment[];
-  tags: string[];
   createdAt: string;
   updatedAt: string;
 }

@@ -7,7 +7,7 @@ function db() {
   return getFirestore();
 }
 
-async function getUser(req: NextRequest) {
+async function getUser(_req: NextRequest) {
   const cookieStore = await cookies();
   const token = cookieStore.get('orbit-session')?.value;
   if (!token) return null;

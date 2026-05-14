@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Funnel as FunnelIcon, ArrowLeft, Plus, Trash2, Loader2, AlertTriangle, Globe,
+  Funnel as FunnelIcon, ArrowLeft, ArrowRight, Plus, Trash2, Loader2, AlertTriangle, Globe,
   TrendingUp, ShoppingCart, Target, Trophy,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
@@ -329,68 +329,13 @@ export default function FunnelDetailPage() {
         </div>
       )}
 
-      {/* Logs table */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.18 }}
-        className="rounded-xl border border-border bg-card overflow-hidden"
-      >
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <h2 className="text-sm font-medium text-foreground">Daily performance log</h2>
-          <span className="text-[11px] text-muted-foreground">{scopedLogs.length} {scopedLogs.length === 1 ? 'entry' : 'entries'}</span>
-        </div>
-        {scopedLogs.length === 0 ? (
-          <div className="px-4 py-10 text-center">
-            <FunnelIcon className="mx-auto h-7 w-7 text-muted-foreground/30" />
-            <p className="mt-2 text-[12px] text-muted-foreground">No logs {filterDate ? 'on this date' : 'yet'}.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="tracker-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 100 }}>Date</th>
-                  <th style={{ textAlign: 'right', width: 90 }}>ROAS</th>
-                  <th style={{ textAlign: 'right', width: 70 }}>Orders</th>
-                  <th style={{ width: 60 }}>Win</th>
-                  <th>Notes</th>
-                  <th style={{ width: 36 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...scopedLogs].sort((a, b) => b.date.localeCompare(a.date)).map((l) => {
-                  const win = isWinning(l.roas, beroas);
-                  return (
-                    <tr key={l.id}>
-                      <td><div className="px-3 py-2 text-[11px] tabular-nums text-foreground">{l.date}</div></td>
-                      <td>
-                        <div className={cn('px-3 py-2 text-right text-[11px] tabular-nums font-semibold', l.roas === 0 ? 'text-muted-foreground/50' : win ? 'text-emerald-400' : 'text-foreground')}>
-                          {l.roas > 0 ? `${l.roas.toFixed(2)}x` : '—'}
-                        </div>
-                      </td>
-                      <td><div className="px-3 py-2 text-right text-[11px] tabular-nums text-foreground">{l.orders || '—'}</div></td>
-                      <td>
-                        <div className="px-3 py-2">
-                          {l.roas === 0 ? <span className="text-[10px] text-muted-foreground/60">—</span> : win
-                            ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" title="Winning" />
-                            : <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-400" title="Below threshold" />}
-                        </div>
-                      </td>
-                      <td><div className="px-3 py-2 text-[11px] text-muted-foreground truncate max-w-[280px]">{l.notes || '—'}</div></td>
-                      <td>
-                        <div className="flex items-center justify-end px-3 py-1.5">
-                          <DeleteLogButton id={l.id} onDeleted={refreshLogs} onError={setError} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </motion.div>
+      {/* Logs mini segment — compact, links to dedicated logs page */}
+      <FunnelLogsMiniSegment
+        funnelId={funnel.id}
+        logs={scopedLogs}
+        beroas={beroas}
+        filterDate={filterDate}
+      />
 
       <p className="text-[10px] text-muted-foreground/60">
         Logged in as {user?.email ?? '—'} · money tracking lives in{' '}
@@ -688,31 +633,121 @@ function PerfInput({ label, value, onChange, suffix, integer, tone }: {
   );
 }
 
-function DeleteLogButton({ id, onDeleted, onError }: { id: string; onDeleted: () => void; onError: (msg: string) => void }) {
-  const [busy, setBusy] = useState(false);
-  const remove = async () => {
-    if (!confirm('Delete this log entry?')) return;
-    try {
-      setBusy(true);
-      const r = await fetch('/api/funnels/logs', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-      if (!r.ok) {
-        const data = await r.json().catch(() => ({}));
-        throw new Error(data?.error || `HTTP ${r.status}`);
-      }
-      onDeleted();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : 'Failed to delete log.');
-    } finally {
-      setBusy(false);
-    }
-  };
+// ── Daily logs — mini segment ────────────────────────────────────────────
+// Same UX pattern used on the product dossier: summary pills + recent-entry
+// chips + "View all →" to a dedicated sub-page so this stays compact when
+// logs pile up.
+function FunnelLogsMiniSegment({
+  funnelId, logs, beroas, filterDate,
+}: {
+  funnelId: string;
+  logs: FunnelDailyLog[];
+  beroas: number;
+  filterDate: string;
+}) {
+  const sorted = [...logs].sort((a, b) => b.date.localeCompare(a.date));
+  const total = sorted.length;
+  const winningDays = sorted.filter((l) => isWinning(Number(l.roas) || 0, beroas)).length;
+  const totalOrders = sorted.reduce((s, l) => s + (Number(l.orders) || 0), 0);
+  const avgRoas = (() => {
+    const withRoas = sorted.filter((l) => Number(l.roas) > 0);
+    if (withRoas.length === 0) return 0;
+    return withRoas.reduce((s, l) => s + Number(l.roas), 0) / withRoas.length;
+  })();
+  const previewCount = 6;
+
   return (
-    <button onClick={remove} disabled={busy} className="rounded-md p-1 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40">
-      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-    </button>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.18 }}
+      className="group relative overflow-hidden rounded-xl border border-border bg-card transition-colors hover:border-primary/30"
+    >
+      <Link
+        href={`/funnels/${funnelId}/logs`}
+        aria-label="Open full daily log"
+        className="absolute inset-0 z-20 rounded-xl"
+      />
+      <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <Target className="h-3.5 w-3.5 text-primary" />
+          <h2 className="text-sm font-medium text-foreground">Daily performance log</h2>
+        </div>
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition group-hover:text-primary">
+          View all <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
+        </span>
+      </div>
+
+      {total === 0 ? (
+        <div className="relative z-10 px-4 py-10 text-center">
+          <Target className="mx-auto h-7 w-7 text-muted-foreground/30" />
+          <p className="mt-2 text-[12px] text-muted-foreground">No logs {filterDate ? 'on this date' : 'yet'}.</p>
+          <p className="mt-1 text-[10px] text-muted-foreground/60">Use the entry box above to add one.</p>
+        </div>
+      ) : (
+        <div className="relative z-10 px-4 py-4 space-y-3">
+          {/* Summary pills */}
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <LogPill label="Entries" value={total} tone="violet" />
+            <LogPill label="Winning days" value={winningDays} tone="emerald" />
+            <LogPill label="Orders" value={totalOrders} tone="amber" />
+            <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-400">
+              Avg ROAS
+              <span className="font-semibold tabular-nums">{avgRoas > 0 ? `${avgRoas.toFixed(2)}x` : '—'}</span>
+            </span>
+          </div>
+
+          {/* Recent entry chips */}
+          <div className="-mx-1 flex flex-wrap gap-1.5 px-1">
+            {sorted.slice(0, previewCount).map((l) => {
+              const roas = Number(l.roas) || 0;
+              const win = isWinning(roas, beroas);
+              return (
+                <div
+                  key={l.id}
+                  className={cn(
+                    'inline-flex shrink-0 items-center gap-2 rounded-md border px-2.5 py-1.5',
+                    win ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : roas > 0 ? 'border-rose-500/25 bg-rose-500/[0.05]' : 'border-border bg-background/40'
+                  )}
+                  title={l.notes || `${l.date} · ${roas.toFixed(2)}x · ${l.orders ?? 0} orders`}
+                >
+                  <div className="leading-tight">
+                    <p className="text-[10px] font-semibold tabular-nums text-foreground">{l.date}</p>
+                    <p className="text-[9px] text-muted-foreground">{Number(l.orders) || 0} ord</p>
+                  </div>
+                  <span className={cn('text-[12px] font-semibold tabular-nums', roas === 0 ? 'text-muted-foreground/40' : win ? 'text-emerald-400' : 'text-foreground')}>
+                    {roas > 0 ? `${roas.toFixed(2)}x` : '—'}
+                  </span>
+                  {win && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" aria-hidden />}
+                </div>
+              );
+            })}
+            {sorted.length > previewCount && (
+              <span className="inline-flex items-center rounded-md border border-dashed border-border px-2.5 py-1.5 text-[10px] text-muted-foreground">
+                +{sorted.length - previewCount} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function LogPill({ label, value, tone }: {
+  label: string; value: number; tone: 'violet' | 'emerald' | 'amber' | 'sky' | 'rose';
+}) {
+  const c = {
+    violet:  { text: 'text-violet-400',  bg: 'bg-violet-500/10',  border: 'border-violet-500/25' },
+    emerald: { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/25' },
+    amber:   { text: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/25' },
+    sky:     { text: 'text-sky-400',     bg: 'bg-sky-500/10',     border: 'border-sky-500/25' },
+    rose:    { text: 'text-rose-400',    bg: 'bg-rose-500/10',    border: 'border-rose-500/25' },
+  }[tone];
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium', c.bg, c.border, c.text)}>
+      {label}
+      <span className="font-semibold tabular-nums">{value}</span>
+    </span>
   );
 }

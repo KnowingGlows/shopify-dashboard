@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
@@ -77,9 +77,7 @@ export default function AdsPage() {
   const [search, setSearch] = useState('');
   const [filterDate, setFilterDate] = useState<string>('');
 
-  useEffect(() => { loadAll(); }, []);
-
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -96,7 +94,29 @@ export default function AdsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Refresh when the page becomes visible again — handles the case where
+  // a funnel/creative was deleted on a detail page and the user navigates
+  // back. Without this the summary cards stay stale.
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'visible') loadAll(); };
+    const onFocus = () => loadAll();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [loadAll]);
+
+  // After client-side navigation back to this page (e.g. via router.back or
+  // a Link), the focus event may not fire — also drop stale references to
+  // funnels that were deleted by filtering creatives to existing funnel IDs.
+  const validFunnelIds = useMemo(() => new Set(funnels.map((f) => f.id)), [funnels]);
+  const liveCreatives = useMemo(() => creatives.filter((c) => validFunnelIds.has(c.funnelId)), [creatives, validFunnelIds]);
 
   const productIdByName = useMemo(() => {
     const m = new Map<string, string>();
@@ -106,14 +126,16 @@ export default function AdsPage() {
 
   const summaries = useMemo<FunnelAdsSummary[]>(() => {
     return funnels.map((f) => {
-      const my = creatives.filter((c) => {
+      const my = liveCreatives.filter((c) => {
         if (c.funnelId !== f.id) return false;
         if (filterDate && c.launchDate !== filterDate) return false;
         return true;
       });
       const total = my.length;
       const testing = my.filter((c) => c.status === 'testing').length;
-      const live = my.filter((c) => c.status === 'live').length;
+      // "Live" = creatives still spending: status === 'live' OR 'testing', or
+      // already marked a winner (winners stay considered "live" even when paused).
+      const live = my.filter((c) => c.status === 'live' || c.status === 'testing' || c.result === 'winner').length;
       const killed = my.filter((c) => c.status === 'killed').length;
       const winners = my.filter((c) => c.result === 'winner').length;
       const losers = my.filter((c) => c.result === 'loser').length;
@@ -124,7 +146,7 @@ export default function AdsPage() {
       const productId = f.productId || productIdByName.get(f.productName);
       return { funnel: f, productId, total, testing, live, killed, winners, losers, hitRate, batches, lastLaunch };
     });
-  }, [funnels, creatives, filterDate, productIdByName]);
+  }, [funnels, liveCreatives, filterDate, productIdByName]);
 
   const filtered = useMemo<FunnelAdsSummary[]>(() => {
     const q = search.trim().toLowerCase();
@@ -143,16 +165,16 @@ export default function AdsPage() {
 
   // Top-level KPIs
   const grand = useMemo(() => {
-    const scoped = filterDate ? creatives.filter((c) => c.launchDate === filterDate) : creatives;
+    const scoped = filterDate ? liveCreatives.filter((c) => c.launchDate === filterDate) : liveCreatives;
     const total = scoped.length;
-    const live = scoped.filter((c) => c.status === 'live').length;
+    const live = scoped.filter((c) => c.status === 'live' || c.status === 'testing' || c.result === 'winner').length;
     const winners = scoped.filter((c) => c.result === 'winner').length;
     const losers = scoped.filter((c) => c.result === 'loser').length;
     const decided = winners + losers;
     const hitRate = decided > 0 ? (winners / decided) * 100 : 0;
     const activeFunnels = summaries.filter((s) => s.total > 0).length;
     return { total, live, winners, hitRate, activeFunnels };
-  }, [creatives, filterDate, summaries]);
+  }, [liveCreatives, filterDate, summaries]);
 
   const animTotal = useCountUp(grand.total, 500);
   const animLive = useCountUp(grand.live, 500);
@@ -201,7 +223,7 @@ export default function AdsPage() {
         <KpiTile icon={<Layers className="h-3.5 w-3.5" />}    label="Total creatives" value={Math.round(animTotal).toLocaleString('en-IN')}  accent="amber" delay={0.04} />
         <KpiTile icon={<Sparkles className="h-3.5 w-3.5" />}  label="Live"            value={Math.round(animLive).toLocaleString('en-IN')}   accent="emerald" delay={0.08} />
         <KpiTile icon={<Trophy className="h-3.5 w-3.5" />}    label="Winners"         value={Math.round(animWinners).toLocaleString('en-IN')} accent="sky" delay={0.12} />
-        <KpiTile icon={animHit < 50 ? <TrendingDown className="h-3.5 w-3.5" /> : <Trophy className="h-3.5 w-3.5" />} label="Hit rate" value={grand.winners + (creatives.filter((c) => c.result === 'loser').length) > 0 ? `${animHit.toFixed(0)}%` : '—'} accent={grand.hitRate >= 50 ? 'emerald' : 'rose'} delay={0.16} hint="winners / decided" />
+        <KpiTile icon={animHit < 50 ? <TrendingDown className="h-3.5 w-3.5" /> : <Trophy className="h-3.5 w-3.5" />} label="Hit rate" value={grand.winners + liveCreatives.filter((c) => c.result === 'loser').length > 0 ? `${animHit.toFixed(0)}%` : '—'} accent={grand.hitRate >= 50 ? 'emerald' : 'rose'} delay={0.16} hint="winners / decided" />
       </div>
 
       {/* Date filter */}

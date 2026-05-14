@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bell, BellRing, X, Send, Check, Loader2, MessageCircle,
-  Volume2, VolumeX, Zap, Clock, User as UserIcon, Reply,
+  Volume2, VolumeX, Zap, Clock, Reply,
 } from 'lucide-react';
 import { useAuth } from './auth-provider';
 import { cn } from '@/lib/utils';

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
-import { parseHDFCSMS, categorizeTransaction, type ParsedTransaction, type ExpenseCategory } from '@/lib/sms-parser';
+import { parseHDFCSMS, categorizeTransaction, type ExpenseCategory } from '@/lib/sms-parser';
 
 // ── API Key Auth (for external scripts like sms-reader) ──────────────
 const API_KEY = process.env.ORBIT_INGEST_KEY || 'orbit-sms-ingest-2026';

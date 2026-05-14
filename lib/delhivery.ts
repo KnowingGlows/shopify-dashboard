@@ -188,9 +188,7 @@ function parseShipment(s: any): DelhiveryShipment | null {
   const scans = s.Scans ?? [];
   for (let si = 0; si < scans.length; si++) {
     const sd = scans[si]?.ScanDetail;
-    const inst = (sd?.Instructions ?? '').toLowerCase();
     const code = (sd?.StatusCode ?? '').toUpperCase();
-    const scanType = (sd?.Scan ?? '').toLowerCase();
 
     // Only count explicit Delhivery NDR scan codes.
     // EOD- = end-of-day delivery not completed, CR- = consignee refused.

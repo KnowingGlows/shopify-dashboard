@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { ExternalLink, Link2, X, Pencil } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 
 interface LinkChipProps {
   value: string;

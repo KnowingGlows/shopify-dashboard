@@ -23,13 +23,13 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 
 // Default page access per role
 export const ROLE_DEFAULT_PAGES: Record<UserRole, string[]> = {
-  ceo: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/orders', '/transactions', '/tasks', '/logs', '/settings', '/users'],
-  cmo: ['/', '/brands', '/finance', '/ads-tracker', '/prs', '/orders', '/tasks', '/logs', '/settings'],
-  operations: ['/', '/brands', '/finance', '/product-tracker', '/inventory', '/orders', '/transactions', '/tasks', '/logs', '/settings'],
-  customer_success: ['/', '/brands', '/orders', '/tasks', '/logs', '/settings'],
-  warehouse: ['/', '/inventory', '/orders', '/tasks', '/logs', '/settings'],
-  admin: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/orders', '/transactions', '/tasks', '/logs', '/settings', '/users'],
-  user: ['/', '/brands', '/tasks', '/settings', '/logs'],
+  ceo: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/orders', '/transactions', '/logs', '/settings', '/users'],
+  cmo: ['/', '/brands', '/finance', '/ads-tracker', '/prs', '/orders', '/logs', '/settings'],
+  operations: ['/', '/brands', '/finance', '/product-tracker', '/inventory', '/orders', '/transactions', '/logs', '/settings'],
+  customer_success: ['/', '/brands', '/orders', '/logs', '/settings'],
+  warehouse: ['/', '/inventory', '/orders', '/logs', '/settings'],
+  admin: ['/', '/brands', '/finance', '/product-tracker', '/ads-tracker', '/prs', '/inventory', '/orders', '/transactions', '/logs', '/settings', '/users'],
+  user: ['/', '/brands', '/settings', '/logs'],
 };
 
 // Pages that can be toggled per user
@@ -43,7 +43,6 @@ export const CONFIGURABLE_PAGES = [
   { path: '/inventory', label: 'Inventory' },
   { path: '/orders', label: 'Logistics' },
   { path: '/transactions', label: 'Transactions' },
-  { path: '/tasks', label: 'Tasks' },
   { path: '/settings', label: 'Settings' },
   { path: '/logs', label: 'Daily Logs' },
 ] as const;

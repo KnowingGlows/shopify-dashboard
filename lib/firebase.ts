@@ -29,7 +29,7 @@ const initializeFirebase = () => {
     firebaseInitialized = true;
     console.log('Firebase initialized successfully');
     return app;
-  } catch (error) {
+  } catch {
     firebaseError = 'Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY - using in-memory storage only';
     console.warn(firebaseError);
     return null;
@@ -67,7 +67,6 @@ export const COLLECTIONS = {
   REMINDERS: 'reminders',
   INVENTORY_DISPATCHES: 'inventory_dispatches',
   SETTINGS: 'app_settings',
-  TASKS: 'tasks',
   NOTIFICATIONS: 'notifications',
   ADS_PRODUCTS: 'ads_products',
   CHAT_MESSAGES: 'chat_messages',

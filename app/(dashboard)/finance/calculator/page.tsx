@@ -6,8 +6,6 @@ import { Calculator, Percent, Bookmark, Plus, X, Trash2, Pencil, Package } from 
 import { PageTransition } from '@/components/motion';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 
-const USD_TO_INR = 90.7;
-
 interface CalcPreset {
   id: string;
   name: string;

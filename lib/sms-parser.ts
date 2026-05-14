@@ -94,9 +94,6 @@ function parseAccount(msg: string): string {
 }
 
 function parseDate(msg: string): string {
-  const today = new Date();
-  const currentYear = today.getFullYear();
-
   // Try named month format first: 15-Mar-26
   const namedMatch = msg.match(DATE_PATTERNS[2]);
   if (namedMatch) {
@@ -122,7 +119,7 @@ function parseDate(msg: string): string {
   }
 
   // Fallback: today IST
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(today);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
 function parseMode(msg: string): TransactionMode {

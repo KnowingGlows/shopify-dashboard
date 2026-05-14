@@ -11,11 +11,14 @@
       "Bash(grep -nA 8 \"^function PerfCell\" /Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/app/\\\\\\(dashboard\\\\\\)/funnels/page.tsx)",
       "Bash(cp 'app/\\(dashboard\\)/funnels/page.tsx' /tmp/funnels-page-backup.tsx && wc -l 'app/\\(dashboard\\)/funnels/page.tsx')",
       "Bash(grep -rn \"Open\\\\|product-tracker/\\\\${\" 'app/\\(dashboard\\)/product-tracker/page.tsx')",
-      "Bash(mkdir -p 'app/\\(dashboard\\)/product-tracker/[id]/funnels' 'app/\\(dashboard\\)/product-tracker/[id]/creatives')"
+      "Bash(mkdir -p 'app/\\(dashboard\\)/product-tracker/[id]/funnels' 'app/\\(dashboard\\)/product-tracker/[id]/creatives')",
+      "Bash(mkdir -p 'app/\\(dashboard\\)/funnels/[id]/logs')",
+      "Bash(sed -i '' '636,664d' 'app/\\(dashboard\\)/funnels/[id]/page.tsx')"
     ],
     "additionalDirectories": [
       "/tmp",
-      "/Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/app/(dashboard)/product-tracker/[id]"
+      "/Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/app/(dashboard)/product-tracker/[id]",
+      "/Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard/app/(dashboard)/funnels/[id]"
     ]
   }
 }
