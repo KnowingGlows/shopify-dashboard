@@ -265,12 +265,22 @@ export default function FunnelsPage() {
               <BarChart3 className="h-3 w-3" /> Performance
             </button>
           </div>
-          <button
+          <motion.button
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/25"
+            whileHover={{ y: -2, boxShadow: '0 12px 30px -10px #a78bfa88, 0 0 0 1px #a78bfa66' }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ duration: 0.2 }}
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-violet-500 via-violet-400 to-fuchsia-500 px-5 py-2.5 text-[13px] font-semibold text-white shadow-lg ring-1 ring-violet-300/30 transition-all"
           >
-            <Plus className="h-3.5 w-3.5" /> Add Funnel
-          </button>
+            <span
+              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+              aria-hidden
+            />
+            <span className="relative z-10 flex items-center gap-2">
+              <Plus className="h-4 w-4" strokeWidth={2.5} />
+              <span className="tracking-tight">Add Funnel</span>
+            </span>
+          </motion.button>
         </div>
       </div>
 
@@ -1205,29 +1215,64 @@ function AddFunnelModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 16 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-black/70 backdrop-blur-md"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.94, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="relative z-10 w-full max-w-lg mx-4 rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl overflow-hidden"
+        transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+        className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl border border-violet-500/20 bg-card/95 shadow-[0_30px_80px_-20px_rgba(167,139,250,0.35),0_0_0_1px_rgba(167,139,250,0.15)] backdrop-blur-xl"
       >
-        <div className="flex items-center justify-between border-b border-border/50 px-5 py-3">
-          <div className="flex items-center gap-2">
-            <FunnelIcon className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-semibold text-foreground">Add Funnel</h2>
+        {/* Animated gradient hero */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-violet-500/15 via-violet-500/[0.06] to-fuchsia-500/10 px-7 pt-6 pb-5">
+          <motion.div
+            initial={{ x: '-100%' }}
+            animate={{ x: '100%' }}
+            transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 4, ease: 'easeInOut' }}
+            className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-white/[0.04] to-transparent"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full opacity-50 blur-3xl"
+            style={{ background: 'radial-gradient(circle, #a78bfa66, transparent 70%)' }}
+            aria-hidden
+          />
+          <div className="relative z-10 flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <motion.div
+                initial={{ scale: 0.8, rotate: -10 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: 'spring', damping: 14, stiffness: 220 }}
+                className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 shadow-lg ring-1 ring-violet-300/30"
+              >
+                <FunnelIcon className="h-5 w-5 text-white" />
+              </motion.div>
+              <div>
+                <h2 className="text-[18px] font-semibold tracking-tight text-foreground">Launch a new funnel</h2>
+                <p className="mt-1 text-[12px] text-muted-foreground">
+                  Link a product, pick a market, and BEROAS auto-computes from your pricing.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition hover:bg-white/[0.04] hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
-        <div className="p-5 space-y-3 max-h-[80vh] overflow-y-auto">
+        <div className="max-h-[70vh] space-y-4 overflow-y-auto px-7 py-5">
           {products.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-amber-500/30 bg-amber-500/5 p-4 text-center">
-              <p className="text-[12px] font-medium text-foreground">No products in your tracker yet</p>
+            <div className="rounded-xl border border-dashed border-amber-500/30 bg-amber-500/5 p-5 text-center">
+              <p className="text-[13px] font-semibold text-foreground">No products in your tracker yet</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 Funnels must link to a product. Create one first, then come back.
               </p>
@@ -1247,14 +1292,12 @@ function AddFunnelModal({
                 autoFocus
               >
                 {(() => {
-                  // Group products by stage so winners surface first.
                   const byStage = new Map<string, ProductTrackerEntry[]>();
                   products.forEach((p) => {
                     const k = p.productStage || '(no stage)';
                     if (!byStage.has(k)) byStage.set(k, []);
                     byStage.get(k)!.push(p);
                   });
-                  // Order: winners → testing ads → testing store page → research → other
                   const stageOrder = [
                     'Winner - Moved To OPS',
                     'Testing Ads',
@@ -1283,28 +1326,31 @@ function AddFunnelModal({
             </FormCell>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <FormCell label="Country">
-              <select value={country} onChange={(e) => setCountry(e.target.value)} className="form-input">
-                {[1, 2, 3, 4].map((phase) => (
-                  <optgroup key={phase} label={`Phase ${phase}`}>
-                    {MARKETS.filter((m) => m.phase === phase).map((m) => (
-                      <option key={m.country} value={m.country}>{m.country}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </FormCell>
-            <FormCell label="Language">
-              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="form-input">
-                {langs.map((l) => <option key={l} value={l}>{l}</option>)}
-              </select>
-            </FormCell>
+          {/* Market chip — bigger, prominent */}
+          <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.04] p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Globe className="h-3.5 w-3.5 text-sky-400" />
+              <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-sky-300/80">Market</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormCell label="Country">
+                <select value={country} onChange={(e) => setCountry(e.target.value)} className="form-input">
+                  {[1, 2, 3, 4].map((phase) => (
+                    <optgroup key={phase} label={`Phase ${phase}`}>
+                      {MARKETS.filter((m) => m.phase === phase).map((m) => (
+                        <option key={m.country} value={m.country}>{m.country}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </FormCell>
+              <FormCell label="Language">
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="form-input">
+                  {langs.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </FormCell>
+            </div>
           </div>
-
-          <FormCell label="Funnelish URL (optional)">
-            <input value={funnelishUrl} onChange={(e) => setFunnelishUrl(e.target.value)} className="form-input" placeholder="https://…" />
-          </FormCell>
 
           <div className="grid grid-cols-2 gap-3">
             <FormCell label="Status">
@@ -1317,23 +1363,31 @@ function AddFunnelModal({
             </FormCell>
           </div>
 
-          {/* Per-market pricing — drives auto-computed BEROAS */}
-          <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-primary/80">
-                Pricing for this market
+          <FormCell label="Funnelish URL (optional)">
+            <input value={funnelishUrl} onChange={(e) => setFunnelishUrl(e.target.value)} className="form-input" placeholder="https://…" />
+          </FormCell>
+
+          {/* Per-market pricing — gradient panel with live BEROAS preview */}
+          <div className="relative overflow-hidden rounded-xl border border-violet-500/25 bg-gradient-to-br from-violet-500/[0.06] to-fuchsia-500/[0.04] p-4">
+            <div
+              className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-30 blur-2xl"
+              style={{ background: 'radial-gradient(circle, #a78bfa66, transparent 70%)' }}
+              aria-hidden
+            />
+            <div className="relative z-10 mb-3 flex items-center justify-between">
+              <p className="inline-flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.08em] text-violet-300/90">
+                <span className="h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_6px_#a78bfa]" />
+                Pricing for {country}
               </p>
               {productHasCost ? (
-                <span className="text-[10px] text-muted-foreground">
-                  Cost ${cost.toFixed(2)} from product
+                <span className="rounded-md border border-border bg-card/60 px-2 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+                  cost ${cost.toFixed(2)}/u
                 </span>
               ) : (
-                <span className="text-[10px] text-amber-400">
-                  Product has no cost — set COGS + shipping in Products
-                </span>
+                <span className="text-[10px] text-amber-400">no product cost set</span>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="relative z-10 grid grid-cols-2 gap-3">
               <FormCell label="Selling price (USD)">
                 <input
                   type="number" min="0" step="0.01" inputMode="decimal"
@@ -1352,22 +1406,13 @@ function AddFunnelModal({
                 />
               </FormCell>
             </div>
-            <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
-              <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
-                <span className="text-muted-foreground">Margin: </span>
-                <span className="font-semibold tabular-nums text-foreground">{(margin * 100).toFixed(1)}%</span>
-              </div>
-              <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
-                <span className="text-muted-foreground">BEROAS: </span>
-                <span className="font-semibold tabular-nums text-primary">{beroasComputed > 0 ? `${beroasComputed.toFixed(2)}x` : '—'}</span>
-              </div>
-              <div className="rounded-md border border-border bg-background/40 px-3 py-1.5">
-                <span className="text-muted-foreground">Win at: </span>
-                <span className="font-semibold tabular-nums text-emerald-400">{winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'}</span>
-              </div>
+            <div className="relative z-10 mt-3 grid grid-cols-3 gap-2">
+              <PreviewTile label="Margin" value={`${(margin * 100).toFixed(1)}%`} tone="sky" />
+              <PreviewTile label="BEROAS" value={beroasComputed > 0 ? `${beroasComputed.toFixed(2)}x` : '—'} tone="violet" />
+              <PreviewTile label="Win at" value={winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'} tone="emerald" />
             </div>
-            <p className="mt-2 text-[10px] text-muted-foreground/70">
-              BEROAS = 1 / margin. A funnel is <em>winning</em> when its ROAS reaches BEROAS + 1.
+            <p className="relative z-10 mt-2.5 text-[10px] text-muted-foreground/70">
+              BEROAS = 1 / margin · a funnel is winning when ROAS ≥ BEROAS + 1
             </p>
           </div>
 
@@ -1375,23 +1420,60 @@ function AddFunnelModal({
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="form-input" />
           </FormCell>
 
-          {err && <p className="text-[11px] text-destructive">{err}</p>}
+          {err && (
+            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[11px] text-destructive">
+              {err}
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border/50 px-5 py-3">
-          <button onClick={onClose} className="rounded-lg border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-muted-foreground transition hover:text-foreground">
+        <div className="flex items-center justify-end gap-2 border-t border-border/50 bg-card/60 px-7 py-4">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-border bg-card px-4 py-2 text-[12px] font-medium text-muted-foreground transition hover:text-foreground"
+          >
             Cancel
           </button>
-          <button
+          <motion.button
             onClick={submit}
             disabled={saving || products.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-4 py-1.5 text-[12px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
+            whileHover={!saving && products.length > 0 ? { y: -2, boxShadow: '0 12px 30px -10px #a78bfa88, 0 0 0 1px #a78bfa66' } : undefined}
+            whileTap={{ scale: 0.97 }}
+            transition={{ duration: 0.2 }}
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-violet-500 via-violet-400 to-fuchsia-500 px-5 py-2 text-[13px] font-semibold text-white shadow-lg ring-1 ring-violet-300/30 transition-all disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-lg"
           >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            Create funnel
-          </button>
+            <span
+              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+              aria-hidden
+            />
+            <span className="relative z-10 flex items-center gap-2">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={2.5} />}
+              <span className="tracking-tight">{saving ? 'Creating…' : 'Create funnel'}</span>
+            </span>
+          </motion.button>
         </div>
       </motion.div>
+    </div>
+  );
+}
+
+function PreviewTile({ label, value, tone }: {
+  label: string;
+  value: string;
+  tone: 'sky' | 'violet' | 'emerald';
+}) {
+  const c = {
+    sky:     { text: 'text-sky-400',     border: 'border-sky-500/25',     dot: 'bg-sky-400' },
+    violet:  { text: 'text-violet-400',  border: 'border-violet-500/30',  dot: 'bg-violet-400' },
+    emerald: { text: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-400' },
+  }[tone];
+  return (
+    <div className={cn('rounded-lg border bg-card/40 px-3 py-2', c.border)}>
+      <p className="flex items-center gap-1 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className={cn('h-1 w-1 rounded-full', c.dot)} />
+        {label}
+      </p>
+      <p className={cn('mt-1 text-[15px] font-semibold leading-none tabular-nums tracking-tight', c.text)}>{value}</p>
     </div>
   );
 }
