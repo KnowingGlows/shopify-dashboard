@@ -1045,10 +1045,10 @@ function PerMarketCostsEditor({
           <button
             onClick={() => setPickerOpen((v) => !v)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition',
+              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition',
               pickerOpen
-                ? 'border-white/20 bg-slate-900 text-foreground'
-                : 'border-white/[0.08] bg-slate-900 text-foreground/80 ring-1 ring-white/[0.06] hover:border-white/20 hover:text-foreground'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-primary/15 text-primary hover:bg-primary/25'
             )}
           >
             <Plus className="h-3 w-3" /> Add country
@@ -1058,9 +1058,9 @@ function PerMarketCostsEditor({
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.15 }}
-              className="absolute right-0 top-full z-30 mt-1.5 w-72 overflow-hidden rounded-xl border border-white/[0.08] bg-slate-900 shadow-2xl ring-1 ring-white/[0.06]"
+              className="absolute right-0 top-full z-30 mt-1.5 w-72 overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
             >
-              <div className="border-b border-white/[0.06] p-2">
+              <div className="border-b border-border p-2">
                 <input
                   autoFocus
                   type="text"

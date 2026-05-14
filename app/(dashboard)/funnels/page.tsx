@@ -267,17 +267,17 @@ export default function FunnelsPage() {
           </div>
           <motion.button
             onClick={() => setShowAddModal(true)}
-            whileHover={{ y: -2, boxShadow: '0 14px 36px -14px rgba(255,255,255,0.18), 0 0 0 1px rgba(255,255,255,0.18)' }}
+            whileHover={{ y: -2, boxShadow: '0 14px 36px -14px rgba(167,139,250,0.55), 0 0 0 1px rgba(167,139,250,0.4)' }}
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.2 }}
-            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl border border-white/[0.08] bg-slate-900 px-5 py-2.5 text-[13px] font-semibold text-foreground shadow-lg ring-1 ring-white/[0.06] transition-all hover:border-white/20"
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-primary px-5 py-2.5 text-[13px] font-semibold text-primary-foreground shadow-lg transition-all hover:bg-primary/90"
           >
             <span
-              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.08] to-transparent transition-transform duration-700 group-hover:translate-x-full"
+              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full"
               aria-hidden
             />
             <span className="relative z-10 flex items-center gap-2">
-              <Plus className="h-4 w-4 text-foreground/90" strokeWidth={2.5} />
+              <Plus className="h-4 w-4" strokeWidth={2.5} />
               <span className="tracking-tight">Add Funnel</span>
             </span>
           </motion.button>
@@ -1237,9 +1237,9 @@ function AddFunnelModal({
                 initial={{ scale: 0.85 }}
                 animate={{ scale: 1 }}
                 transition={{ type: 'spring', damping: 14, stiffness: 220 }}
-                className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] bg-slate-900 shadow-inner ring-1 ring-white/[0.06]"
+                className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 ring-1 ring-primary/30"
               >
-                <FunnelIcon className="h-5 w-5 text-foreground" />
+                <FunnelIcon className="h-5 w-5 text-primary" />
               </motion.div>
               <div>
                 <h2 className="text-[18px] font-semibold tracking-tight text-foreground">Launch a new funnel</h2>
@@ -1356,10 +1356,10 @@ function AddFunnelModal({
           </FormCell>
 
           {/* Per-market pricing — clean panel with live BEROAS preview */}
-          <div className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-slate-900/40 p-4">
+          <div className="relative overflow-hidden rounded-xl border border-primary/20 bg-primary/[0.04] p-4">
             <div className="relative z-10 mb-3 flex items-center justify-between">
-              <p className="inline-flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                <span className="h-1.5 w-1.5 rounded-full bg-foreground/60" />
+              <p className="inline-flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.08em] text-primary/90">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_#a78bfa]" />
                 Pricing for {country}
               </p>
               {productHasCost ? (
@@ -1420,13 +1420,13 @@ function AddFunnelModal({
           <motion.button
             onClick={submit}
             disabled={saving || products.length === 0}
-            whileHover={!saving && products.length > 0 ? { y: -2, boxShadow: '0 14px 36px -14px rgba(255,255,255,0.18), 0 0 0 1px rgba(255,255,255,0.18)' } : undefined}
+            whileHover={!saving && products.length > 0 ? { y: -2, boxShadow: '0 14px 36px -14px rgba(167,139,250,0.55), 0 0 0 1px rgba(167,139,250,0.4)' } : undefined}
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.2 }}
-            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl border border-white/[0.08] bg-slate-900 px-5 py-2 text-[13px] font-semibold text-foreground shadow-lg ring-1 ring-white/[0.06] transition-all hover:border-white/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-lg"
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-xl bg-primary px-5 py-2 text-[13px] font-semibold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-lg"
           >
             <span
-              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.08] to-transparent transition-transform duration-700 group-hover:translate-x-full"
+              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full"
               aria-hidden
             />
             <span className="relative z-10 flex items-center gap-2">
