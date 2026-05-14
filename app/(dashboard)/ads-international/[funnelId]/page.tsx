@@ -331,24 +331,24 @@ export default function AdsFunnelDetailPage() {
 
             <motion.button
               onClick={() => setShowAddForm((v) => !v)}
-              whileHover={{ y: -2, boxShadow: showAddForm ? '0 12px 30px -10px #fb718577, 0 0 0 1px #fb718544' : '0 12px 30px -10px #34d39988, 0 0 0 1px #34d39966' }}
+              whileHover={{ y: -2, boxShadow: showAddForm ? '0 12px 30px -10px #fb718577, 0 0 0 1px #fb718544' : '0 14px 36px -14px rgba(255,255,255,0.18), 0 0 0 1px rgba(255,255,255,0.18)' }}
               whileTap={{ scale: 0.97 }}
               transition={{ duration: 0.2 }}
               className={cn(
                 'group relative inline-flex items-center gap-2 overflow-hidden rounded-xl px-5 py-2.5 text-[13px] font-semibold shadow-lg transition-all',
                 showAddForm
                   ? 'bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/40'
-                  : 'bg-emerald-500 text-emerald-950 ring-1 ring-emerald-300/40 hover:bg-emerald-400'
+                  : 'border border-white/[0.08] bg-slate-900 text-foreground ring-1 ring-white/[0.06] hover:border-white/20'
               )}
             >
               {!showAddForm && (
                 <span
-                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent transition-transform duration-700 group-hover:translate-x-full"
+                  className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.08] to-transparent transition-transform duration-700 group-hover:translate-x-full"
                   aria-hidden
                 />
               )}
               <span className="relative z-10 flex items-center gap-2">
-                {showAddForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" strokeWidth={2.5} />}
+                {showAddForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4 text-foreground/90" strokeWidth={2.5} />}
                 <span className="tracking-tight">{showAddForm ? 'Cancel' : 'Add Creative'}</span>
               </span>
             </motion.button>

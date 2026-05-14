@@ -951,8 +951,10 @@ function PerMarketCostsEditor({
   fmt: (usd: number) => string;
   onSave: (map: Record<string, ProductCostOverride>) => void;
 }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [pickCountry, setPickCountry] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   const baseCogs = Number(product.cogs) || 0;
   const baseShip = Number(product.shipping) || 0;
@@ -964,11 +966,27 @@ function PerMarketCostsEditor({
   );
   const allCountries = useMemo(() => getCountries(), []);
 
-  const orderedRows = useMemo(() => {
-    const withOverride = Object.keys(overrides).sort();
-    const withFunnelNoOverride = usedCountries.filter((c) => !overrides[c]).sort();
-    return [...withOverride, ...withFunnelNoOverride];
-  }, [overrides, usedCountries]);
+  // Default rows: countries with overrides + countries with active funnels.
+  // "Show all" expands to every market.
+  const visibleRows = useMemo(() => {
+    if (showAll) return allCountries;
+    const withOverride = Object.keys(overrides);
+    const set = new Set<string>([...withOverride, ...usedCountries]);
+    return Array.from(set).sort();
+  }, [overrides, usedCountries, allCountries, showAll]);
+
+  // Click-outside to close picker
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+        setPickerQuery('');
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [pickerOpen]);
 
   const setOverride = (country: string, patch: ProductCostOverride) => {
     const next = { ...overrides };
@@ -990,84 +1008,134 @@ function PerMarketCostsEditor({
     onSave(next);
   };
 
-  const addCountry = () => {
-    if (!pickCountry) return;
-    if (!overrides[pickCountry]) {
-      onSave({ ...overrides, [pickCountry]: { cogs: baseCogs, shipping: baseShip } });
+  const addCountryAndSeed = (country: string) => {
+    if (!overrides[country]) {
+      onSave({ ...overrides, [country]: { cogs: baseCogs, shipping: baseShip } });
     }
-    setPickCountry('');
-    setShowAdd(false);
+    setPickerOpen(false);
+    setPickerQuery('');
   };
 
-  const remainingCountries = allCountries.filter((c) => !overrides[c]);
+  const pickerCountries = useMemo(() => {
+    const q = pickerQuery.trim().toLowerCase();
+    const pool = allCountries.filter((c) => !overrides[c]);
+    if (!q) return pool;
+    return pool.filter((c) => c.toLowerCase().includes(q));
+  }, [allCountries, overrides, pickerQuery]);
+
+  const overrideCount = Object.keys(overrides).length;
+  const missingFunnelCountries = usedCountries.filter((c) => !overrides[c]).length;
 
   return (
     <div className="mt-4 rounded-xl border border-border bg-background/40 p-4">
+      {/* Header */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">
             <Globe className="h-3 w-3 text-sky-400" />
             Per-market cost overrides
           </p>
           <p className="mt-1 text-[10px] text-muted-foreground">
-            Different shipping zones or duties per country? Override here — empty fields inherit the base cost above.
+            Override COGS or shipping for specific markets — empty fields inherit the base cost above.
           </p>
         </div>
-        {!showAdd && remainingCountries.length > 0 && (
+
+        {/* Slate "Add country" with searchable popover */}
+        <div ref={pickerRef} className="relative">
           <button
-            onClick={() => setShowAdd(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-emerald-500/40 hover:text-emerald-400"
+            onClick={() => setPickerOpen((v) => !v)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition',
+              pickerOpen
+                ? 'border-white/20 bg-slate-900 text-foreground'
+                : 'border-white/[0.08] bg-slate-900 text-foreground/80 ring-1 ring-white/[0.06] hover:border-white/20 hover:text-foreground'
+            )}
           >
             <Plus className="h-3 w-3" /> Add country
           </button>
-        )}
+          {pickerOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15 }}
+              className="absolute right-0 top-full z-30 mt-1.5 w-72 overflow-hidden rounded-xl border border-white/[0.08] bg-slate-900 shadow-2xl ring-1 ring-white/[0.06]"
+            >
+              <div className="border-b border-white/[0.06] p-2">
+                <input
+                  autoFocus
+                  type="text"
+                  value={pickerQuery}
+                  onChange={(e) => setPickerQuery(e.target.value)}
+                  placeholder="Search country…"
+                  className="w-full bg-transparent px-2 py-1.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/40"
+                />
+              </div>
+              <div className="max-h-64 overflow-y-auto py-1">
+                {pickerCountries.length === 0 ? (
+                  <p className="px-3 py-3 text-center text-[11px] text-muted-foreground/60">No matching country.</p>
+                ) : (
+                  pickerCountries.map((c) => {
+                    const hasFunnel = usedCountries.includes(c);
+                    return (
+                      <button
+                        key={c}
+                        onClick={() => addCountryAndSeed(c)}
+                        className="group flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[12px] text-foreground transition hover:bg-white/[0.04]"
+                      >
+                        <span>{c}</span>
+                        {hasFunnel && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-medium uppercase tracking-wider text-sky-400/80">
+                            <span className="h-1 w-1 rounded-full bg-sky-400" />
+                            has funnel
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </motion.div>
+          )}
+        </div>
       </div>
 
-      {showAdd && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] p-2.5">
-          <select
-            value={pickCountry}
-            onChange={(e) => setPickCountry(e.target.value)}
-            className="form-input flex-1 min-w-[160px] py-1.5 text-[12px]"
-            autoFocus
-          >
-            <option value="">Pick a country…</option>
-            {remainingCountries.map((c) => (
-              <option key={c} value={c}>{c}{usedCountries.includes(c) ? ' (has funnel)' : ''}</option>
-            ))}
-          </select>
-          <button
-            onClick={addCountry}
-            disabled={!pickCountry}
-            className="rounded-md bg-emerald-500 px-3 py-1.5 text-[11px] font-semibold text-emerald-950 transition hover:bg-emerald-400 disabled:opacity-40"
-          >
-            Add
-          </button>
-          <button
-            onClick={() => { setShowAdd(false); setPickCountry(''); }}
-            className="rounded-md border border-border bg-card px-3 py-1.5 text-[11px] text-muted-foreground transition hover:text-foreground"
-          >
-            Cancel
-          </button>
+      {/* Status strip */}
+      {(overrideCount > 0 || missingFunnelCountries > 0) && (
+        <div className="mb-2.5 flex flex-wrap items-center gap-2 text-[10px]">
+          <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 font-medium text-sky-400">
+            {overrideCount} override{overrideCount === 1 ? '' : 's'}
+          </span>
+          {missingFunnelCountries > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-400">
+              {missingFunnelCountries} market{missingFunnelCountries === 1 ? '' : 's'} with funnel · no override
+            </span>
+          )}
+          <span className="text-muted-foreground/60">
+            others inherit{baseTotal > 0 ? <> base <span className="font-semibold tabular-nums text-foreground/80">{fmt(baseTotal)}</span></> : ' base'}
+          </span>
         </div>
       )}
 
-      {orderedRows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card/40 p-4 text-center">
+      {visibleRows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-card/40 p-5 text-center">
           <p className="text-[11px] text-muted-foreground">
-            No per-market overrides yet — every market uses the base cost{baseTotal > 0 ? <> of <span className="font-semibold tabular-nums text-foreground">{fmt(baseTotal)}</span></> : null}.
+            Every market uses the base cost{baseTotal > 0 ? <> of <span className="font-semibold tabular-nums text-foreground">{fmt(baseTotal)}</span></> : null}.
+          </p>
+          <p className="mt-1 text-[10px] text-muted-foreground/60">
+            Click <span className="text-foreground">Add country</span> to override a specific market.
           </p>
         </div>
       ) : (
-        <div className="space-y-1.5">
-          <div className="grid grid-cols-12 gap-2 px-2 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">
+        <div className="space-y-1">
+          {/* Column headers */}
+          <div className="grid grid-cols-12 gap-2 px-2.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">
             <div className="col-span-3">Country</div>
             <div className="col-span-3">COGS / unit</div>
             <div className="col-span-3">Shipping / unit</div>
             <div className="col-span-2 text-right">Total</div>
             <div className="col-span-1" />
           </div>
-          {orderedRows.map((country) => {
+          {visibleRows.map((country) => {
             const ov = overrides[country];
             const hasOverride = !!ov;
             const resolved = resolveProductCost(product, country);
@@ -1092,6 +1160,18 @@ function PerMarketCostsEditor({
             );
           })}
         </div>
+      )}
+
+      {/* Show all / collapse */}
+      {(allCountries.length > visibleRows.length || showAll) && (
+        <button
+          onClick={() => setShowAll((v) => !v)}
+          className="mt-2.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground transition hover:text-foreground"
+        >
+          {showAll
+            ? 'Show only funnels & overrides'
+            : `Show all ${allCountries.length} markets`}
+        </button>
       )}
     </div>
   );
@@ -1130,11 +1210,14 @@ function CostRow({
       )}
     >
       <div className="col-span-3 flex items-center gap-1.5 min-w-0">
-        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', hasOverride ? 'bg-sky-400 shadow-[0_0_6px_#38bdf8]' : 'bg-muted-foreground/40')} />
+        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', hasOverride ? 'bg-sky-400 shadow-[0_0_6px_#38bdf8]' : 'bg-muted-foreground/30')} />
         <div className="min-w-0">
           <p className="truncate text-[12px] font-medium text-foreground">{country}</p>
           {usedByFunnel && !hasOverride && (
-            <p className="text-[9px] text-amber-400/80">has funnel · using base</p>
+            <p className="text-[9px] text-muted-foreground/60">has funnel · inherits base</p>
+          )}
+          {!usedByFunnel && !hasOverride && (
+            <p className="text-[9px] text-muted-foreground/40">inherits base</p>
           )}
         </div>
       </div>
