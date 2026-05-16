@@ -32,14 +32,14 @@ const RATE_REFERENCE: { label: string; value: string }[] = [
 type Tranche = { pct: string; days: string };
 
 const DEFAULTS = {
-  sellingPrice: '999',
-  cogsPerUnit: '250',
-  deliveryRate: '65',
-  roas: '3',
-  orders: '1000',
-  unitsPerOrder: '1',
-  weightGrams: '500',
-  storageDays: '20',
+  sellingPrice: '0',
+  cogsPerUnit: '0',
+  deliveryRate: '0',
+  roas: '0',
+  orders: '0',
+  unitsPerOrder: '0',
+  weightGrams: '0',
+  storageDays: '0',
   rtoCogsLossPct: '0',
   financingFeePct: '0',
   spGstInclusive: true,
