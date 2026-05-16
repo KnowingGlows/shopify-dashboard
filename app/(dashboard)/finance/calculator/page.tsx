@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calculator, Percent, Bookmark, Plus, X, Trash2, Pencil, Package } from 'lucide-react';
+import { Calculator, Percent, Bookmark, Plus, X, Trash2, Pencil, Package, Truck, CreditCard, Receipt, Boxes, Landmark } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 
@@ -314,6 +314,9 @@ export default function ProfitCalculatorPage() {
         </div>
       </motion.div>
 
+      {/* ── 3PL Calculator ─────────────────────────────────────────────── */}
+      <ThreePLCalculator />
+
       {/* Presets Modal */}
       <AnimatePresence>
         {showPresets && (
@@ -442,5 +445,421 @@ function ResultRow({ label, value, highlight }: { label: string; value: string; 
         'text-foreground'
       }`}>{value}</span>
     </div>
+  );
+}
+
+// ── 3PL Calculator ─────────────────────────────────────────────────────────
+// COD fulfilment economics for an Indian 3PL: forward+RTO shipping, storage,
+// fulfilment, platform fee, GST input-credit offset, and a working-capital
+// credit line (everything except ad spend is floated on credit).
+
+type Tranche = { pct: string; days: string };
+
+const THREEPL_DEFAULTS = {
+  sellingPrice: '999', cogsPerUnit: '250', unitsPerOrder: '1', weightGrams: '500',
+  deliveryRate: '65', adSpendPerOrder: '300',
+  fwdShip: '55', rtoShip: '55', codFlat: '35', codPct: '1.7',
+  inward: '5', storagePerDay: '0.1', storageDays: '20',
+  rtoHandling: '5', reversePickup: '5', rtvHandling: '0', rtoCogsLossPct: '0',
+  outbound: '8', printing: '2', packaging: '10',
+  convPct: '3', convMin: '30', convCap: '120',
+  gstRate: '18', spGstInclusive: true, claimGstOnCogs: false,
+  financingFeePct: '0', ordersPerMonth: '1000',
+};
+
+function ThreePLCalculator() {
+  const [v, setV] = useState<typeof THREEPL_DEFAULTS>(THREEPL_DEFAULTS);
+  const [tranches, setTranches] = useState<Tranche[]>([
+    { pct: '50', days: '7' },
+    { pct: '50', days: '15' },
+  ]);
+
+  const set = <K extends keyof typeof THREEPL_DEFAULTS>(k: K, val: (typeof THREEPL_DEFAULTS)[K]) =>
+    setV((s) => ({ ...s, [k]: val }));
+  const num = (s: string) => parseFloat(s) || 0;
+  const fmt = (a: number) => formatINR(a);
+
+  // ── Inputs ────────────────────────────────────────────────────────────
+  const sp = num(v.sellingPrice);
+  const cogs = num(v.cogsPerUnit) * Math.max(1, num(v.unitsPerOrder));
+  const units = Math.max(1, num(v.unitsPerOrder));
+  const slabs = Math.max(1, Math.ceil(num(v.weightGrams) / 500));
+  const d = Math.min(1, Math.max(0, num(v.deliveryRate) / 100));
+  const rto = 1 - d;
+  const ad = num(v.adSpendPerOrder);
+  const gstRate = num(v.gstRate) / 100;
+
+  // ── Per-shipped-order cost components ─────────────────────────────────
+  const fwdShip = num(v.fwdShip) * slabs;
+  const rtoShip = num(v.rtoShip) * slabs;
+  const codFee = Math.max(num(v.codFlat), sp * num(v.codPct) / 100);
+  const inward = num(v.inward) * units;
+  const storage = num(v.storagePerDay) * units * num(v.storageDays);
+  const outbound = num(v.outbound) * units;
+  const printing = num(v.printing);
+  const packaging = num(v.packaging);
+  const convenience = Math.min(num(v.convCap), Math.max(num(v.convMin), sp * num(v.convPct) / 100));
+  const rtoHandling = num(v.rtoHandling) * units;
+  const reversePickup = num(v.reversePickup) * units;
+  const rtvHandling = num(v.rtvHandling) * units;
+  const rtoCogsLoss = cogs * (num(v.rtoCogsLossPct) / 100);
+
+  // Costs incurred on EVERY shipped order (delivered or RTO)
+  const commonCost = inward + storage + outbound + printing + packaging + fwdShip;
+  // Delivered-only
+  const deliveredExtra = codFee + convenience;
+  // RTO-only
+  const rtoExtra = rtoShip + rtoHandling + reversePickup + rtvHandling;
+
+  const deliveredProfitPre = sp - cogs - commonCost - deliveredExtra;
+  const rtoProfitPre = -(rtoCogsLoss) - commonCost - rtoExtra;
+  const blendedPre = d * deliveredProfitPre + rto * rtoProfitPre;
+
+  // ── GST: output on sales, input credit on fulfilment/storage/platform ──
+  const outputGstPerDelivered = v.spGstInclusive
+    ? sp * gstRate / (1 + gstRate)
+    : sp * gstRate;
+  const gstBaseCommon = inward + storage + outbound + printing + packaging; // GST-applicable
+  const inputGstCommon = gstBaseCommon * gstRate;
+  const inputGstDelivered = convenience * gstRate + (v.claimGstOnCogs ? cogs * gstRate : 0);
+  const netGstBlended =
+    d * outputGstPerDelivered - inputGstCommon - d * inputGstDelivered;
+
+  // ── Blended net per shipped order ─────────────────────────────────────
+  const netPerShipped = blendedPre - ad - netGstBlended;
+  const blendedMarginPct = sp > 0 ? (netPerShipped / (d * sp)) * 100 : 0;
+
+  // Simple model — assume 100% delivery
+  const simpleNet = deliveredProfitPre - ad - (outputGstPerDelivered - inputGstCommon - inputGstDelivered);
+
+  // Breakeven delivery rate: solve net(d)=0
+  const kSlope = deliveredProfitPre - rtoProfitPre - outputGstPerDelivered + inputGstDelivered;
+  const kConst = rtoProfitPre - ad + inputGstCommon;
+  const breakevenD = kSlope !== 0 ? -kConst / kSlope : NaN;
+  const breakevenPct = Number.isFinite(breakevenD) ? Math.min(100, Math.max(0, breakevenD * 100)) : NaN;
+
+  // ── Monthly batch ─────────────────────────────────────────────────────
+  const opm = Math.max(0, num(v.ordersPerMonth));
+  const monthlyShipped = opm;
+  const monthlyDelivered = opm * d;
+  const monthlyRevenue = monthlyDelivered * sp;
+  const monthlyNet = monthlyShipped * netPerShipped;
+
+  // ── Credit line — everything except ads is financed ───────────────────
+  const financedPerShipped =
+    d * (cogs + commonCost + deliveredExtra) +
+    rto * (rtoCogsLoss + commonCost + rtoExtra) +
+    Math.max(0, netGstBlended);
+  const monthlyFinanced = monthlyShipped * financedPerShipped;
+  const financingFee = monthlyFinanced * (num(v.financingFeePct) / 100);
+  const monthlyCashUpfront = monthlyShipped * ad;
+  const monthlyNetAfterFinancing = monthlyNet - financingFee;
+
+  const trancheTotalPct = tranches.reduce((s, t) => s + num(t.pct), 0);
+
+  const addTranche = () => setTranches((t) => [...t, { pct: '', days: '' }]);
+  const removeTranche = (i: number) => setTranches((t) => t.filter((_, idx) => idx !== i));
+  const setTranche = (i: number, key: keyof Tranche, val: string) =>
+    setTranches((t) => t.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
+
+  const Num = ({ k, suffix }: { k: keyof typeof THREEPL_DEFAULTS; suffix?: string }) => (
+    <div className="relative">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={String(v[k])}
+        onChange={(e) => set(k, e.target.value as never)}
+        className="form-input pr-7 tabular-nums"
+      />
+      {suffix && (
+        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{suffix}</span>
+      )}
+    </div>
+  );
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.15 }}
+      className="rounded-xl border border-border bg-card overflow-hidden"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Boxes className="h-4 w-4 text-emerald-400" />
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">3PL Calculator</h2>
+            <p className="text-[10px] text-muted-foreground">
+              COD fulfilment unit economics with RTO split, GST offset &amp; credit line · all values ₹ INR
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => { setV(THREEPL_DEFAULTS); setTranches([{ pct: '50', days: '7' }, { pct: '50', days: '15' }]); }}
+          className="rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground"
+        >
+          Reset
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 p-4 lg:grid-cols-2">
+        {/* ── LEFT: inputs ─────────────────────────────────────────────── */}
+        <div className="space-y-5">
+          <Section icon={<Package className="h-3.5 w-3.5" />} title="Order & product">
+            <div className="grid grid-cols-2 gap-3">
+              <CalcField label="Selling price" hint="order value ₹"><Num k="sellingPrice" suffix="₹" /></CalcField>
+              <CalcField label="COGS / unit" hint="₹"><Num k="cogsPerUnit" suffix="₹" /></CalcField>
+              <CalcField label="Units / order"><Num k="unitsPerOrder" /></CalcField>
+              <CalcField label="Pkg weight" hint="grams"><Num k="weightGrams" suffix="g" /></CalcField>
+              <CalcField label="Delivery rate" hint="rest = RTO"><Num k="deliveryRate" suffix="%" /></CalcField>
+              <CalcField label="Ad spend / order" hint="cash, not credit"><Num k="adSpendPerOrder" suffix="₹" /></CalcField>
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground/70">
+              {slabs} shipping slab{slabs === 1 ? '' : 's'} ({num(v.weightGrams)}g ÷ 500g)
+            </p>
+          </Section>
+
+          <Section icon={<Truck className="h-3.5 w-3.5" />} title="Shipping & COD">
+            <div className="grid grid-cols-2 gap-3">
+              <CalcField label="Forward / slab" hint="all-zone ₹55"><Num k="fwdShip" suffix="₹" /></CalcField>
+              <CalcField label="RTO ship / slab" hint="= forward"><Num k="rtoShip" suffix="₹" /></CalcField>
+              <CalcField label="COD fee flat"><Num k="codFlat" suffix="₹" /></CalcField>
+              <CalcField label="COD fee %" hint="whichever higher"><Num k="codPct" suffix="%" /></CalcField>
+            </div>
+          </Section>
+
+          <Section icon={<Boxes className="h-3.5 w-3.5" />} title="Storage & handling" note="excl GST">
+            <div className="grid grid-cols-2 gap-3">
+              <CalcField label="Inward / unit"><Num k="inward" suffix="₹" /></CalcField>
+              <CalcField label="Storage / unit / day"><Num k="storagePerDay" suffix="₹" /></CalcField>
+              <CalcField label="Avg storage days"><Num k="storageDays" suffix="d" /></CalcField>
+              <CalcField label="RTO handling / unit"><Num k="rtoHandling" suffix="₹" /></CalcField>
+              <CalcField label="Reverse pickup / unit"><Num k="reversePickup" suffix="₹" /></CalcField>
+              <CalcField label="RTV handling / unit" hint="0 if n/a"><Num k="rtvHandling" suffix="₹" /></CalcField>
+              <CalcField label="RTO COGS loss %" hint="damage on return"><Num k="rtoCogsLossPct" suffix="%" /></CalcField>
+            </div>
+          </Section>
+
+          <Section icon={<Package className="h-3.5 w-3.5" />} title="Fulfilment" note="excl GST">
+            <div className="grid grid-cols-2 gap-3">
+              <CalcField label="Outbound / unit"><Num k="outbound" suffix="₹" /></CalcField>
+              <CalcField label="Printing / order"><Num k="printing" suffix="₹" /></CalcField>
+              <CalcField label="Packaging / order"><Num k="packaging" suffix="₹" /></CalcField>
+            </div>
+          </Section>
+
+          <Section icon={<Receipt className="h-3.5 w-3.5" />} title="Platform fee" note="per delivered order, excl GST">
+            <div className="grid grid-cols-3 gap-3">
+              <CalcField label="Conv. %"><Num k="convPct" suffix="%" /></CalcField>
+              <CalcField label="Min ₹"><Num k="convMin" suffix="₹" /></CalcField>
+              <CalcField label="Cap ₹"><Num k="convCap" suffix="₹" /></CalcField>
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground/70">
+              max({num(v.convPct)}% of order, ₹{num(v.convMin)}) capped at ₹{num(v.convCap)} = <span className="text-foreground">{fmt(convenience)}</span>
+            </p>
+          </Section>
+
+          <Section icon={<Landmark className="h-3.5 w-3.5" />} title="GST">
+            <div className="grid grid-cols-2 gap-3">
+              <CalcField label="GST rate"><Num k="gstRate" suffix="%" /></CalcField>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Toggles</label>
+                <div className="flex flex-col gap-1.5">
+                  <Toggle on={v.spGstInclusive} onClick={() => set('spGstInclusive', !v.spGstInclusive)} label="SP is GST-inclusive" />
+                  <Toggle on={v.claimGstOnCogs} onClick={() => set('claimGstOnCogs', !v.claimGstOnCogs)} label="Claim input GST on COGS" />
+                </div>
+              </div>
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground/70">
+              Net GST = output GST on sales − input GST credit on fulfilment/storage/platform.
+            </p>
+          </Section>
+
+          <Section icon={<CreditCard className="h-3.5 w-3.5" />} title="Credit line" note="covers everything except ads">
+            <div className="grid grid-cols-2 gap-3">
+              <CalcField label="Orders / month"><Num k="ordersPerMonth" /></CalcField>
+              <CalcField label="Financing fee" hint="flat % on financed"><Num k="financingFeePct" suffix="%" /></CalcField>
+            </div>
+            <div className="mt-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Repayment schedule
+                  <span className={`ml-1.5 normal-case tracking-normal ${trancheTotalPct === 100 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    ({trancheTotalPct}% of financed)
+                  </span>
+                </label>
+                <button onClick={addTranche} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground transition hover:text-foreground">
+                  <Plus className="h-3 w-3" /> Tranche
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                {tranches.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text" inputMode="decimal" value={t.pct}
+                        onChange={(e) => setTranche(i, 'pct', e.target.value)}
+                        placeholder="50" className="form-input pr-6 text-[12px] tabular-nums"
+                      />
+                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">%</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">due in</span>
+                    <div className="relative flex-1">
+                      <input
+                        type="text" inputMode="decimal" value={t.days}
+                        onChange={(e) => setTranche(i, 'days', e.target.value)}
+                        placeholder="7" className="form-input pr-7 text-[12px] tabular-nums"
+                      />
+                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">days</span>
+                    </div>
+                    <button
+                      onClick={() => removeTranche(i)}
+                      className="rounded-md p-1.5 text-muted-foreground/40 transition hover:bg-rose-500/10 hover:text-rose-400"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Section>
+        </div>
+
+        {/* ── RIGHT: results ───────────────────────────────────────────── */}
+        <div className="space-y-4">
+          {/* Per-shipped-order breakdown */}
+          <div className="rounded-xl border border-border bg-background/40 p-4">
+            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Per shipped order — {(d * 100).toFixed(0)}% delivered / {(rto * 100).toFixed(0)}% RTO
+            </p>
+            <div className="space-y-1.5">
+              <ResultRow label="Delivered-order profit (pre-GST, pre-ad)" value={fmt(deliveredProfitPre)} />
+              <ResultRow label="RTO-order loss (pre-GST, pre-ad)" value={fmt(rtoProfitPre)} />
+              <ResultRow label="Blended (pre-GST, pre-ad)" value={fmt(blendedPre)} />
+              <ResultRow label="− Ad spend / order" value={`− ${fmt(ad)}`} />
+              <ResultRow
+                label={netGstBlended >= 0 ? '− Net GST payable / order' : '+ Net GST credit / order'}
+                value={`${netGstBlended >= 0 ? '− ' : '+ '}${fmt(Math.abs(netGstBlended))}`}
+              />
+              <ResultRow label="Net profit / shipped order" value={fmt(netPerShipped)} highlight={netPerShipped >= 0 ? 'success' : 'primary'} />
+            </div>
+          </div>
+
+          {/* Hero */}
+          <div
+            className="stat-shimmer glow-pulse rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
+            style={{ '--glow-color': 'rgba(16, 185, 129, 0.12)' } as React.CSSProperties}
+          >
+            <p className="relative z-10 mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Net profit / shipped order
+            </p>
+            <p className={`relative z-10 font-mono text-4xl font-bold ${netPerShipped >= 0 ? 'gradient-text-emerald' : 'text-rose-400'}`}>
+              {fmt(netPerShipped)}
+            </p>
+            <p className="relative z-10 mt-1.5 text-[11px] text-muted-foreground">
+              {blendedMarginPct.toFixed(1)}% margin on delivered revenue ·{' '}
+              {Number.isFinite(breakevenPct)
+                ? <>breakeven at <span className="font-semibold text-foreground">{breakevenPct.toFixed(1)}%</span> delivery</>
+                : 'breakeven n/a'}
+            </p>
+          </div>
+
+          {/* Simple 100% delivery */}
+          <div className="rounded-xl border border-border bg-background/40 p-4">
+            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">If every order delivered (100%)</p>
+            <ResultRow label="Net profit / order @ 100%" value={fmt(simpleNet)} highlight={simpleNet >= 0 ? 'success' : 'primary'} />
+          </div>
+
+          {/* Monthly batch */}
+          <div className="rounded-xl border border-border bg-background/40 p-4">
+            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Monthly batch — {opm.toLocaleString('en-IN')} shipped
+            </p>
+            <div className="space-y-1.5">
+              <ResultRow label={`Delivered orders (${(d * 100).toFixed(0)}%)`} value={Math.round(monthlyDelivered).toLocaleString('en-IN')} />
+              <ResultRow label="Revenue (delivered)" value={fmt(monthlyRevenue)} />
+              <ResultRow label="Net profit (before financing)" value={fmt(monthlyNet)} />
+              <ResultRow label={`− Financing fee (${num(v.financingFeePct)}%)`} value={`− ${fmt(financingFee)}`} />
+              <ResultRow label="Net profit / month" value={fmt(monthlyNetAfterFinancing)} highlight={monthlyNetAfterFinancing >= 0 ? 'success' : 'primary'} />
+            </div>
+          </div>
+
+          {/* Credit line */}
+          <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.04] p-4">
+            <p className="mb-2 inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-sky-300/90">
+              <CreditCard className="h-3 w-3" /> Credit line — monthly
+            </p>
+            <div className="space-y-1.5">
+              <ResultRow label="Cash you fund upfront (ads)" value={fmt(monthlyCashUpfront)} />
+              <ResultRow label="Financed on credit (everything else)" value={fmt(monthlyFinanced)} highlight="primary" />
+            </div>
+            {monthlyFinanced > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">Repayment schedule</p>
+                <div className="overflow-hidden rounded-lg border border-border">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="border-b border-border bg-background/40 text-left text-muted-foreground">
+                        <th className="px-3 py-1.5 font-medium">Within</th>
+                        <th className="px-3 py-1.5 font-medium">Share</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Amount due</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tranches.map((t, i) => {
+                        const pct = num(t.pct);
+                        return (
+                          <tr key={i} className="border-b border-border/40 last:border-0">
+                            <td className="px-3 py-1.5 tabular-nums text-foreground">{num(t.days)} days</td>
+                            <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{pct}%</td>
+                            <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums text-foreground">
+                              {fmt(monthlyFinanced * pct / 100)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {trancheTotalPct !== 100 && (
+                  <p className="mt-1.5 text-[10px] text-amber-400">
+                    Tranches sum to {trancheTotalPct}% — adjust to 100% to fully schedule the financed amount.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function Section({ icon, title, note, children }: {
+  icon: React.ReactNode; title: string; note?: string; children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-2.5 flex items-center gap-2">
+        <span className="text-emerald-400">{icon}</span>
+        <h3 className="text-[12px] font-semibold tracking-tight text-foreground">{title}</h3>
+        {note && <span className="text-[10px] text-muted-foreground/60">· {note}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition ${
+        on ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${on ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-muted-foreground/40'}`} />
+      {label}
+    </button>
   );
 }
