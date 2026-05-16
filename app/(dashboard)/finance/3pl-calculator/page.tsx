@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Boxes, Plus, Trash2, Receipt } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Boxes, Plus, Trash2, Receipt, Bookmark, X, Pencil } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
 
@@ -53,6 +53,63 @@ export default function ThreePLCalculatorPage() {
     { pct: '50', days: '15' },
   ]);
 
+  // Saved presets (per brand/product) — same system as the profit calculator
+  type Preset = { id: string; name: string; kind: '3pl'; data: typeof DEFAULTS; tranches: Tranche[] };
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [showPresets, setShowPresets] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [editingPresetName, setEditingPresetName] = useState('');
+
+  useEffect(() => {
+    fetch('/api/finance?action=presets&kind=3pl')
+      .then((r) => r.json())
+      .then((d) => setPresets(d.presets ?? []))
+      .catch(() => {});
+  }, []);
+
+  const applyPreset = (p: Preset) => {
+    if (p.data) setV({ ...DEFAULTS, ...p.data });
+    if (Array.isArray(p.tranches) && p.tranches.length > 0) setTranches(p.tranches);
+    setShowPresets(false);
+  };
+
+  const saveCurrentAsPreset = async () => {
+    if (!presetName.trim()) return;
+    const preset = { name: presetName.trim(), kind: '3pl', data: v, tranches };
+    try {
+      const res = await fetch('/api/finance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save-preset', preset }),
+      });
+      const data = await res.json();
+      if (data.preset) setPresets((prev) => [...prev, data.preset]);
+      setPresetName('');
+    } catch { /* ignore */ }
+  };
+
+  const deletePreset = async (id: string) => {
+    setPresets((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await fetch('/api/finance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-preset', id }),
+      });
+    } catch { /* ignore */ }
+  };
+
+  const renamePreset = async (id: string, newName: string) => {
+    if (!newName.trim()) return;
+    setPresets((prev) => prev.map((p) => (p.id === id ? { ...p, name: newName.trim() } : p)));
+    setEditingPresetId(null);
+    try {
+      await fetch('/api/finance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'rename-preset', id, name: newName.trim() }),
+      });
+    } catch { /* ignore */ }
+  };
+
   const set = <K extends keyof typeof DEFAULTS>(k: K, val: (typeof DEFAULTS)[K]) =>
     setV((s) => ({ ...s, [k]: val }));
   const num = (s: string) => parseFloat(s) || 0;
@@ -92,17 +149,23 @@ export default function ThreePLCalculatorPage() {
   const blendedPre = d * deliveredProfitPre + rto * rtoProfitPre;
 
   // ── GST: output on delivered revenue only · input fully claimable ─────
-  // COGS is entered pre-GST (product cost only). The 18% GST you pay on it
-  // is always claimable as input credit, so it nets out.
-  const outputGstPerDelivered = !v.chargeOutputGst
-    ? 0
-    : v.spGstInclusive
-      ? sp * gstRate / (1 + gstRate)
-      : sp * gstRate;
+  // GST you PAY on inputs (COGS pre-GST + fees, which are billed excl-GST).
+  const gstReg = v.chargeOutputGst; // toggle = "GST registered"
+  const outputGstPerDelivered = v.spGstInclusive
+    ? sp * gstRate / (1 + gstRate)
+    : sp * gstRate;
   const inputGstDeliveredOrder = (commonCost + deliveredExtra + cogs) * gstRate;
   const inputGstRtoOrder = (commonCost + rtoExtra + rtoCogsLoss) * gstRate;
-  const netGstDeliveredOrder = outputGstPerDelivered - inputGstDeliveredOrder;
-  const netGstRtoOrder = -inputGstRtoOrder;
+
+  // Registered: owe output GST on sales, reclaim input GST → net it.
+  // Not registered (below threshold / testing): no output GST, but you
+  // CANNOT reclaim input GST — it becomes an unrecoverable real cost.
+  const netGstDeliveredOrder = gstReg
+    ? outputGstPerDelivered - inputGstDeliveredOrder   // can be ±, net position
+    : inputGstDeliveredOrder;                          // unrecoverable → pure cost
+  const netGstRtoOrder = gstReg
+    ? -inputGstRtoOrder                                // pure input credit
+    : inputGstRtoOrder;                                // unrecoverable → cost
   const netGstBlended = d * netGstDeliveredOrder + rto * netGstRtoOrder;
 
   const netPerShipped = blendedPre - ad - netGstBlended;
@@ -138,6 +201,10 @@ export default function ThreePLCalculatorPage() {
   const outCOD = delivered * codFee;
   const outPlatform = delivered * convenience;
   const outGst = shipped * netGstBlended;
+  const outGstOutput = gstReg ? delivered * outputGstPerDelivered : 0;
+  const outGstInput = gstReg
+    ? -(delivered * inputGstDeliveredOrder + rtoOrders * inputGstRtoOrder)  // reclaimed credit
+    : (delivered * inputGstDeliveredOrder + rtoOrders * inputGstRtoOrder);   // unrecoverable cost
   const outAds = cashUpfront;
   const outFinancing = financingFee;
   const total3PL = outForward + outRTO + outFulfilment + outStorage + outCOD + outPlatform;
@@ -155,7 +222,8 @@ export default function ThreePLCalculatorPage() {
     { label: 'Storage & inward', amount: outStorage },
     { label: 'COD collection fees', amount: outCOD },
     { label: 'Platform fee', amount: outPlatform },
-    { label: netGstBlended >= 0 ? 'Net GST payable' : 'Net GST credit', amount: outGst },
+    { label: 'Output GST on sales', amount: outGstOutput },
+    { label: gstReg ? 'Input GST credit (reclaimed)' : 'Input GST (unrecoverable)', amount: outGstInput },
     { label: 'Financing fee', amount: outFinancing },
   ].filter((r) => Math.abs(r.amount) > 0.5).sort((a, b) => b.amount - a.amount);
 
@@ -181,12 +249,21 @@ export default function ThreePLCalculatorPage() {
           <h1 className="text-lg font-semibold text-foreground">3PL Calculator</h1>
           <p className="text-[11px] text-muted-foreground">COD fulfilment profit, GST offset &amp; credit line</p>
         </div>
-        <button
-          onClick={reset}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:bg-accent/30"
-        >
-          Reset
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPresets(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:bg-accent/30"
+          >
+            <Bookmark className="h-3.5 w-3.5" />
+            Presets {presets.length > 0 && <span className="text-primary">({presets.length})</span>}
+          </button>
+          <button
+            onClick={reset}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:bg-accent/30"
+          >
+            Reset
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -367,7 +444,7 @@ export default function ThreePLCalculatorPage() {
 
             <div className="flex flex-wrap gap-2">
               <Toggle on={v.spGstInclusive} onClick={() => set('spGstInclusive', !v.spGstInclusive)} label="Selling price is GST-inclusive" />
-              <Toggle on={v.chargeOutputGst} onClick={() => set('chargeOutputGst', !v.chargeOutputGst)} label="Pay output GST on sales" />
+              <Toggle on={v.chargeOutputGst} onClick={() => set('chargeOutputGst', !v.chargeOutputGst)} label="GST registered (pay output, claim input)" />
             </div>
 
             <div className="h-px bg-border" />
@@ -391,6 +468,103 @@ export default function ThreePLCalculatorPage() {
           </div>
         </motion.div>
       </div>
+
+      {/* Presets Modal — same as the Profit Calculator */}
+      <AnimatePresence>
+        {showPresets && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPresets(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="relative z-10 w-full max-w-md mx-4 rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between border-b border-border/50 px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <Bookmark className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-semibold text-foreground">Saved Calculations</h2>
+                </div>
+                <button onClick={() => setShowPresets(false)} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2">Save Current Values</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)}
+                      placeholder="e.g. Booty Trainer, FitPro..."
+                      onKeyDown={(e) => e.key === 'Enter' && saveCurrentAsPreset()}
+                      className="flex-1 rounded-lg border border-border/50 bg-background/60 px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none transition"
+                    />
+                    <button onClick={saveCurrentAsPreset} disabled={!presetName.trim()}
+                      className="rounded-lg bg-primary/15 px-3 py-2 text-[11px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
+                    ><Plus className="h-3.5 w-3.5" /></button>
+                  </div>
+                </div>
+
+                {presets.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2">Saved</p>
+                    <div className="space-y-1.5">
+                      {presets.map((p) => (
+                        <div key={p.id} className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-2.5 group">
+                          {editingPresetId === p.id ? (
+                            <input
+                              autoFocus
+                              value={editingPresetName}
+                              onChange={(e) => setEditingPresetName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') renamePreset(p.id, editingPresetName);
+                                if (e.key === 'Escape') setEditingPresetId(null);
+                              }}
+                              onBlur={() => renamePreset(p.id, editingPresetName)}
+                              className="flex-1 rounded border border-primary/30 bg-transparent px-2 py-0.5 text-[12px] text-foreground focus:outline-none"
+                            />
+                          ) : (
+                            <button onClick={() => applyPreset(p)} className="flex-1 text-left min-w-0">
+                              <p className="text-[12px] font-medium text-foreground truncate">{p.name}</p>
+                              <p className="text-[10px] text-muted-foreground/60">
+                                SP ₹{p.data?.sellingPrice} · CP ₹{p.data?.cogsPerUnit} · ROAS {p.data?.roas} · DR {p.data?.deliveryRate}% · {p.data?.orders} orders
+                              </p>
+                            </button>
+                          )}
+                          {editingPresetId !== p.id && (
+                            <>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setEditingPresetId(p.id); setEditingPresetName(p.name); }}
+                                className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-primary transition"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => deletePreset(p.id)}
+                                className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-red-400 transition"
+                              ><Trash2 className="h-3.5 w-3.5" /></button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {presets.length === 0 && (
+                  <div className="text-center py-6">
+                    <Bookmark className="h-6 w-6 mx-auto text-muted-foreground/20 mb-2" />
+                    <p className="text-[12px] text-muted-foreground/50">No saved calculations yet</p>
+                    <p className="text-[10px] text-muted-foreground/30 mt-1">Set your values and save them per product</p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </PageTransition>
   );
 }

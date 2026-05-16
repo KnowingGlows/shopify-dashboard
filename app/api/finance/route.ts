@@ -175,7 +175,12 @@ export async function GET(request: Request) {
         const firestore = db();
         if (!firestore) return NextResponse.json({ presets: [] });
         const snap = await firestore.collection(COLLECTIONS.CALC_PRESETS).get();
-        const presets = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        // `kind` keeps the profit calculator's presets separate from the
+        // 3PL calculator's. Legacy presets have no kind → treated as 'profit'.
+        const kind = searchParams.get('kind') || 'profit';
+        const presets = snap.docs
+          .map((doc) => ({ id: doc.id, ...(doc.data() as Record<string, unknown>) }))
+          .filter((p) => ((p as { kind?: string }).kind || 'profit') === kind);
         return NextResponse.json({ presets });
       }
       default:
