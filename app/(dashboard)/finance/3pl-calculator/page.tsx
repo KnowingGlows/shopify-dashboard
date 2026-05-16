@@ -1,29 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Boxes, Plus, Trash2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Boxes, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { formatINR } from '@/lib/currency-converter';
 
 // ── Fixed 3PL rates (from your plan — these don't change) ──────────────────
 const FEES = {
-  fwdShip: 55,        // forward shipping / 500g slab (all-zone)
-  rtoShip: 55,        // RTO shipping / slab (= forward)
-  codFlat: 35,        // COD fee flat ₹
-  codPct: 1.7,        // COD fee % (whichever higher)
-  inward: 5,          // inward / unit
-  storagePerDay: 0.1, // storage / unit / day
-  rtoHandling: 5,     // RTO handling / unit
-  reversePickup: 5,   // reverse pickup inwards / unit
-  rtvHandling: 0,     // RTV handling — only on return-to-vendor, not auto-applied
-  outbound: 8,        // outbound / unit
-  printing: 2,        // printing & stationery / order
-  packaging: 10,      // packaging / order
-  convPct: 3,         // platform convenience %
-  convMin: 30,        // platform min ₹
-  convCap: 120,       // platform cap ₹
-  gstRate: 18,        // GST %
+  fwdShip: 55, rtoShip: 55, codFlat: 35, codPct: 1.7,
+  inward: 5, storagePerDay: 0.1, rtoHandling: 5, reversePickup: 5, rtvHandling: 0,
+  outbound: 8, printing: 2, packaging: 10,
+  convPct: 3, convMin: 30, convCap: 120, gstRate: 18,
 };
 
 const RATE_REFERENCE: { label: string; value: string }[] = [
@@ -46,11 +34,11 @@ type Tranche = { pct: string; days: string };
 const DEFAULTS = {
   sellingPrice: '999',
   cogsPerUnit: '250',
-  unitsPerOrder: '1',
-  weightGrams: '500',
   deliveryRate: '65',
   adSpendPerOrder: '300',
   ordersPerMonth: '1000',
+  unitsPerOrder: '1',
+  weightGrams: '500',
   storageDays: '20',
   rtoCogsLossPct: '0',
   financingFeePct: '0',
@@ -64,13 +52,14 @@ export default function ThreePLCalculatorPage() {
     { pct: '50', days: '7' },
     { pct: '50', days: '15' },
   ]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const set = <K extends keyof typeof DEFAULTS>(k: K, val: (typeof DEFAULTS)[K]) =>
     setV((s) => ({ ...s, [k]: val }));
   const num = (s: string) => parseFloat(s) || 0;
   const fmt = (a: number) => formatINR(a);
 
-  // ── Inputs (the variables that actually matter) ───────────────────────
+  // ── Inputs ────────────────────────────────────────────────────────────
   const sp = num(v.sellingPrice);
   const cogs = num(v.cogsPerUnit) * Math.max(1, num(v.unitsPerOrder));
   const units = Math.max(1, num(v.unitsPerOrder));
@@ -80,7 +69,6 @@ export default function ThreePLCalculatorPage() {
   const ad = num(v.adSpendPerOrder);
   const gstRate = FEES.gstRate / 100;
 
-  // ── Per-shipped-order cost components (fixed rates × volumes) ──────────
   const fwdShip = FEES.fwdShip * slabs;
   const rtoShip = FEES.rtoShip * slabs;
   const codFee = Math.max(FEES.codFlat, sp * FEES.codPct / 100);
@@ -103,32 +91,31 @@ export default function ThreePLCalculatorPage() {
   const rtoProfitPre = -(rtoCogsLoss) - commonCost - rtoExtra;
   const blendedPre = d * deliveredProfitPre + rto * rtoProfitPre;
 
-  // ── GST: output on sales − input credit on fulfilment/storage/platform ─
+  // ── GST ───────────────────────────────────────────────────────────────
   const outputGstPerDelivered = v.spGstInclusive
     ? sp * gstRate / (1 + gstRate)
     : sp * gstRate;
-  const gstBaseCommon = inward + storage + outbound + printing + packaging;
-  const inputGstCommon = gstBaseCommon * gstRate;
-  const inputGstDelivered = convenience * gstRate + (v.claimGstOnCogs ? cogs * gstRate : 0);
-  const netGstBlended = d * outputGstPerDelivered - inputGstCommon - d * inputGstDelivered;
+  const inputGstDeliveredOrder = (commonCost + deliveredExtra + (v.claimGstOnCogs ? cogs : 0)) * gstRate;
+  const inputGstRtoOrder = (commonCost + rtoExtra + (v.claimGstOnCogs ? rtoCogsLoss : 0)) * gstRate;
+  const netGstDeliveredOrder = outputGstPerDelivered - inputGstDeliveredOrder;
+  const netGstRtoOrder = -inputGstRtoOrder;
+  const netGstBlended = d * netGstDeliveredOrder + rto * netGstRtoOrder;
 
   const netPerShipped = blendedPre - ad - netGstBlended;
-  const simpleNet = deliveredProfitPre - ad - (outputGstPerDelivered - inputGstCommon - inputGstDelivered);
+  const simpleNet = deliveredProfitPre - ad - netGstDeliveredOrder;
 
-  // Breakeven delivery rate: solve net(d)=0
-  const kSlope = deliveredProfitPre - rtoProfitPre - outputGstPerDelivered + inputGstDelivered;
-  const kConst = rtoProfitPre - ad + inputGstCommon;
+  const kSlope = deliveredProfitPre - rtoProfitPre - netGstDeliveredOrder + netGstRtoOrder;
+  const kConst = rtoProfitPre - ad - netGstRtoOrder;
   const breakevenD = kSlope !== 0 ? -kConst / kSlope : NaN;
   const breakevenPct = Number.isFinite(breakevenD) ? Math.min(100, Math.max(0, breakevenD * 100)) : NaN;
 
-  // ── Monthly batch ─────────────────────────────────────────────────────
+  // ── Monthly ───────────────────────────────────────────────────────────
   const opm = Math.max(0, num(v.ordersPerMonth));
   const monthlyShipped = opm;
   const monthlyDelivered = opm * d;
   const monthlyRTO = opm * rto;
   const monthlyRevenue = monthlyDelivered * sp;
 
-  // ── Credit line — everything except ads is financed ───────────────────
   const financedPerShipped =
     d * (cogs + commonCost + deliveredExtra) +
     rto * (rtoCogsLoss + commonCost + rtoExtra) +
@@ -137,7 +124,6 @@ export default function ThreePLCalculatorPage() {
   const financingFee = monthlyFinanced * (num(v.financingFeePct) / 100);
   const monthlyCashUpfront = monthlyShipped * ad;
 
-  // ── Money in vs out (monthly) ─────────────────────────────────────────
   const outCOGS = monthlyDelivered * cogs + monthlyRTO * rtoCogsLoss;
   const outForward = monthlyShipped * fwdShip;
   const outRTO = monthlyRTO * (rtoShip + rtoHandling + reversePickup + rtvHandling);
@@ -148,9 +134,9 @@ export default function ThreePLCalculatorPage() {
   const outGst = monthlyShipped * netGstBlended;
   const outAds = monthlyCashUpfront;
   const outFinancing = financingFee;
+  const total3PL = outForward + outRTO + outFulfilment + outStorage + outCOD + outPlatform;
   const moneyOut =
-    outCOGS + outForward + outRTO + outFulfilment + outStorage +
-    outCOD + outPlatform + outGst + outAds + outFinancing;
+    outCOGS + total3PL + outGst + outAds + outFinancing;
   const moneyIn = monthlyRevenue;
   const netProfit = moneyIn - moneyOut;
   const netMarginPct = moneyIn > 0 ? (netProfit / moneyIn) * 100 : 0;
@@ -168,7 +154,6 @@ export default function ThreePLCalculatorPage() {
     { label: 'Financing fee', amount: outFinancing },
   ].filter((r) => Math.abs(r.amount) > 0.5).sort((a, b) => b.amount - a.amount);
 
-  // ── BEROAS & ad efficiency ────────────────────────────────────────────
   const profitBeforeAdPerShipped = blendedPre - netGstBlended;
   const blendedRevenuePerShipped = d * sp;
   const beroas = profitBeforeAdPerShipped > 0 ? blendedRevenuePerShipped / profitBeforeAdPerShipped : NaN;
@@ -187,12 +172,12 @@ export default function ThreePLCalculatorPage() {
   };
 
   return (
-    <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
-      {/* Page header — matches the Profit Calculator page */}
+    <PageTransition className="mx-auto max-w-2xl p-5 space-y-5">
+      {/* Header — matches the Profit Calculator page */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-foreground">3PL Calculator</h1>
-          <p className="text-[11px] text-muted-foreground">COD fulfilment economics with RTO split, GST offset &amp; credit line</p>
+          <p className="text-[11px] text-muted-foreground">COD fulfilment profit, GST offset &amp; credit line</p>
         </div>
         <button
           onClick={reset}
@@ -211,206 +196,221 @@ export default function ThreePLCalculatorPage() {
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <Boxes className="h-4 w-4 text-primary" />
           <div>
-            <h2 className="text-sm font-semibold text-foreground">3PL Profit & Cash Flow</h2>
-            <p className="text-[10px] text-muted-foreground">Edit the numbers that matter — 3PL rates are fixed per your plan · all ₹ INR</p>
+            <h2 className="text-sm font-semibold text-foreground">3PL Profit Calculator</h2>
+            <p className="text-[10px] text-muted-foreground">Edit the numbers that matter — rates are fixed per your plan</p>
           </div>
         </div>
 
-        <div className="relative z-10 p-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* ── LEFT: the variables that matter ───────────────────────── */}
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <CalcField label="Selling Price (incl. shipping) — ₹">
-                  <input type="text" inputMode="decimal" value={v.sellingPrice} onChange={(e) => set('sellingPrice', e.target.value)} className="form-input" />
-                </CalcField>
-                <CalcField label="Cost of Product (incl. shipping) — ₹">
-                  <input type="text" inputMode="decimal" value={v.cogsPerUnit} onChange={(e) => set('cogsPerUnit', e.target.value)} className="form-input" />
-                </CalcField>
-                <CalcField label="Delivery Rate %" hint="successful delivery — rest is RTO">
-                  <input type="text" inputMode="decimal" value={v.deliveryRate} onChange={(e) => set('deliveryRate', e.target.value)} className="form-input" />
-                </CalcField>
-                <CalcField label="Ad Spend / Order — ₹" hint="paid in cash, not credit">
-                  <input type="text" inputMode="decimal" value={v.adSpendPerOrder} onChange={(e) => set('adSpendPerOrder', e.target.value)} className="form-input" />
-                </CalcField>
-                <CalcField label="Orders / Month">
-                  <input type="text" inputMode="decimal" value={v.ordersPerMonth} onChange={(e) => set('ordersPerMonth', e.target.value)} className="form-input" />
-                </CalcField>
-                <CalcField label="Units / Order">
-                  <input type="text" inputMode="decimal" value={v.unitsPerOrder} onChange={(e) => set('unitsPerOrder', e.target.value)} className="form-input" />
-                </CalcField>
-                <CalcField label="Package Weight — grams" hint={`${slabs} shipping slab${slabs === 1 ? '' : 's'}`}>
-                  <input type="text" inputMode="decimal" value={v.weightGrams} onChange={(e) => set('weightGrams', e.target.value)} className="form-input" />
-                </CalcField>
-                <CalcField label="Avg Storage Days">
-                  <input type="text" inputMode="decimal" value={v.storageDays} onChange={(e) => set('storageDays', e.target.value)} className="form-input" />
-                </CalcField>
-                <CalcField label="RTO Damage %" hint="COGS lost on returns">
-                  <input type="text" inputMode="decimal" value={v.rtoCogsLossPct} onChange={(e) => set('rtoCogsLossPct', e.target.value)} className="form-input" />
-                </CalcField>
-                <CalcField label="Financing Fee %" hint="flat % on financed amount">
-                  <input type="text" inputMode="decimal" value={v.financingFeePct} onChange={(e) => set('financingFeePct', e.target.value)} className="form-input" />
-                </CalcField>
-              </div>
+        <div className="relative z-10 p-4 space-y-4">
+          {/* The 5 inputs that matter */}
+          <div className="grid grid-cols-2 gap-3">
+            <CalcField label="Selling Price (incl. shipping) — ₹">
+              <input type="text" inputMode="decimal" value={v.sellingPrice} onChange={(e) => set('sellingPrice', e.target.value)} className="form-input" />
+            </CalcField>
+            <CalcField label="Cost of Product — ₹">
+              <input type="text" inputMode="decimal" value={v.cogsPerUnit} onChange={(e) => set('cogsPerUnit', e.target.value)} className="form-input" />
+            </CalcField>
+            <CalcField label="Delivery Rate %" hint="rest is RTO">
+              <input type="text" inputMode="decimal" value={v.deliveryRate} onChange={(e) => set('deliveryRate', e.target.value)} className="form-input" />
+            </CalcField>
+            <CalcField label="Ad Spend / Order — ₹">
+              <input type="text" inputMode="decimal" value={v.adSpendPerOrder} onChange={(e) => set('adSpendPerOrder', e.target.value)} className="form-input" />
+            </CalcField>
+            <CalcField label="Orders / Month">
+              <input type="text" inputMode="decimal" value={v.ordersPerMonth} onChange={(e) => set('ordersPerMonth', e.target.value)} className="form-input" />
+            </CalcField>
+          </div>
 
-              <div className="h-px bg-border" />
+          <div className="h-px bg-border" />
 
-              {/* GST treatment */}
-              <div>
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">GST treatment</p>
-                <div className="flex flex-wrap gap-2">
-                  <Toggle on={v.spGstInclusive} onClick={() => set('spGstInclusive', !v.spGstInclusive)} label="Selling price is GST-inclusive" />
-                  <Toggle on={v.claimGstOnCogs} onClick={() => set('claimGstOnCogs', !v.claimGstOnCogs)} label="Claim input GST on COGS" />
-                </div>
-              </div>
+          {/* Result rows — important metrics get credence */}
+          <div className="space-y-1.5">
+            <ResultRow label="Breakeven ROAS (BEROAS)" value={Number.isFinite(beroas) ? `${beroas.toFixed(2)}x` : '—'} />
+            <ResultRow label="Current ROAS" value={Number.isFinite(currentRoas) ? `${currentRoas.toFixed(2)}x` : '—'} />
+            <ResultRow label="Breakeven delivery rate" value={Number.isFinite(breakevenPct) ? `${breakevenPct.toFixed(1)}%` : '—'} />
+            <ResultRow label="Revenue / month" value={fmt(moneyIn)} />
+            <ResultRow label="Total 3PL cost / month" value={fmt(total3PL)} />
+            <ResultRow label="Ad spend / month" value={fmt(outAds)} />
+            <ResultRow label={netGstBlended >= 0 ? 'Net GST / month' : 'Net GST credit / month'} value={fmt(outGst)} />
+            <ResultRow label="Net profit / shipped order" value={fmt(netPerShipped)} highlight="primary" />
+            <ResultRow label="Net profit / month" value={fmt(netProfit)} highlight="success" />
+          </div>
 
-              <div className="h-px bg-border" />
+          {/* The single most important number */}
+          <div
+            className="stat-shimmer glow-pulse rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
+            style={{ '--glow-color': 'rgba(16, 185, 129, 0.12)' } as React.CSSProperties}
+          >
+            <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
+              Net Profit / Month
+            </p>
+            <p className={`relative z-10 text-4xl font-bold font-mono ${netProfit >= 0 ? 'gradient-text-emerald' : 'text-rose-400'}`}>
+              {fmt(netProfit)}
+            </p>
+            <p className="relative z-10 mt-1.5 text-[11px] text-muted-foreground">
+              {netMarginPct.toFixed(1)}% net margin
+              {Number.isFinite(roiPct) && <> · {roiPct.toFixed(0)}% ROI on ads</>}
+            </p>
+          </div>
 
-              {/* Credit line repayment schedule */}
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Credit repayment
-                    <span className={`ml-1.5 normal-case tracking-normal ${trancheTotalPct === 100 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      ({trancheTotalPct}% scheduled)
-                    </span>
-                  </p>
-                  <button onClick={addTranche} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground transition hover:text-foreground">
-                    <Plus className="h-3 w-3" /> Tranche
-                  </button>
-                </div>
-                <div className="space-y-1.5">
-                  {tranches.map((t, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <input type="text" inputMode="decimal" value={t.pct} onChange={(e) => setTranche(i, 'pct', e.target.value)} placeholder="50" className="form-input pr-6 tabular-nums" />
-                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">%</span>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground">due in</span>
-                      <div className="relative flex-1">
-                        <input type="text" inputMode="decimal" value={t.days} onChange={(e) => setTranche(i, 'days', e.target.value)} placeholder="7" className="form-input pr-9 tabular-nums" />
-                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">days</span>
-                      </div>
-                      <button onClick={() => removeTranche(i)} className="rounded-md p-2 text-muted-foreground/40 transition hover:bg-rose-500/10 hover:text-rose-400">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+          {/* Advanced — everything secondary lives here */}
+          <button
+            onClick={() => setShowAdvanced((s) => !s)}
+            className="flex w-full items-center justify-between rounded-lg border border-border bg-background/40 px-3 py-2 text-[11px] font-medium text-muted-foreground transition hover:text-foreground"
+          >
+            <span>Advanced — fixed rates · GST · credit line · full breakdown</span>
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+          </button>
+
+          <AnimatePresence initial={false}>
+            {showAdvanced && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-4 pt-1">
+                  {/* Secondary inputs */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <CalcField label="Units / Order">
+                      <input type="text" inputMode="decimal" value={v.unitsPerOrder} onChange={(e) => set('unitsPerOrder', e.target.value)} className="form-input" />
+                    </CalcField>
+                    <CalcField label="Package Weight — g" hint={`${slabs} slab${slabs === 1 ? '' : 's'}`}>
+                      <input type="text" inputMode="decimal" value={v.weightGrams} onChange={(e) => set('weightGrams', e.target.value)} className="form-input" />
+                    </CalcField>
+                    <CalcField label="Avg Storage Days">
+                      <input type="text" inputMode="decimal" value={v.storageDays} onChange={(e) => set('storageDays', e.target.value)} className="form-input" />
+                    </CalcField>
+                    <CalcField label="RTO Damage %" hint="COGS lost on returns">
+                      <input type="text" inputMode="decimal" value={v.rtoCogsLossPct} onChange={(e) => set('rtoCogsLossPct', e.target.value)} className="form-input" />
+                    </CalcField>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">GST treatment</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Toggle on={v.spGstInclusive} onClick={() => set('spGstInclusive', !v.spGstInclusive)} label="Selling price is GST-inclusive" />
+                      <Toggle on={v.claimGstOnCogs} onClick={() => set('claimGstOnCogs', !v.claimGstOnCogs)} label="Claim input GST on COGS" />
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
 
-              <div className="h-px bg-border" />
+                  <div className="h-px bg-border" />
 
-              {/* Fixed 3PL rates — read-only reference */}
-              <div>
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                  3PL rates <span className="normal-case tracking-normal text-muted-foreground/50">(fixed — per your plan)</span>
-                </p>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg border border-border bg-background/40 p-3">
-                  {RATE_REFERENCE.map((r) => (
-                    <div key={r.label} className="flex items-center justify-between text-[11px]">
-                      <span className="text-muted-foreground/80">{r.label}</span>
-                      <span className="font-mono font-medium tabular-nums text-foreground">{r.value}</span>
+                  {/* Full money breakdown */}
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Where the money goes · monthly</p>
+                      <p className="text-[10px] text-muted-foreground">out <span className="font-semibold tabular-nums text-foreground">{fmt(moneyOut)}</span></p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* ── RIGHT: where the money goes ───────────────────────────── */}
-            <div className="space-y-4">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Monthly · {opm.toLocaleString('en-IN')} shipped · {Math.round(monthlyDelivered).toLocaleString('en-IN')} delivered
-              </p>
-              <div className="space-y-1.5">
-                <ResultRow label="Money in — delivered revenue" value={fmt(moneyIn)} />
-                <ResultRow label="Money out — all costs + ads + GST" value={fmt(moneyOut)} />
-              </div>
-
-              <div className="h-px bg-border" />
-
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Where the money goes</p>
-              <div className="space-y-1.5">
-                {flowRows.map((r) => {
-                  const credit = r.amount < 0;
-                  const share = moneyOut > 0 ? (Math.abs(r.amount) / moneyOut) * 100 : 0;
-                  return (
-                    <ResultRow
-                      key={r.label}
-                      label={`${r.label} · ${share.toFixed(0)}%`}
-                      value={`${credit ? '+ ' : ''}${fmt(Math.abs(r.amount))}`}
-                    />
-                  );
-                })}
-                <ResultRow label="Net profit / month" value={fmt(netProfit)} highlight="primary" />
-              </div>
-
-              <div className="h-px bg-border" />
-
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Ad efficiency & break-even</p>
-              <div className="space-y-1.5">
-                <ResultRow label="Breakeven ROAS (BEROAS)" value={Number.isFinite(beroas) ? `${beroas.toFixed(2)}x` : '—'} />
-                <ResultRow label="Current ROAS (rev ÷ ad spend)" value={Number.isFinite(currentRoas) ? `${currentRoas.toFixed(2)}x` : '—'} />
-                <ResultRow label="Return on Ad Spend (ROI)" value={Number.isFinite(roiPct) ? `${roiPct.toFixed(0)}%` : '—'} />
-                <ResultRow label="Net margin" value={`${netMarginPct.toFixed(1)}%`} />
-                <ResultRow label="Breakeven delivery rate" value={Number.isFinite(breakevenPct) ? `${breakevenPct.toFixed(1)}%` : '—'} />
-                <ResultRow label="Net profit / shipped order" value={fmt(netPerShipped)} highlight="primary" />
-                <ResultRow label="Net / order @ 100% delivery" value={fmt(simpleNet)} />
-              </div>
-
-              <div className="h-px bg-border" />
-
-              <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Credit line</p>
-              <div className="space-y-1.5">
-                <ResultRow label="Cash you fund upfront — ads" value={fmt(monthlyCashUpfront)} />
-                <ResultRow label="Financed on credit — everything else" value={fmt(monthlyFinanced)} highlight="primary" />
-              </div>
-              {monthlyFinanced > 0 && (
-                <div className="overflow-hidden rounded-lg border border-border">
-                  <table className="w-full text-[11px]">
-                    <thead>
-                      <tr className="border-b border-border bg-background/40 text-left text-muted-foreground">
-                        <th className="px-3 py-1.5 font-medium">Repay within</th>
-                        <th className="px-3 py-1.5 font-medium">Share</th>
-                        <th className="px-3 py-1.5 text-right font-medium">Amount due</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tranches.map((t, i) => {
-                        const pct = num(t.pct);
+                    <div className="space-y-1.5">
+                      {flowRows.map((r) => {
+                        const credit = r.amount < 0;
+                        const share = moneyOut > 0 ? (Math.abs(r.amount) / moneyOut) * 100 : 0;
                         return (
-                          <tr key={i} className="border-b border-border/40 last:border-0">
-                            <td className="px-3 py-1.5 tabular-nums text-foreground">{num(t.days)} days</td>
-                            <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{pct}%</td>
-                            <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums text-foreground">{fmt(monthlyFinanced * pct / 100)}</td>
-                          </tr>
+                          <ResultRow
+                            key={r.label}
+                            label={`${r.label} · ${share.toFixed(0)}%`}
+                            value={`${credit ? '+ ' : ''}${fmt(Math.abs(r.amount))}`}
+                          />
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                    </div>
+                  </div>
 
-              {/* Big hero — matches the original ROI/Margin hero */}
-              <div
-                className="stat-shimmer glow-pulse rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
-                style={{ '--glow-color': 'rgba(16, 185, 129, 0.12)' } as React.CSSProperties}
-              >
-                <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
-                  Net Profit / Month
-                </p>
-                <p className={`relative z-10 text-4xl font-bold font-mono ${netProfit >= 0 ? 'gradient-text-emerald' : 'text-rose-400'}`}>
-                  {fmt(netProfit)}
-                </p>
-                <p className="relative z-10 mt-1.5 text-[11px] text-muted-foreground">
-                  {netMarginPct.toFixed(1)}% net margin ·{' '}
-                  {Number.isFinite(breakevenPct)
-                    ? <>breakeven at <span className="font-semibold text-foreground">{breakevenPct.toFixed(1)}%</span> delivery</>
-                    : 'breakeven n/a'}
-                </p>
-              </div>
-            </div>
-          </div>
+                  <div className="h-px bg-border" />
+
+                  {/* Credit line */}
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        Credit line
+                        <span className={`ml-1.5 normal-case tracking-normal ${trancheTotalPct === 100 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          ({trancheTotalPct}% scheduled)
+                        </span>
+                      </p>
+                      <button onClick={addTranche} className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-[10px] text-muted-foreground transition hover:text-foreground">
+                        <Plus className="h-3 w-3" /> Tranche
+                      </button>
+                    </div>
+                    <div className="mb-2 grid grid-cols-2 gap-3">
+                      <CalcField label="Financing Fee %">
+                        <input type="text" inputMode="decimal" value={v.financingFeePct} onChange={(e) => set('financingFeePct', e.target.value)} className="form-input" />
+                      </CalcField>
+                    </div>
+                    <div className="space-y-1.5">
+                      <ResultRow label="Cash you fund upfront — ads" value={fmt(monthlyCashUpfront)} />
+                      <ResultRow label="Financed on credit — everything else" value={fmt(monthlyFinanced)} highlight="primary" />
+                    </div>
+                    <div className="mt-2 space-y-1.5">
+                      {tranches.map((t, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <input type="text" inputMode="decimal" value={t.pct} onChange={(e) => setTranche(i, 'pct', e.target.value)} placeholder="50" className="form-input pr-6 tabular-nums" />
+                            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">%</span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">due in</span>
+                          <div className="relative flex-1">
+                            <input type="text" inputMode="decimal" value={t.days} onChange={(e) => setTranche(i, 'days', e.target.value)} placeholder="7" className="form-input pr-9 tabular-nums" />
+                            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">days</span>
+                          </div>
+                          <button onClick={() => removeTranche(i)} className="rounded-md p-2 text-muted-foreground/40 transition hover:bg-rose-500/10 hover:text-rose-400">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {monthlyFinanced > 0 && (
+                      <div className="mt-2 overflow-hidden rounded-lg border border-border">
+                        <table className="w-full text-[11px]">
+                          <thead>
+                            <tr className="border-b border-border bg-background/40 text-left text-muted-foreground">
+                              <th className="px-3 py-1.5 font-medium">Repay within</th>
+                              <th className="px-3 py-1.5 font-medium">Share</th>
+                              <th className="px-3 py-1.5 text-right font-medium">Amount due</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tranches.map((t, i) => {
+                              const pct = num(t.pct);
+                              return (
+                                <tr key={i} className="border-b border-border/40 last:border-0">
+                                  <td className="px-3 py-1.5 tabular-nums text-foreground">{num(t.days)} days</td>
+                                  <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{pct}%</td>
+                                  <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums text-foreground">{fmt(monthlyFinanced * pct / 100)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="h-px bg-border" />
+
+                  {/* Fixed rate reference */}
+                  <div>
+                    <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      3PL rates <span className="normal-case tracking-normal text-muted-foreground/50">(fixed)</span>
+                    </p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg border border-border bg-background/40 p-3">
+                      {RATE_REFERENCE.map((r) => (
+                        <div key={r.label} className="flex items-center justify-between text-[11px]">
+                          <span className="text-muted-foreground/80">{r.label}</span>
+                          <span className="font-mono font-medium tabular-nums text-foreground">{r.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[10px] text-muted-foreground/60">
+                      Net / order @ 100% delivery would be <span className="text-foreground">{fmt(simpleNet)}</span>.
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </motion.div>
     </PageTransition>
