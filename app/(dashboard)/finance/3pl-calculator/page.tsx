@@ -197,7 +197,8 @@ export default function ThreePLCalculatorPage() {
   const shipped = qty;
   const delivered = qty * d;
   const rtoOrders = qty * rto;
-  const totalRevenue = delivered * sp;
+  const shopifyRevenue = shipped * sp;   // gross booked on Shopify (all orders)
+  const totalRevenue = delivered * sp;   // actually collected — COD, delivered only
 
   // Cash you must float = costs you pay GST-inclusive (you front the 18% on
   // COGS even though you reclaim it later) + any net GST owed.
@@ -232,9 +233,9 @@ export default function ThreePLCalculatorPage() {
   const profitBeforeGst = moneyIn - outCOGS + stockRecovered - total3PL - outAds - outFinancing;
   const netProfit = moneyIn - moneyOut;
   const netMarginPct = moneyIn > 0 ? (netProfit / moneyIn) * 100 : 0;
-  // Gross profit = revenue − net product cost consumed (after RTO recovery),
-  // before 3PL fees, ads & GST.
-  const grossProfit = moneyIn - (outCOGS - stockRecovered);
+  // Gross profit = everything except ad spend. i.e. revenue minus all costs
+  // (net COGS, 3PL fees, net GST, financing) but BEFORE ads. Net = gross − ads.
+  const grossProfit = netProfit + outAds;
   const grossMarginPct = moneyIn > 0 ? (grossProfit / moneyIn) * 100 : 0;
 
   const flowRows = [
@@ -358,8 +359,9 @@ export default function ThreePLCalculatorPage() {
             <div className="space-y-1.5">
               <ResultRow label="Breakeven ROAS (BEROAS)" value={Number.isFinite(beroas) ? `${beroas.toFixed(2)}x` : '—'} />
               <ResultRow label="Ad spend / order" value={fmt(ad)} />
-              <ResultRow label="Revenue" value={fmt(moneyIn)} />
-              <ResultRow label="Gross profit" value={`${fmt(grossProfit)} · ${grossMarginPct.toFixed(1)}%`} />
+              <ResultRow label="Shopify revenue (all orders booked)" value={fmt(shopifyRevenue)} />
+              <ResultRow label="Delivered revenue (collected — COD)" value={fmt(moneyIn)} />
+              <ResultRow label="Gross profit (excl. ad spend)" value={`${fmt(grossProfit)} · ${grossMarginPct.toFixed(1)}%`} />
               <ResultRow label="Profit before GST" value={fmt(profitBeforeGst)} />
               {gstActive ? (
                 <>
@@ -384,7 +386,7 @@ export default function ThreePLCalculatorPage() {
                 {fmt(netProfit)}
               </p>
               <p className="relative z-10 mt-1.5 text-[11px] text-muted-foreground">
-                {grossMarginPct.toFixed(1)}% gross · <span className="text-foreground font-medium">{netMarginPct.toFixed(1)}% net</span> — final, after all costs, ads &amp; GST
+                {grossMarginPct.toFixed(1)}% gross margin
               </p>
             </div>
           </div>
