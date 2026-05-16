@@ -10,7 +10,6 @@ import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { getCountries } from '@/lib/markets';
 import { isWinning, effectiveBeroas } from '@/lib/funnels';
 import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
@@ -95,7 +94,6 @@ export default function FunnelFinancePage() {
   // Filters
   const [filterDate, setFilterDate] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<FunnelStatus | 'all'>('all');
-  const [filterCountry, setFilterCountry] = useState<string>('all');
   const [search, setSearch] = useState('');
 
 
@@ -128,7 +126,7 @@ export default function FunnelFinancePage() {
     }
   };
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, EUR: 0.92, INR: 83.5 };
+  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 83.5 };
   const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
 
   const productIdByName = useMemo(() => {
@@ -152,9 +150,8 @@ export default function FunnelFinancePage() {
     const q = search.trim().toLowerCase();
     return funnels.filter((f) => {
       if (statusFilter !== 'all' && f.status !== statusFilter) return false;
-      if (filterCountry !== 'all' && f.country !== filterCountry) return false;
       if (q) {
-        const hay = [f.productName, f.country, f.language].join(' ').toLowerCase();
+        const hay = [f.productName, f.funnelishUrl].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -164,7 +161,7 @@ export default function FunnelFinancePage() {
       const sb = moneyByFunnel[b.id]?.totalSpend ?? 0;
       return sb - sa;
     });
-  }, [funnels, statusFilter, filterCountry, search, moneyByFunnel]);
+  }, [funnels, statusFilter, search, moneyByFunnel]);
 
   // Grand totals
   const totals = useMemo(() => {
@@ -214,7 +211,7 @@ export default function FunnelFinancePage() {
         </div>
 
         <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
-          {(['USD', 'EUR', 'INR'] as const).map((c) => (
+          {(['USD', 'INR'] as const).map((c) => (
             <button
               key={c}
               type="button"
@@ -263,14 +260,6 @@ export default function FunnelFinancePage() {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <select
-            value={filterCountry}
-            onChange={(e) => setFilterCountry(e.target.value)}
-            className="form-input py-1.5 text-[12px] w-40"
-          >
-            <option value="all">All countries</option>
-            {getCountries().map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -478,11 +467,11 @@ function FinanceCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-foreground">{f.productName}</p>
-          <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2 py-0.5">
-            <Globe className="h-3 w-3 text-sky-400" aria-hidden />
-            <span className="text-[11px] font-semibold tracking-tight text-foreground">{f.country}</span>
-            <span className="text-sky-500/40">·</span>
-            <span className="text-[11px] font-medium text-sky-300/90">{f.language}</span>
+          <div className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background/40 px-2 py-0.5">
+            <Globe className="h-3 w-3 shrink-0 text-muted-foreground/50" aria-hidden />
+            <span className="truncate text-[11px] font-medium text-muted-foreground">
+              {f.funnelishUrl ? f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'No LP link'}
+            </span>
           </div>
         </div>
         <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>

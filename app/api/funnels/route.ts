@@ -19,17 +19,13 @@ function sanitizeFunnel(input: Record<string, unknown>, base?: Partial<Funnel>):
   const out: Partial<Funnel> = { ...base };
   if ('productId' in input) out.productId = String(input.productId ?? '').trim();
   if ('productName' in input) out.productName = String(input.productName ?? '').trim();
-  if ('country' in input) out.country = String(input.country ?? '').trim();
-  if ('language' in input) out.language = String(input.language ?? '').trim();
   if ('funnelishUrl' in input) out.funnelishUrl = String(input.funnelishUrl ?? '').trim();
+  if ('inspoLink' in input) out.inspoLink = String(input.inspoLink ?? '').trim();
   if ('status' in input) {
     const s = input.status;
     out.status = VALID_STATUSES.includes(s as FunnelStatus) ? (s as FunnelStatus) : 'draft';
   }
   if ('launchDate' in input) out.launchDate = String(input.launchDate ?? '').trim();
-  if ('sellingPrice' in input) out.sellingPrice = Math.max(0, Number(input.sellingPrice) || 0);
-  if ('deliveryRate' in input) out.deliveryRate = Math.max(0, Math.min(100, Number(input.deliveryRate) || 0));
-  if ('beroas' in input) out.beroas = Math.max(0, Number(input.beroas) || 0);
   if ('notes' in input) out.notes = String(input.notes ?? '').trim();
   return out;
 }
@@ -42,7 +38,6 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const product = searchParams.get('product') ?? '';
-    const country = searchParams.get('country') ?? '';
     const status = searchParams.get('status') ?? '';
 
     const firestore = db();
@@ -57,14 +52,10 @@ export async function GET(request: Request) {
           id: data.id ?? doc.id,
           productId: data.productId ?? '',
           productName: data.productName ?? '',
-          country: data.country ?? '',
-          language: data.language ?? '',
           funnelishUrl: data.funnelishUrl ?? '',
+          inspoLink: data.inspoLink ?? '',
           status: (VALID_STATUSES.includes(data.status) ? data.status : 'draft') as FunnelStatus,
           launchDate: data.launchDate ?? '',
-          sellingPrice: Number(data.sellingPrice) || 0,
-          deliveryRate: Number(data.deliveryRate) || 0,
-          beroas: Number(data.beroas) || 0,
           notes: data.notes ?? '',
           createdBy: data.createdBy ?? '',
           createdAt: data.createdAt ?? '',
@@ -75,7 +66,6 @@ export async function GET(request: Request) {
 
     const filtered = entries.filter((e) => {
       if (product && e.productName !== product) return false;
-      if (country && e.country !== country) return false;
       if (status && e.status !== status) return false;
       return true;
     });
@@ -99,22 +89,16 @@ export async function POST(request: Request) {
 
     if (!sanitized.productId) return NextResponse.json({ error: 'productId is required — pick a product from the tracker.' }, { status: 400 });
     if (!sanitized.productName) return NextResponse.json({ error: 'Product name is required.' }, { status: 400 });
-    if (!sanitized.country) return NextResponse.json({ error: 'Country is required.' }, { status: 400 });
-    if (!sanitized.language) return NextResponse.json({ error: 'Language is required.' }, { status: 400 });
 
     const now = new Date().toISOString();
     const entry: Funnel = {
       id: crypto.randomUUID(),
       productId: sanitized.productId,
       productName: sanitized.productName,
-      country: sanitized.country,
-      language: sanitized.language,
       funnelishUrl: sanitized.funnelishUrl ?? '',
+      inspoLink: sanitized.inspoLink ?? '',
       status: sanitized.status ?? 'draft',
       launchDate: sanitized.launchDate ?? '',
-      sellingPrice: sanitized.sellingPrice ?? 0,
-      deliveryRate: sanitized.deliveryRate ?? 0,
-      beroas: sanitized.beroas ?? 0,
       notes: sanitized.notes ?? '',
       createdBy: session.email ?? '',
       createdAt: now,

@@ -5,13 +5,15 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Funnel as FunnelIcon, ArrowLeft, ArrowRight, Plus, Trash2, Loader2, AlertTriangle, Globe,
-  TrendingUp, ShoppingCart, Target, Trophy,
+  Funnel as FunnelIcon, ArrowLeft, ArrowRight, Plus, Trash2, Loader2, AlertTriangle,
+  ExternalLink, Lightbulb, TrendingUp, ShoppingCart, Target, Trophy,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
+import { productEconomics } from '@/lib/3pl';
+import { formatINR } from '@/lib/currency-converter';
 import { isWinning, effectiveBeroas, aggregateLogs } from '@/lib/funnels';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
@@ -76,7 +78,7 @@ export default function FunnelDetailPage() {
         fetch(`/api/funnels/logs?funnelId=${encodeURIComponent(funnelId)}`).then((r) => r.json()),
       ]);
       const f: Funnel | undefined = (funnelsRes.funnels ?? []).find((x: Funnel) => x.id === funnelId);
-      if (!f) { setError('Funnel not found.'); setFunnel(null); return; }
+      if (!f) { setError('LP not found.'); setFunnel(null); return; }
       setFunnel(f);
       const p: ProductTrackerEntry | undefined = (productsRes.entries ?? []).find((e: ProductTrackerEntry) =>
         (f.productId && e.id === f.productId) || (!f.productId && e.productName === f.productName)
@@ -84,7 +86,7 @@ export default function FunnelDetailPage() {
       setProduct(p ?? null);
       setLogs(logsRes.logs ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load funnel.');
+      setError(err instanceof Error ? err.message : 'Failed to load LP.');
     } finally {
       setLoading(false);
     }
@@ -112,13 +114,13 @@ export default function FunnelDetailPage() {
       if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
       setFunnel({ ...funnel, ...patch });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update funnel.');
+      setError(e instanceof Error ? e.message : 'Failed to update LP.');
     }
   };
 
   const deleteFunnel = async () => {
     if (!funnel) return;
-    if (!confirm('Delete this funnel and all its logs? This cannot be undone.')) return;
+    if (!confirm('Delete this LP and all its logs? This cannot be undone.')) return;
     try {
       const r = await fetch('/api/funnels', {
         method: 'DELETE',
@@ -131,7 +133,7 @@ export default function FunnelDetailPage() {
       }
       window.location.href = '/funnels';
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to delete funnel.');
+      setError(e instanceof Error ? e.message : 'Failed to delete LP.');
     }
   };
 
@@ -170,11 +172,11 @@ export default function FunnelDetailPage() {
     return (
       <PageTransition className="mx-auto max-w-7xl p-5 space-y-4">
         <Link href="/funnels" className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3 w-3" /> Back to Funnels
+          <ArrowLeft className="h-3 w-3" /> Back to LPs
         </Link>
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
           <AlertTriangle className="mx-auto h-6 w-6 text-destructive" />
-          <p className="mt-2 text-[13px] text-foreground">{error ?? 'Funnel not found.'}</p>
+          <p className="mt-2 text-[13px] text-foreground">{error ?? 'LP not found.'}</p>
         </div>
       </PageTransition>
     );
@@ -186,7 +188,7 @@ export default function FunnelDetailPage() {
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
       <Link href="/funnels" className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-3 w-3" /> Back to Funnels
+        <ArrowLeft className="h-3 w-3" /> Back to LPs
       </Link>
 
       {/* Hero */}
@@ -219,15 +221,18 @@ export default function FunnelDetailPage() {
                   <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{funnel.productName}</h1>
                 )}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1">
-                    <Globe className="h-3.5 w-3.5 text-sky-400" aria-hidden />
-                    <span className="text-[13px] font-semibold tracking-tight text-foreground">{funnel.country}</span>
-                    <span className="text-sky-500/40">·</span>
-                    <span className="text-[13px] font-medium text-sky-300/90">{funnel.language}</span>
-                  </span>
-                  {funnel.funnelishUrl && (
-                    <a href={funnel.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-[12px] text-primary hover:text-primary/80">
-                      <Globe className="h-3 w-3" /> Funnelish
+                  {funnel.funnelishUrl ? (
+                    <a href={funnel.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1 text-[12px] font-medium text-sky-300 transition hover:bg-sky-500/15">
+                      <ExternalLink className="h-3.5 w-3.5 text-sky-400" aria-hidden /> Open LP
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background/40 px-2.5 py-1 text-[12px] text-muted-foreground">
+                      <ExternalLink className="h-3.5 w-3.5 opacity-40" aria-hidden /> No LP link
+                    </span>
+                  )}
+                  {funnel.inspoLink && (
+                    <a href={funnel.inspoLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-amber-400 hover:text-amber-300">
+                      <Lightbulb className="h-3.5 w-3.5" /> Inspiration
                     </a>
                   )}
                   {funnel.launchDate && (
@@ -254,7 +259,7 @@ export default function FunnelDetailPage() {
             <button
               onClick={deleteFunnel}
               className="rounded-md p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400"
-              title="Delete funnel"
+              title="Delete LP"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -306,13 +311,13 @@ export default function FunnelDetailPage() {
       {/* KPI tiles */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiTile icon={<TrendingUp className="h-3.5 w-3.5" />} label="Latest ROAS" value={animLatestRoas > 0 ? `${animLatestRoas.toFixed(2)}x` : '—'} accent={agg.latestRoas === 0 ? 'amber' : winning ? 'emerald' : 'rose'} delay={0} />
-        <KpiTile icon={<Target className="h-3.5 w-3.5" />} label="BEROAS" value={animBeroas > 0 ? `${animBeroas.toFixed(2)}x` : '—'} accent="violet" hint={beroas > 0 ? `win ≥ ${(beroas + 1).toFixed(2)}x` : 'set pricing'} delay={0.05} />
+        <KpiTile icon={<Target className="h-3.5 w-3.5" />} label="BEROAS" value={animBeroas > 0 ? `${animBeroas.toFixed(2)}x` : '—'} accent="violet" hint={beroas > 0 ? `win ≥ ${(beroas + 1).toFixed(2)}x` : 'set on product'} delay={0.05} />
         <KpiTile icon={<ShoppingCart className="h-3.5 w-3.5" />} label="Orders" value={Math.round(animOrders).toLocaleString('en-IN')} accent="sky" delay={0.1} />
         <KpiTile icon={<FunnelIcon className="h-3.5 w-3.5" />} label="Days logged" value={Math.round(animDays).toLocaleString('en-IN')} accent="amber" hint={agg.lastLogDate ? `last ${agg.lastLogDate}` : 'no logs yet'} delay={0.15} />
       </div>
 
-      {/* Pricing editor */}
-      <PricingEditor key={funnel.id} funnel={funnel} product={product} onSave={updateFunnel} />
+      {/* Product economics — read-only; the source of truth for BEROAS */}
+      <ProductEconomicsPanel product={product} productId={productId} />
 
       {/* Log entry */}
       <LogEntrySection
@@ -338,8 +343,7 @@ export default function FunnelDetailPage() {
       />
 
       <p className="text-[10px] text-muted-foreground/60">
-        Logged in as {user?.email ?? '—'} · money tracking lives in{' '}
-        <Link href={`/finance/funnels/${funnel.id}`} className="text-primary hover:text-primary/80">Funnel Finance →</Link>
+        Logged in as {user?.email ?? '—'} · economics are set on the product · money tracking moves to Finance soon
       </p>
     </PageTransition>
   );
@@ -404,32 +408,19 @@ function DateChip({ active, onClick, children }: { active: boolean; onClick: () 
   );
 }
 
-// ── Pricing editor — SP + delivery rate → auto BEROAS ───────────────────────
+// ── Product economics — read-only; the product is the source of truth ───────
 
-function PricingEditor({ funnel: f, product, onSave }: {
-  funnel: Funnel;
+function ProductEconomicsPanel({ product, productId }: {
   product: ProductTrackerEntry | null;
-  onSave: (patch: Partial<Funnel>) => void;
+  productId?: string;
 }) {
-  const [editSP, setEditSP] = useState<string>(f.sellingPrice ? String(f.sellingPrice) : '');
-  const [editDR, setEditDR] = useState<string>(f.deliveryRate ? String(f.deliveryRate) : '95');
-  const [saved, setSaved] = useState(false);
-
-  const sp = parseFloat(editSP) || 0;
-  const dr = parseFloat(editDR) || 0;
-  const cost = product ? (Number(product.cogs) || 0) + (Number(product.shipping) || 0) : 0;
-  const margin = sp > 0 && sp > cost && dr > 0 ? ((sp - cost) / sp) * (dr / 100) : 0;
-  const beroas = margin > 0 ? 1 / margin : 0;
+  const sp = product ? Number(product.sellingPrice) || 0 : 0;
+  const cogs = product ? Number(product.cogs) || 0 : 0;
+  const dr = product ? Number(product.deliveryRate) || 0 : 0;
+  const econ = productEconomics(sp, cogs, dr);
+  const beroas = Number.isFinite(econ.beroas) && econ.beroas > 0 ? econ.beroas : 0;
   const winThreshold = beroas > 0 ? beroas + 1 : 0;
-
-  const flush = () => {
-    const nextSP = parseFloat(editSP) || 0;
-    const nextDR = parseFloat(editDR) || 0;
-    if (nextSP === (f.sellingPrice || 0) && nextDR === (f.deliveryRate || 0)) return;
-    onSave({ sellingPrice: nextSP, deliveryRate: nextDR });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1200);
-  };
+  const priced = !!product && sp > 0 && dr > 0;
 
   return (
     <motion.div
@@ -441,56 +432,43 @@ function PricingEditor({ funnel: f, product, onSave }: {
       <div className="flex items-center justify-between border-b border-primary/15 px-5 py-3">
         <div className="flex items-center gap-2">
           <Target className="h-3.5 w-3.5 text-primary" />
-          <h3 className="text-sm font-semibold text-foreground">Pricing for this market</h3>
-          {saved && <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">saved ✓</span>}
+          <h3 className="text-sm font-semibold text-foreground">Product economics</h3>
         </div>
         {!product ? (
           <span className="text-[10px] text-amber-400">Link a product first</span>
-        ) : cost > 0 ? (
-          <span className="text-[10px] text-muted-foreground">Cost ${cost.toFixed(2)} from product</span>
-        ) : (
-          <span className="text-[10px] text-amber-400">Product has no cost — set COGS + shipping in Products</span>
-        )}
+        ) : !priced ? (
+          <span className="text-[10px] text-amber-400">Set price &amp; delivery rate on the product</span>
+        ) : productId ? (
+          <Link href={`/product-tracker/${productId}`} className="inline-flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80">
+            Edit on product <ArrowRight className="h-3 w-3" />
+          </Link>
+        ) : null}
       </div>
-      <div className="grid grid-cols-1 gap-3 px-5 py-4 md:grid-cols-3">
-        <div className="rounded-xl border border-border bg-card p-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Selling price (USD)</p>
-          <div className="mt-2 flex items-baseline gap-1">
-            <span className="text-lg font-semibold text-emerald-400 leading-none">$</span>
-            <input
-              type="number" min="0" step="0.01" inputMode="decimal"
-              value={editSP}
-              onChange={(e) => setEditSP(e.target.value)}
-              onBlur={flush}
-              className="w-full bg-transparent text-[22px] font-semibold leading-none tabular-nums text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              placeholder="0"
-            />
-          </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Delivery rate (%)</p>
-          <div className="mt-2 flex items-baseline gap-1">
-            <input
-              type="number" min="0" max="100" step="0.1" inputMode="decimal"
-              value={editDR}
-              onChange={(e) => setEditDR(e.target.value)}
-              onBlur={flush}
-              className="w-full bg-transparent text-[22px] font-semibold leading-none tabular-nums text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-            <span className="text-lg font-semibold text-muted-foreground leading-none">%</span>
-          </div>
-        </div>
-        <div className="rounded-xl border border-primary/30 bg-primary/[0.06] p-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-primary/80">BEROAS</p>
-          <p className="mt-2 text-[22px] font-semibold leading-none tabular-nums text-primary">
-            {beroas > 0 ? `${beroas.toFixed(2)}x` : '—'}
-          </p>
-          <p className="mt-1.5 text-[10px] text-muted-foreground">
-            Margin {(margin * 100).toFixed(1)}% · Win at <span className="text-emerald-400 font-semibold">{winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'}</span>
-          </p>
-        </div>
+      <div className="grid grid-cols-2 gap-3 px-5 py-4 md:grid-cols-5">
+        <ReadStat label="Selling price" value={priced ? formatINR(sp) : '—'} />
+        <ReadStat label="COGS / unit" value={cogs > 0 ? formatINR(cogs) : '—'} />
+        <ReadStat label="Delivery rate" value={dr > 0 ? `${dr}%` : '—'} />
+        <ReadStat label="Gross margin" value={priced ? `${econ.grossMarginPct.toFixed(1)}%` : '—'} tone="emerald" />
+        <ReadStat label="BEROAS" value={beroas > 0 ? `${beroas.toFixed(2)}x` : '—'} tone="primary" hint={winThreshold > 0 ? `win ≥ ${winThreshold.toFixed(2)}x` : undefined} />
       </div>
+      <p className="px-5 pb-3 text-[10px] text-muted-foreground/70">
+        Computed from the product&apos;s COGS · price · delivery rate via the 3PL model. This holds across every LP &amp; ad of this product.
+      </p>
     </motion.div>
+  );
+}
+
+function ReadStat({ label, value, tone, hint }: {
+  label: string; value: string; tone?: 'primary' | 'emerald'; hint?: string;
+}) {
+  const text = tone === 'primary' ? 'text-primary' : tone === 'emerald' ? 'text-emerald-400' : 'text-foreground';
+  const border = tone === 'primary' ? 'border-primary/30 bg-primary/[0.06]' : tone === 'emerald' ? 'border-emerald-500/25 bg-emerald-500/[0.05]' : 'border-border bg-card';
+  return (
+    <div className={cn('rounded-xl border p-3', border)}>
+      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className={cn('mt-2 text-[20px] font-semibold leading-none tabular-nums', text)}>{value}</p>
+      {hint && <p className="mt-1.5 text-[10px] text-muted-foreground">{hint}</p>}
+    </div>
   );
 }
 

@@ -76,25 +76,23 @@ export interface ExchangeRates {
   [key: string]: number;
 }
 
-// Product Tracker
-export interface ProductCostOverride {
-  cogs?: number;       // optional override (USD per unit)
-  shipping?: number;   // optional override (USD per unit)
-}
-
+// Product Tracker — a product owns its economics. COGS + selling price +
+// delivery rate run through the shared 3PL engine (lib/3pl.ts) to give a
+// BEROAS + gross margin that holds across every LP and ad of this product.
 export interface ProductTrackerEntry {
   id: string;
   productName: string;
   productFileLink: string;
   productStage: string;
   totalSpent: number;
-  // Per-product BASE cost (USD) — drives BEROAS when no country override exists.
-  // Leave at 0 if you haven't sourced the product yet.
-  cogs: number;        // unit cost from supplier
-  shipping: number;    // shipping per unit
-  // Per-country cost overrides. Looked up by funnel.country before falling
-  // back to base cogs/shipping above. Either field may be omitted to inherit.
-  costsByCountry?: Record<string, ProductCostOverride>;
+
+  // Economics (India). cogs is stored canonical in ₹ INR; costCurrency only
+  // remembers which unit it was last entered in for display convenience.
+  cogs: number;                       // ₹ per unit, landed supplier cost
+  costCurrency: 'INR' | 'USD';        // input-unit hint only — cogs stays ₹
+  sellingPrice: number;               // ₹ per unit (GST-inclusive)
+  deliveryRate: number;               // 0–100 percent successfully delivered
+
   remarks: string;
   createdAt: string;
   updatedAt: string;

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Trophy, ArrowRight, Globe, AlertTriangle,
+  Trophy, ArrowRight, Link2, AlertTriangle,
   TrendingUp, TrendingDown,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
@@ -121,7 +121,7 @@ export default function WinnersPage() {
     }
   };
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, EUR: 0.92, INR: 83.5 };
+  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 83.5 };
   const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
 
   // Per-product roll-up
@@ -169,7 +169,10 @@ export default function WinnersPage() {
       const bestFunnel = sortedByRoas[0];
       const worstFunnel = sortedByRoas.length > 1 ? sortedByRoas[sortedByRoas.length - 1] : undefined;
 
-      const markets = Array.from(new Set(myFunnels.map((f) => f.country).filter(Boolean)));
+      const markets = Array.from(new Set(
+        myFunnels.map((f) => f.funnelishUrl).filter(Boolean)
+          .map((u) => u.replace(/^https?:\/\//, '').replace(/\/$/, ''))
+      ));
 
       return {
         product: p,
@@ -242,13 +245,13 @@ export default function WinnersPage() {
             <h1 className="text-xl font-semibold tracking-tight text-foreground">Winners</h1>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {summaries.length} winning product{summaries.length === 1 ? '' : 's'} ·
-              {' '}{grand.activeFunnels} live funnel{grand.activeFunnels === 1 ? '' : 's'} across {grand.totalFunnels} total
+              {' '}{grand.activeFunnels} live LP{grand.activeFunnels === 1 ? '' : 's'} across {grand.totalFunnels} total
             </p>
           </div>
         </div>
 
         <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
-          {(['USD', 'EUR', 'INR'] as const).map((c) => (
+          {(['USD', 'INR'] as const).map((c) => (
             <button
               key={c}
               type="button"
@@ -471,7 +474,7 @@ function WinnerCard({
               <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-400">
                 <TrendingUp className="h-3 w-3" />
                 <span className="font-medium">Best:</span>
-                <span>{bestFunnel.funnel.country}</span>
+                <span className="max-w-[160px] truncate">{bestFunnel.funnel.funnelishUrl ? bestFunnel.funnel.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'LP'}</span>
                 <span className="font-semibold tabular-nums">{bestFunnel.blendedRoas.toFixed(2)}x</span>
               </span>
             )}
@@ -479,17 +482,17 @@ function WinnerCard({
               <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-400">
                 <TrendingDown className="h-3 w-3" />
                 <span className="font-medium">Worst:</span>
-                <span>{worstFunnel.funnel.country}</span>
+                <span className="max-w-[160px] truncate">{worstFunnel.funnel.funnelishUrl ? worstFunnel.funnel.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'LP'}</span>
                 <span className="font-semibold tabular-nums">{worstFunnel.blendedRoas.toFixed(2)}x</span>
               </span>
             )}
           </div>
         )}
 
-        {/* Markets list */}
+        {/* LP links */}
         {markets.length > 0 && (
           <div className="flex flex-wrap items-center gap-1">
-            <Globe className="mr-0.5 h-3 w-3 text-muted-foreground" />
+            <Link2 className="mr-0.5 h-3 w-3 text-muted-foreground" />
             {markets.slice(0, 6).map((m) => (
               <span key={m} className="inline-block rounded-full border border-border bg-background/40 px-2 py-0.5 text-[10px] text-muted-foreground">
                 {m}
@@ -503,8 +506,7 @@ function WinnerCard({
 
         {!hasData && (
           <p className="text-[11px] text-muted-foreground/60">
-            No money logs yet — log spend/revenue from{' '}
-            <Link href="/finance/funnels" className="text-primary hover:text-primary/80">Finance</Link>.
+            No performance logs yet — log ROAS/orders from the LP.
           </p>
         )}
       </div>
@@ -549,8 +551,7 @@ function FunnelBars({ perFunnel }: { perFunnel: PerFunnelMetrics[] }) {
           <div key={f.id}>
             <div className="flex items-center justify-between gap-2 text-[11px]">
               <span className="truncate text-muted-foreground">
-                {f.country}{' '}
-                <span className="text-muted-foreground/60">· {f.language}</span>
+                {f.funnelishUrl ? f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (f.productName || 'LP')}
               </span>
               <span className={cn('shrink-0 tabular-nums', !hasData ? 'text-muted-foreground/50' : winning ? 'text-emerald-400 font-semibold' : 'text-foreground')}>
                 {hasData ? `${blendedRoas.toFixed(2)}x` : 'no data'}

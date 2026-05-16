@@ -5,14 +5,13 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   Funnel as FunnelIcon, Plus, Check, X, Loader2,
-  AlertTriangle, Globe, Search, ArrowRight, BarChart3,
+  AlertTriangle, Link2, Search, ArrowRight, BarChart3,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { MARKETS, getLanguagesForCountry, getCountries } from '@/lib/markets';
-// (DatePicker is already imported below for the daily log entry)
+import { productEconomics } from '@/lib/3pl';
 import { isWinning, aggregateLogs, hitRate, effectiveBeroas } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
@@ -74,7 +73,6 @@ export default function FunnelsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'performance'>('list');
   const [statusFilter, setStatusFilter] = useState<FunnelStatus | 'all'>('all');
   const [filterProduct, setFilterProduct] = useState<string>('all');
-  const [filterCountry, setFilterCountry] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [filterDate, setFilterDate] = useState<string>('');
 
@@ -142,9 +140,8 @@ export default function FunnelsPage() {
     return funnels.filter((f) => {
       if (statusFilter !== 'all' && f.status !== statusFilter) return false;
       if (filterProduct !== 'all' && f.productName !== filterProduct) return false;
-      if (filterCountry !== 'all' && f.country !== filterCountry) return false;
       if (q) {
-        const hay = [f.productName, f.country, f.language, f.notes].join(' ').toLowerCase();
+        const hay = [f.productName, f.funnelishUrl, f.notes].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -153,7 +150,7 @@ export default function FunnelsPage() {
       if (sd !== 0) return sd;
       return b.updatedAt.localeCompare(a.updatedAt);
     });
-  }, [funnels, statusFilter, filterProduct, filterCountry, search]);
+  }, [funnels, statusFilter, filterProduct, search]);
 
   // Filtered logs view — when a specific date is picked, scope all aggregations to that day.
   const logsScoped = useMemo(() => {
@@ -222,7 +219,7 @@ export default function FunnelsPage() {
       setLogsByFunnel((prev) => ({ ...prev, [data.funnel.id]: [] }));
       setShowAddModal(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add funnel.');
+      setError(err instanceof Error ? err.message : 'Failed to add LP.');
     }
   };
 
@@ -235,9 +232,9 @@ export default function FunnelsPage() {
             <FunnelIcon className="h-4 w-4" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Funnels</h1>
+            <h1 className="text-lg font-semibold text-foreground">LPs</h1>
             <p className="text-[11px] text-muted-foreground">
-              Launches &amp; performance · {summary.liveCount} live of {funnels.length}
+              Landing pages &amp; performance · {summary.liveCount} live of {funnels.length}
             </p>
           </div>
         </div>
@@ -252,7 +249,7 @@ export default function FunnelsPage() {
                 viewMode === 'list' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              <FunnelIcon className="h-3 w-3" /> Funnels
+              <FunnelIcon className="h-3 w-3" /> LPs
             </button>
             <button
               type="button"
@@ -278,7 +275,7 @@ export default function FunnelsPage() {
             />
             <span className="relative z-10 flex items-center gap-2">
               <Plus className="h-4 w-4" strokeWidth={2.5} />
-              <span className="tracking-tight">Add Funnel</span>
+              <span className="tracking-tight">Add LP</span>
             </span>
           </motion.button>
         </div>
@@ -323,14 +320,6 @@ export default function FunnelsPage() {
             <option value="all">All products</option>
             {productOptions.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
-          <select
-            value={filterCountry}
-            onChange={(e) => setFilterCountry(e.target.value)}
-            className="form-input py-1.5 text-[12px] w-40"
-          >
-            <option value="all">All countries</option>
-            {getCountries().map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -366,11 +355,11 @@ export default function FunnelsPage() {
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-10 text-center">
           <FunnelIcon className="mx-auto h-7 w-7 text-muted-foreground/30" />
           <p className="mt-2 text-[13px] font-medium text-foreground">
-            {funnels.length === 0 ? 'No funnels yet' : 'No funnels match your filters'}
+            {funnels.length === 0 ? 'No LPs yet' : 'No LPs match your filters'}
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {funnels.length === 0
-              ? 'Click "Add Funnel" to register your first one.'
+              ? 'Click "Add LP" to register your first one.'
               : 'Try clearing a filter.'}
           </p>
         </div>
@@ -596,11 +585,11 @@ function FunnelCard({
               </span>
             )}
           </div>
-          <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2 py-0.5">
-            <Globe className="h-3 w-3 text-sky-400" aria-hidden />
-            <span className="text-[11px] font-semibold tracking-tight text-foreground">{f.country}</span>
-            <span className="text-sky-500/40">·</span>
-            <span className="text-[11px] font-medium text-sky-300/90">{f.language}</span>
+          <div className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background/40 px-2 py-0.5">
+            <Link2 className={cn('h-3 w-3 shrink-0', f.funnelishUrl ? 'text-sky-400' : 'text-muted-foreground/40')} aria-hidden />
+            <span className="truncate text-[11px] font-medium text-muted-foreground">
+              {f.funnelishUrl ? f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'No LP link'}
+            </span>
           </div>
         </div>
         <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
@@ -773,31 +762,6 @@ function PerformanceView({
   const animProfit = useCountUp(grand.profit, 600);
   const animRoas = useCountUp(grand.blendedRoas, 600);
 
-  const byCountry = useMemo(() => {
-    const map = new Map<string, Aggregate>();
-    enriched.forEach((e) => {
-      const key = e.funnel.country || '—';
-      const a = map.get(key) ?? { funnelCount: 0, funnelsWithData: 0, winners: 0, spend: 0, revenue: 0, orders: 0 };
-      a.funnelCount++;
-      if (e.hasData) {
-        a.funnelsWithData++;
-        if (e.winning) a.winners++;
-      }
-      a.spend += e.spend;
-      a.revenue += e.revenue;
-      a.orders += e.orders;
-      map.set(key, a);
-    });
-    return Array.from(map.entries())
-      .map(([country, a]) => ({
-        country, ...a,
-        profit: a.revenue - a.spend,
-        blendedRoas: a.spend > 0 ? a.revenue / a.spend : 0,
-        hitRate: a.funnelsWithData > 0 ? (a.winners / a.funnelsWithData) * 100 : 0,
-      }))
-      .sort((a, b) => b.spend - a.spend);
-  }, [enriched]);
-
   const byProduct = useMemo(() => {
     const map = new Map<string, Aggregate>();
     enriched.forEach((e) => {
@@ -856,34 +820,19 @@ function PerformanceView({
 
       {hasAnyData && (
         <>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <PerfBreakdown
-              title="By country"
-              icon={<Globe className="h-3.5 w-3.5" />}
-              rows={byCountry.map((b) => ({
-                label: b.country,
-                funnelCount: b.funnelCount,
-                roas: b.blendedRoas,
-                hit: b.hitRate,
-                spend: b.spend,
-                revenue: b.revenue,
-                profit: b.profit,
-              }))}
-            />
-            <PerfBreakdown
-              title="By product"
-              icon={<FunnelIcon className="h-3.5 w-3.5" />}
-              rows={byProduct.map((b) => ({
-                label: b.product,
-                funnelCount: b.funnelCount,
-                roas: b.blendedRoas,
-                hit: b.hitRate,
-                spend: b.spend,
-                revenue: b.revenue,
-                profit: b.profit,
-              }))}
-            />
-          </div>
+          <PerfBreakdown
+            title="By product"
+            icon={<FunnelIcon className="h-3.5 w-3.5" />}
+            rows={byProduct.map((b) => ({
+              label: b.product,
+              funnelCount: b.funnelCount,
+              roas: b.blendedRoas,
+              hit: b.hitRate,
+              spend: b.spend,
+              revenue: b.revenue,
+              profit: b.profit,
+            }))}
+          />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <FunnelRanking title="Top performers" tone="emerald" funnels={top5} />
@@ -1007,7 +956,7 @@ function PerfBreakdown({ title, icon, rows }: {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12px] font-medium text-foreground">{r.label}</p>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">
-                      {r.funnelCount} funnel{r.funnelCount === 1 ? '' : 's'}
+                      {r.funnelCount} LP{r.funnelCount === 1 ? '' : 's'}
                       <span className="text-muted-foreground/40"> · </span>
                       hit <span className="tabular-nums text-foreground">{r.hit.toFixed(0)}%</span>
                     </p>
@@ -1097,13 +1046,7 @@ function FunnelRanking({ title, tone, funnels }: {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[12px] font-medium text-foreground group-hover:text-primary">{f.productName}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="inline-flex items-center gap-1 rounded-md border border-sky-500/25 bg-sky-500/10 px-1.5 py-0.5 text-[10px]">
-                        <Globe className="h-2.5 w-2.5 text-sky-400" aria-hidden />
-                        <span className="font-semibold text-foreground">{f.country}</span>
-                        <span className="text-sky-500/40">·</span>
-                        <span className="text-sky-300/90">{f.language}</span>
-                      </span>
-                      {beroas > 0 && <span className="text-[10px] text-muted-foreground">BE {beroas.toFixed(2)}x</span>}
+                      {beroas > 0 && <span className="text-[10px] text-muted-foreground">BEROAS {beroas.toFixed(2)}x</span>}
                     </div>
                     <div className="relative mt-1 h-1 overflow-hidden rounded-full bg-border/40">
                       <motion.div
@@ -1139,14 +1082,10 @@ function FunnelRanking({ title, tone, funnels }: {
 type NewFunnelInput = {
   productId: string;
   productName: string;
-  country: string;
-  language: string;
   funnelishUrl: string;
+  inspoLink: string;
   status: FunnelStatus;
   launchDate: string;
-  sellingPrice: number;
-  deliveryRate: number;
-  beroas: number;
   notes: string;
 };
 
@@ -1160,55 +1099,48 @@ function AddFunnelModal({
   onSubmit: (input: NewFunnelInput) => Promise<void>;
 }) {
   const [productId, setProductId] = useState<string>(products[0]?.id ?? '');
-  const [country, setCountry] = useState('Ireland');
-  const [language, setLanguage] = useState('English');
   const [funnelishUrl, setFunnelishUrl] = useState('');
+  const [inspoLink, setInspoLink] = useState('');
   const [status, setStatus] = useState<FunnelStatus>('draft');
   const [launchDate, setLaunchDate] = useState('');
-  const [sellingPrice, setSellingPrice] = useState('');
-  const [deliveryRate, setDeliveryRate] = useState('95');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const langs = getLanguagesForCountry(country);
-  useEffect(() => {
-    if (langs.length > 0 && !langs.includes(language)) setLanguage(langs[0]);
-  }, [country, langs, language]);
-
   const selectedProduct = products.find((p) => p.id === productId);
 
-  // Live preview of margin & BEROAS from product cost + this funnel's pricing
-  const sp = parseFloat(sellingPrice) || 0;
-  const dr = (parseFloat(deliveryRate) || 0) / 100;
-  const cost = (selectedProduct?.cogs ?? 0) + (selectedProduct?.shipping ?? 0);
-  const margin = sp > 0 && sp > cost && dr > 0 ? ((sp - cost) / sp) * dr : 0;
-  const beroasComputed = margin > 0 ? 1 / margin : 0;
+  // BEROAS + margin are the PRODUCT's economics — every LP of this product
+  // inherits them. Shown read-only so you know what you're launching against.
+  const econ = selectedProduct
+    ? productEconomics(
+        Number(selectedProduct.sellingPrice) || 0,
+        Number(selectedProduct.cogs) || 0,
+        Number(selectedProduct.deliveryRate) || 0,
+      )
+    : null;
+  const beroasComputed = econ && Number.isFinite(econ.beroas) ? econ.beroas : 0;
+  const grossMarginPct = econ ? econ.grossMarginPct : 0;
   const winThreshold = beroasComputed > 0 ? beroasComputed + 1 : 0;
-  const productHasCost = cost > 0;
+  const productPriced = !!selectedProduct
+    && (Number(selectedProduct.sellingPrice) || 0) > 0
+    && (Number(selectedProduct.deliveryRate) || 0) > 0;
 
   const submit = async () => {
     if (!productId || !selectedProduct) { setErr('Pick a product from the tracker.'); return; }
-    if (!country) { setErr('Country is required.'); return; }
-    if (!language) { setErr('Language is required.'); return; }
     setErr(null);
     setSaving(true);
     try {
       await onSubmit({
         productId,
         productName: selectedProduct.productName,
-        country,
-        language,
         funnelishUrl: funnelishUrl.trim(),
+        inspoLink: inspoLink.trim(),
         status,
         launchDate,
-        sellingPrice: sp,
-        deliveryRate: parseFloat(deliveryRate) || 0,
-        beroas: 0, // computed at read-time from pricing; manual field unused for new funnels
         notes: notes.trim(),
       });
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to add funnel.');
+      setErr(e instanceof Error ? e.message : 'Failed to add LP.');
     } finally {
       setSaving(false);
     }
@@ -1242,9 +1174,9 @@ function AddFunnelModal({
                 <FunnelIcon className="h-5 w-5 text-primary" />
               </motion.div>
               <div>
-                <h2 className="text-[18px] font-semibold tracking-tight text-foreground">Launch a new funnel</h2>
+                <h2 className="text-[18px] font-semibold tracking-tight text-foreground">Launch a new LP</h2>
                 <p className="mt-1 text-[12px] text-muted-foreground">
-                  Link a product, pick a market, and BEROAS auto-computes from your pricing.
+                  Link a product — its BEROAS &amp; margin carry to every LP and ad.
                 </p>
               </div>
             </div>
@@ -1262,7 +1194,7 @@ function AddFunnelModal({
             <div className="rounded-xl border border-dashed border-amber-500/30 bg-amber-500/5 p-5 text-center">
               <p className="text-[13px] font-semibold text-foreground">No products in your tracker yet</p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Funnels must link to a product. Create one first, then come back.
+                Every LP links to a product. Create one first, then come back.
               </p>
               <Link
                 href="/product-tracker"
@@ -1314,32 +1246,6 @@ function AddFunnelModal({
             </FormCell>
           )}
 
-          {/* Market chip — bigger, prominent */}
-          <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.04] p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Globe className="h-3.5 w-3.5 text-sky-400" />
-              <p className="text-[10px] font-medium uppercase tracking-[0.08em] text-sky-300/80">Market</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <FormCell label="Country">
-                <select value={country} onChange={(e) => setCountry(e.target.value)} className="form-input">
-                  {[1, 2, 3, 4].map((phase) => (
-                    <optgroup key={phase} label={`Phase ${phase}`}>
-                      {MARKETS.filter((m) => m.phase === phase).map((m) => (
-                        <option key={m.country} value={m.country}>{m.country}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </FormCell>
-              <FormCell label="Language">
-                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="form-input">
-                  {langs.map((l) => <option key={l} value={l}>{l}</option>)}
-                </select>
-              </FormCell>
-            </div>
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
             <FormCell label="Status">
               <select value={status} onChange={(e) => setStatus(e.target.value as FunnelStatus)} className="form-input">
@@ -1351,51 +1257,32 @@ function AddFunnelModal({
             </FormCell>
           </div>
 
-          <FormCell label="Funnelish URL (optional)">
+          <FormCell label="LP link" hint="the landing page URL">
             <input value={funnelishUrl} onChange={(e) => setFunnelishUrl(e.target.value)} className="form-input" placeholder="https://…" />
           </FormCell>
 
-          {/* Per-market pricing — clean panel with live BEROAS preview */}
+          <FormCell label="Inspiration (optional)" hint="competitor LP / swipe / doc">
+            <input value={inspoLink} onChange={(e) => setInspoLink(e.target.value)} className="form-input" placeholder="https://…" />
+          </FormCell>
+
+          {/* Product economics — read-only; inherited by every LP & ad */}
           <div className="relative overflow-hidden rounded-xl border border-primary/20 bg-primary/[0.04] p-4">
             <div className="relative z-10 mb-3 flex items-center justify-between">
               <p className="inline-flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.08em] text-primary/90">
                 <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_6px_#a78bfa]" />
-                Pricing for {country}
+                Product economics
               </p>
-              {productHasCost ? (
-                <span className="rounded-md border border-border bg-card/60 px-2 py-0.5 text-[10px] tabular-nums text-muted-foreground">
-                  cost ${cost.toFixed(2)}/u
-                </span>
-              ) : (
-                <span className="text-[10px] text-amber-400">no product cost set</span>
+              {!productPriced && (
+                <span className="text-[10px] text-amber-400">set price &amp; delivery on the product</span>
               )}
             </div>
-            <div className="relative z-10 grid grid-cols-2 gap-3">
-              <FormCell label="Selling price (USD)">
-                <input
-                  type="number" min="0" step="0.01" inputMode="decimal"
-                  value={sellingPrice}
-                  onChange={(e) => setSellingPrice(e.target.value)}
-                  className="form-input tabular-nums"
-                  placeholder="0.00"
-                />
-              </FormCell>
-              <FormCell label="Delivery rate %">
-                <input
-                  type="number" min="0" max="100" step="0.1" inputMode="decimal"
-                  value={deliveryRate}
-                  onChange={(e) => setDeliveryRate(e.target.value)}
-                  className="form-input tabular-nums"
-                />
-              </FormCell>
-            </div>
-            <div className="relative z-10 mt-3 grid grid-cols-3 gap-2">
-              <PreviewTile label="Margin" value={`${(margin * 100).toFixed(1)}%`} tone="sky" />
+            <div className="relative z-10 grid grid-cols-3 gap-2">
+              <PreviewTile label="Gross margin" value={productPriced ? `${grossMarginPct.toFixed(1)}%` : '—'} tone="sky" />
               <PreviewTile label="BEROAS" value={beroasComputed > 0 ? `${beroasComputed.toFixed(2)}x` : '—'} tone="violet" />
               <PreviewTile label="Win at" value={winThreshold > 0 ? `${winThreshold.toFixed(2)}x` : '—'} tone="emerald" />
             </div>
             <p className="relative z-10 mt-2.5 text-[10px] text-muted-foreground/70">
-              BEROAS = 1 / margin · a funnel is winning when ROAS ≥ BEROAS + 1
+              From the product&apos;s COGS · price · delivery rate (3PL model) — an LP wins when ROAS ≥ BEROAS + 1
             </p>
           </div>
 
@@ -1431,7 +1318,7 @@ function AddFunnelModal({
             />
             <span className="relative z-10 flex items-center gap-2">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={2.5} />}
-              <span className="tracking-tight">{saving ? 'Creating…' : 'Create funnel'}</span>
+              <span className="tracking-tight">{saving ? 'Creating…' : 'Create LP'}</span>
             </span>
           </motion.button>
         </div>

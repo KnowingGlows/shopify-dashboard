@@ -122,7 +122,7 @@ export default function FunnelFinanceDetailPage() {
     }
   };
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, EUR: 0.92, INR: 83.5 };
+  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 83.5 };
   const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
 
   // Filtered logs by date
@@ -219,11 +219,11 @@ export default function FunnelFinanceDetailPage() {
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{funnel.productName}</h1>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1">
-                    <Globe className="h-3.5 w-3.5 text-sky-400" aria-hidden />
-                    <span className="text-[13px] font-semibold tracking-tight text-foreground">{funnel.country}</span>
-                    <span className="text-sky-500/40">·</span>
-                    <span className="text-[13px] font-medium text-sky-300/90">{funnel.language}</span>
+                  <span className="inline-flex max-w-[280px] items-center gap-1.5 rounded-md border border-border bg-background/40 px-2.5 py-1">
+                    <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
+                    <span className="truncate text-[13px] font-medium text-muted-foreground">
+                      {funnel.funnelishUrl ? funnel.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'No LP link'}
+                    </span>
                   </span>
                   {funnel.funnelishUrl && (
                     <a href={funnel.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-[12px] text-primary hover:text-primary/80">
@@ -259,7 +259,7 @@ export default function FunnelFinanceDetailPage() {
             </div>
 
             <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
-              {(['USD', 'EUR', 'INR'] as const).map((c) => (
+              {(['USD', 'INR'] as const).map((c) => (
                 <button
                   key={c}
                   type="button"

@@ -234,7 +234,7 @@ export default function ProductCreativesDetailPage() {
                 <table className="tracker-table">
                   <thead>
                     <tr>
-                      <th style={{ width: 200 }}>Market</th>
+                      <th style={{ width: 200 }}>LP</th>
                       <th style={{ width: 90 }}>Type</th>
                       <th style={{ width: 110 }}>Status</th>
                       <th style={{ width: 130 }}>Result</th>
@@ -251,10 +251,11 @@ export default function ProductCreativesDetailPage() {
                         <tr key={c.id}>
                           <td>
                             <div className="px-3 py-2 text-[11px]">
-                              <span className="font-medium text-foreground">{c.country}</span>
-                              <span className="text-muted-foreground/60"> · {c.language}</span>
+                              <span className="font-medium text-foreground">
+                                {f?.funnelishUrl ? f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (c.batchName || 'LP')}
+                              </span>
                               {f && (
-                                <Link href={`/funnels/${f.id}`} className="ml-2 text-[10px] text-primary hover:text-primary/80">funnel →</Link>
+                                <Link href={`/funnels/${f.id}`} className="ml-2 text-[10px] text-primary hover:text-primary/80">LP →</Link>
                               )}
                             </div>
                           </td>

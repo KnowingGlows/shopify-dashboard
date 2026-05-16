@@ -13,6 +13,7 @@ import type { Funnel } from '@/types/funnel';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 import { LinkChip } from '@/components/link-chip';
 import { formatINR } from '@/lib/currency-converter';
+import { productEconomics } from '@/lib/3pl';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -594,25 +595,36 @@ export default function ProductTrackerPage() {
                               className="form-input"
                             />
                           </FormField>
-                          <FormField label="COGS / unit (USD)" hint="supplier cost per unit">
+                          <FormField label="COGS / unit (₹)" hint="landed supplier cost">
                             <input
                               type="number"
                               step="0.01"
                               value={entry.cogs || ''}
                               onChange={(e) => updateLocalField(entry.id, 'cogs', e.target.value === '' ? 0 : Number(e.target.value))}
                               onBlur={(e) => handleBlur(entry.id, 'cogs', e.target.value === '' ? 0 : Number(e.target.value))}
-                              placeholder="0.00"
+                              placeholder="0"
                               className="form-input tabular-nums"
                             />
                           </FormField>
-                          <FormField label="Shipping / unit (USD)" hint="per-unit shipping cost">
+                          <FormField label="Selling price (₹)" hint="GST-inclusive">
                             <input
                               type="number"
                               step="0.01"
-                              value={entry.shipping || ''}
-                              onChange={(e) => updateLocalField(entry.id, 'shipping', e.target.value === '' ? 0 : Number(e.target.value))}
-                              onBlur={(e) => handleBlur(entry.id, 'shipping', e.target.value === '' ? 0 : Number(e.target.value))}
-                              placeholder="0.00"
+                              value={entry.sellingPrice || ''}
+                              onChange={(e) => updateLocalField(entry.id, 'sellingPrice', e.target.value === '' ? 0 : Number(e.target.value))}
+                              onBlur={(e) => handleBlur(entry.id, 'sellingPrice', e.target.value === '' ? 0 : Number(e.target.value))}
+                              placeholder="0"
+                              className="form-input tabular-nums"
+                            />
+                          </FormField>
+                          <FormField label="Delivery rate (%)" hint="rest is RTO">
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={entry.deliveryRate || ''}
+                              onChange={(e) => updateLocalField(entry.id, 'deliveryRate', e.target.value === '' ? 0 : Number(e.target.value))}
+                              onBlur={(e) => handleBlur(entry.id, 'deliveryRate', e.target.value === '' ? 0 : Number(e.target.value))}
+                              placeholder="0"
                               className="form-input tabular-nums"
                             />
                           </FormField>
@@ -627,12 +639,18 @@ export default function ProductTrackerPage() {
                             />
                           </FormField>
                         </div>
-                        {(entry.cogs > 0 || entry.shipping > 0) && (
-                          <div className="border-t border-border px-4 py-2 flex items-center gap-3 text-[10px] text-muted-foreground">
-                            <span>Total cost / unit</span>
-                            <span className="font-semibold tabular-nums text-foreground">${(entry.cogs + entry.shipping).toFixed(2)}</span>
-                          </div>
-                        )}
+                        {entry.sellingPrice > 0 && entry.deliveryRate > 0 && (() => {
+                          const ec = productEconomics(entry.sellingPrice, entry.cogs, entry.deliveryRate);
+                          const be = Number.isFinite(ec.beroas) && ec.beroas > 0 ? ec.beroas : 0;
+                          return (
+                            <div className="border-t border-border px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
+                              <span>BEROAS <span className="font-semibold tabular-nums text-violet-400">{be > 0 ? `${be.toFixed(2)}x` : '—'}</span></span>
+                              <span>Gross margin <span className="font-semibold tabular-nums text-emerald-400">{ec.grossMarginPct.toFixed(1)}%</span></span>
+                              {be > 0 && <span>Win at <span className="font-semibold tabular-nums text-foreground">{(be + 1).toFixed(2)}x</span></span>}
+                              <span className="text-muted-foreground/50">· flows to every LP &amp; ad</span>
+                            </div>
+                          );
+                        })()}
                         <div className="border-t border-border px-4 py-2 flex justify-end">
                           <button
                             onClick={() => deleteEntry(entry.id)}

@@ -26,14 +26,6 @@ export function formatUSD(amount: number): string {
   }).format(amount);
 }
 
-export function formatEUR(amount: number): string {
-  return new Intl.NumberFormat('en-IE', {
-    style: 'currency',
-    currency: 'EUR',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
 export function formatCurrency(amount: number, currency: 'INR' | 'USD'): string {
   if (currency === 'USD') {
     return formatUSD(convertINRtoUSD(amount));
@@ -41,13 +33,13 @@ export function formatCurrency(amount: number, currency: 'INR' | 'USD'): string 
   return formatINR(amount);
 }
 
-// ── International (USD-base) helpers ─────────────────────────────────────────
-// New funnel/creative data is stored in USD. The rates passed here come from
-// `lib/fx-rates.ts` and are USD-based.
+// ── USD/INR helpers ──────────────────────────────────────────────────────────
+// India-only. The only conversion left is USD↔INR (for COGS often sourced in
+// USD). Rates come from `lib/fx-rates.ts` and are USD-based (₹ per $1).
 
-export type SupportedCurrency = 'USD' | 'EUR' | 'INR';
+export type SupportedCurrency = 'USD' | 'INR';
 
-export type UsdRates = { USD: number; EUR: number; INR: number };
+export type UsdRates = { USD: number; INR: number };
 
 /**
  * Convert an amount from USD to one of the supported display currencies
@@ -64,7 +56,6 @@ export function fromUSD(amount: number, to: SupportedCurrency, rates: UsdRates):
  */
 export function formatFromUSD(amount: number, to: SupportedCurrency, rates: UsdRates): string {
   const converted = fromUSD(amount, to, rates);
-  if (to === 'EUR') return formatEUR(converted);
   if (to === 'INR') return formatINR(converted);
   return formatUSD(converted);
 }

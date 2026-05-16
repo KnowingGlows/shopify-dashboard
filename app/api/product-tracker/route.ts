@@ -1,27 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
-import { ProductTrackerEntry, ProductCostOverride } from '@/types/shopify';
+import { ProductTrackerEntry } from '@/types/shopify';
 
-// Sanitize country override map: drop empty entries, coerce numbers.
-function sanitizeCostsByCountry(raw: unknown): Record<string, ProductCostOverride> | undefined {
-  if (!raw || typeof raw !== 'object') return undefined;
-  const out: Record<string, ProductCostOverride> = {};
-  for (const [country, val] of Object.entries(raw as Record<string, unknown>)) {
-    if (!country || !val || typeof val !== 'object') continue;
-    const v = val as { cogs?: unknown; shipping?: unknown };
-    const entry: ProductCostOverride = {};
-    if (v.cogs != null && v.cogs !== '') {
-      const n = Number(v.cogs);
-      if (Number.isFinite(n) && n >= 0) entry.cogs = n;
-    }
-    if (v.shipping != null && v.shipping !== '') {
-      const n = Number(v.shipping);
-      if (Number.isFinite(n) && n >= 0) entry.shipping = n;
-    }
-    if (entry.cogs != null || entry.shipping != null) out[country] = entry;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
+const asCurrency = (v: unknown): 'INR' | 'USD' => (v === 'USD' ? 'USD' : 'INR');
 
 // In-memory fallback when Firebase is not configured
 const inMemoryStore: ProductTrackerEntry[] = [];
@@ -53,8 +34,9 @@ export async function GET() {
         productStage: data.productStage ?? '',
         totalSpent: data.totalSpent ?? 0,
         cogs: Number(data.cogs) || 0,
-        shipping: Number(data.shipping) || 0,
-        costsByCountry: sanitizeCostsByCountry(data.costsByCountry),
+        costCurrency: asCurrency(data.costCurrency),
+        sellingPrice: Number(data.sellingPrice) || 0,
+        deliveryRate: Number(data.deliveryRate) || 0,
         remarks: data.remarks ?? '',
         createdAt: data.createdAt ?? '',
         updatedAt: data.updatedAt ?? '',
@@ -85,8 +67,9 @@ export async function POST(request: Request) {
       productStage: body.productStage ?? '',
       totalSpent: Number(body.totalSpent) || 0,
       cogs: Number(body.cogs) || 0,
-      shipping: Number(body.shipping) || 0,
-      costsByCountry: sanitizeCostsByCountry(body.costsByCountry) ?? {},
+      costCurrency: asCurrency(body.costCurrency),
+      sellingPrice: Number(body.sellingPrice) || 0,
+      deliveryRate: Number(body.deliveryRate) || 0,
       remarks: body.remarks ?? '',
       createdAt: now,
       updatedAt: now,
@@ -135,12 +118,9 @@ export async function PATCH(request: Request) {
     if (updates.productStage !== undefined) sanitizedUpdates.productStage = updates.productStage;
     if (updates.totalSpent !== undefined) sanitizedUpdates.totalSpent = Number(updates.totalSpent) || 0;
     if (updates.cogs !== undefined) sanitizedUpdates.cogs = Number(updates.cogs) || 0;
-    if (updates.shipping !== undefined) sanitizedUpdates.shipping = Number(updates.shipping) || 0;
-    if (updates.costsByCountry !== undefined) {
-      // null/empty means "clear all overrides"; store {} so Firestore doesn't
-      // reject an undefined value.
-      sanitizedUpdates.costsByCountry = sanitizeCostsByCountry(updates.costsByCountry) ?? {};
-    }
+    if (updates.costCurrency !== undefined) sanitizedUpdates.costCurrency = asCurrency(updates.costCurrency);
+    if (updates.sellingPrice !== undefined) sanitizedUpdates.sellingPrice = Number(updates.sellingPrice) || 0;
+    if (updates.deliveryRate !== undefined) sanitizedUpdates.deliveryRate = Number(updates.deliveryRate) || 0;
     if (updates.remarks !== undefined) sanitizedUpdates.remarks = updates.remarks;
     sanitizedUpdates.updatedAt = now;
 

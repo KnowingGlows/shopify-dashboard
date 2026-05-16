@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
-  Globe, ArrowRight, AlertTriangle, Search, Layers, Trophy, Sparkles,
+  Link2, ArrowRight, AlertTriangle, Search, Layers, Trophy, Sparkles,
   TrendingDown, Funnel as FunnelIcon,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
@@ -155,7 +155,7 @@ export default function AdsPage() {
         if (statusFilter === 'with-creatives' && s.total === 0) return false;
         if (statusFilter !== 'all' && statusFilter !== 'with-creatives' && s.funnel.status !== statusFilter) return false;
         if (q) {
-          const hay = [s.funnel.productName, s.funnel.country, s.funnel.language].join(' ').toLowerCase();
+          const hay = [s.funnel.productName, s.funnel.funnelishUrl].join(' ').toLowerCase();
           if (!hay.includes(q)) return false;
         }
         return true;
@@ -206,12 +206,12 @@ export default function AdsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <Globe className="h-4 w-4" />
+            <Layers className="h-4 w-4" />
           </div>
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-foreground">Ads</h1>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Creative inventory broken down by funnel · {grand.activeFunnels} funnel{grand.activeFunnels === 1 ? '' : 's'} with ads
+              Creative inventory by LP · {grand.activeFunnels} LP{grand.activeFunnels === 1 ? '' : 's'} with ads
             </p>
           </div>
         </div>
@@ -219,7 +219,7 @@ export default function AdsPage() {
 
       {/* Top-level KPI tiles */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <KpiTile icon={<FunnelIcon className="h-3.5 w-3.5" />} label="Funnels with ads" value={Math.round(animActive).toLocaleString('en-IN')} accent="violet" delay={0} />
+        <KpiTile icon={<FunnelIcon className="h-3.5 w-3.5" />} label="LPs with ads" value={Math.round(animActive).toLocaleString('en-IN')} accent="violet" delay={0} />
         <KpiTile icon={<Layers className="h-3.5 w-3.5" />}    label="Total creatives" value={Math.round(animTotal).toLocaleString('en-IN')}  accent="amber" delay={0.04} />
         <KpiTile icon={<Sparkles className="h-3.5 w-3.5" />}  label="Live"            value={Math.round(animLive).toLocaleString('en-IN')}   accent="emerald" delay={0.08} />
         <KpiTile icon={<Trophy className="h-3.5 w-3.5" />}    label="Winners"         value={Math.round(animWinners).toLocaleString('en-IN')} accent="sky" delay={0.12} />
@@ -245,7 +245,7 @@ export default function AdsPage() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap items-center gap-1">
           <FilterPill label="With ads" count={statusCounts['with-creatives']} active={statusFilter === 'with-creatives'} onClick={() => setStatusFilter('with-creatives')} tone="emerald" />
-          <FilterPill label="All funnels" count={statusCounts.all} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
+          <FilterPill label="All LPs" count={statusCounts.all} active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
           {FUNNEL_STATUS_OPTIONS.map((s) => (
             <FilterPill key={s.value} label={s.label} count={statusCounts[s.value]} active={statusFilter === s.value} onClick={() => setStatusFilter(s.value)} tone={s.tone} />
           ))}
@@ -256,7 +256,7 @@ export default function AdsPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search product, country…"
+            placeholder="Search product, LP…"
             className="form-input pl-8 py-1.5 text-[12px] w-56"
           />
         </div>
@@ -279,13 +279,13 @@ export default function AdsPage() {
         <div className="rounded-2xl border border-dashed border-border bg-card/50 p-10 text-center">
           <Layers className="mx-auto h-7 w-7 text-muted-foreground/30" />
           <p className="mt-2 text-[13px] font-medium text-foreground">
-            {summaries.length === 0 ? 'No funnels yet' : statusFilter === 'with-creatives' ? 'No funnels have creatives logged' : 'No funnels match filters'}
+            {summaries.length === 0 ? 'No LPs yet' : statusFilter === 'with-creatives' ? 'No LPs have creatives logged' : 'No LPs match filters'}
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {summaries.length === 0
-              ? <>Create a funnel first in <Link href="/funnels" className="text-primary hover:text-primary/80">Funnels</Link>.</>
+              ? <>Create an LP first in <Link href="/funnels" className="text-primary hover:text-primary/80">LPs</Link>.</>
               : statusFilter === 'with-creatives'
-                ? 'Click a funnel below — switch to "All funnels" — and add a creative.'
+                ? 'Click an LP below — switch to "All LPs" — and add a creative.'
                 : 'Try clearing a filter.'}
           </p>
         </div>
@@ -296,7 +296,7 @@ export default function AdsPage() {
       )}
 
       <p className="text-[10px] text-muted-foreground/60">
-        Logged in as {user?.email ?? '—'} · ad spend lives at the funnel level (Finance), not per-creative · click any card for the full creative breakdown
+        Logged in as {user?.email ?? '—'} · ad spend lives at the LP level, not per-creative · click any card for the full creative breakdown
       </p>
     </PageTransition>
   );
@@ -339,11 +339,11 @@ function FunnelAdCard({ summary: s, index }: { summary: FunnelAdsSummary; index:
       <div className="relative z-10 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold text-foreground">{s.funnel.productName}</p>
-          <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2 py-0.5">
-            <Globe className="h-3 w-3 text-sky-400" aria-hidden />
-            <span className="text-[11px] font-semibold tracking-tight text-foreground">{s.funnel.country}</span>
-            <span className="text-sky-500/40">·</span>
-            <span className="text-[11px] font-medium text-sky-300/90">{s.funnel.language}</span>
+          <div className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background/40 px-2 py-0.5">
+            <Link2 className={cn('h-3 w-3 shrink-0', s.funnel.funnelishUrl ? 'text-sky-400' : 'text-muted-foreground/40')} aria-hidden />
+            <span className="truncate text-[11px] font-medium text-muted-foreground">
+              {s.funnel.funnelishUrl ? s.funnel.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'No LP link'}
+            </span>
           </div>
         </div>
         <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', t.bg, t.border, t.text)}>

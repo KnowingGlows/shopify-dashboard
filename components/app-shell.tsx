@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart3, Box, ClipboardList, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Truck, Users, X,
-  Calculator, PackageCheck, PackageX, Funnel as FunnelIcon, Globe, Wallet, Trophy, Boxes, Ban,
+  Calculator, PackageCheck, PackageX, Funnel as FunnelIcon, Layers, Trophy, Boxes, Ban,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -33,14 +33,13 @@ const navItems: NavItem[] = [
   { href: '/orders/breakdown', label: 'Breakdown', icon: BarChart3, section: 'core', parent: '/orders' },
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'finance' },
   { href: '/finance/3pl-calculator', label: '3PL Calculator', icon: Boxes, section: 'finance' },
-  { href: '/finance/funnels', label: 'Funnel Finance', icon: Wallet, section: 'finance' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/prs/rejected', label: 'Rejected', icon: Ban, section: 'marketing', parent: '/prs' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
   { href: '/product-tracker/winners', label: 'Winners', icon: Trophy, section: 'marketing', parent: '/product-tracker' },
-  { href: '/funnels', label: 'Funnels', icon: FunnelIcon, section: 'marketing' },
-  { href: '/ads-international', label: 'Ads', icon: Globe, section: 'marketing' },
-  { href: '/ads-tracker', label: 'OPS Ads — India', icon: Megaphone, section: 'marketing' },
+  { href: '/funnels', label: 'LPs', icon: FunnelIcon, section: 'marketing' },
+  { href: '/ads-international', label: 'Ads', icon: Layers, section: 'marketing' },
+  { href: '/ads-tracker', label: 'OPS Ads', icon: Megaphone, section: 'marketing' },
   { href: '/inventory', label: 'Inventory', icon: Box, section: 'ops' },
   { href: '/rto', label: 'RTO', icon: PackageX, section: 'ops' },
   { href: '/dispatch', label: 'Dispatch', icon: PackageCheck, section: 'ops' },

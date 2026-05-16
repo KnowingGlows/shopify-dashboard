@@ -1,59 +1,32 @@
-// Funnel math helpers — win check, daily-log aggregation, hit rate, BEROAS resolution.
-// Spend/revenue/profit logging lives in Finance; here we only deal with
-// per-funnel pricing config (SP + delivery rate) and product cost
-// (cogs + shipping) — everything needed to compute BEROAS.
+// LP math helpers — win check, daily-log aggregation, hit rate, BEROAS.
+//
+// Economics live on the PRODUCT now (selling price + COGS + delivery rate →
+// BEROAS via the shared 3PL engine). An LP just inherits its product's BEROAS
+// and is judged against it. Spend/revenue/profit logging lives in Finance.
 
 import type { Funnel, FunnelDailyLog } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
+import { productBeroas } from '@/lib/3pl';
 
 /**
- * Resolve the per-unit cost (cogs + shipping) for a product in a given market.
- * Looks up `product.costsByCountry[country]` first, falling back to the base
- * `product.cogs` / `product.shipping` for any field the country override leaves
- * unset. Returns 0 if the product is missing.
+ * The effective BEROAS for an LP = its linked product's BEROAS, computed from
+ * the product's selling price, COGS (₹) and delivery rate through the shared
+ * 3PL engine. Returns 0 when the product (or its pricing) isn't set yet.
+ *
+ * The `_funnel` arg is kept so existing call sites don't all have to change;
+ * BEROAS no longer varies per LP.
  */
-export function resolveProductCost(product: ProductTrackerEntry | null | undefined, country?: string): {
-  cogs: number;
-  shipping: number;
-  total: number;
-  fromOverride: boolean;
-} {
-  if (!product) return { cogs: 0, shipping: 0, total: 0, fromOverride: false };
-  const baseCogs = Number(product.cogs) || 0;
-  const baseShip = Number(product.shipping) || 0;
-  const override = country ? product.costsByCountry?.[country] : undefined;
-  const cogs = override?.cogs != null ? Number(override.cogs) || 0 : baseCogs;
-  const shipping = override?.shipping != null ? Number(override.shipping) || 0 : baseShip;
-  const fromOverride = !!override && (override.cogs != null || override.shipping != null);
-  return { cogs, shipping, total: cogs + shipping, fromOverride };
+export function effectiveBeroas(_funnel: Funnel, product?: ProductTrackerEntry | null): number {
+  if (!product) return 0;
+  const sp = Number(product.sellingPrice) || 0;
+  const cogs = Number(product.cogs) || 0;
+  const dr = Number(product.deliveryRate) || 0;
+  if (sp <= 0 || dr <= 0) return 0;
+  return productBeroas(sp, cogs, dr);
 }
 
 /**
- * Compute the effective BEROAS for a funnel.
- *
- *   margin = (SP − productCost) / SP × deliveryRate
- *   BEROAS = 1 / margin
- *
- * Auto-compute when the funnel has SP+deliveryRate AND the linked product
- * has cost (cogs + shipping). The product cost is resolved per funnel's
- * country, falling back to the product's base cost. Otherwise fall back to
- * the manual `funnel.beroas` field. Returns 0 if neither path yields a value.
- */
-export function effectiveBeroas(funnel: Funnel, product?: ProductTrackerEntry | null): number {
-  const sp = Number(funnel.sellingPrice) || 0;
-  const dr = (Number(funnel.deliveryRate) || 0) / 100;
-  const { total: cost } = resolveProductCost(product, funnel.country);
-
-  if (sp > 0 && cost >= 0 && dr > 0 && sp > cost) {
-    const margin = ((sp - cost) / sp) * dr;
-    if (margin > 0) return 1 / margin;
-  }
-  // Fallback: manually-entered value (legacy / when pricing isn't set yet)
-  return Math.max(0, Number(funnel.beroas) || 0);
-}
-
-/**
- * A funnel is "winning" when its ROAS is at least BEROAS + 1.
+ * An LP is "winning" when its ROAS is at least BEROAS + 1.
  * Returns false when either input is missing/non-positive.
  */
 export function isWinning(roas: number, beroas: number): boolean {
@@ -86,9 +59,9 @@ export function aggregateLogs(logs: FunnelDailyLog[]): AggregatedLog {
 }
 
 /**
- * Hit rate = % of funnels with latest ROAS ≥ BEROAS + 1.
- * Caller decides which funnels to include (typically only those with at least
- * one log entry — funnels with no data are excluded).
+ * Hit rate = % of LPs with latest ROAS ≥ BEROAS + 1.
+ * Caller decides which LPs to include (typically only those with at least
+ * one log entry — LPs with no data are excluded).
  */
 export function hitRate(funnels: Array<{ roas: number; beroas: number }>): number {
   if (funnels.length === 0) return 0;

@@ -6,16 +6,16 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   Package, ArrowLeft, ArrowRight, ExternalLink, Loader2, AlertTriangle,
-  Globe, Funnel as FunnelIcon, Wallet, Pencil, Check, Trophy, Plus, Trash2,
+  Funnel as FunnelIcon, Layers, Pencil, Check, Trophy,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { isWinning, effectiveBeroas, resolveProductCost } from '@/lib/funnels';
-import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
-import { getCountries } from '@/lib/markets';
-import type { ProductTrackerEntry, ProductCostOverride } from '@/types/shopify';
+import { isWinning, effectiveBeroas } from '@/lib/funnels';
+import { productEconomics } from '@/lib/3pl';
+import { formatINR, formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
+import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, Creative, FunnelStatus } from '@/types/funnel';
 import type { FxRates } from '@/lib/fx-rates';
 
@@ -160,8 +160,10 @@ export default function ProductDetailPage() {
     }
   };
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, EUR: 0.92, INR: 83.5 };
+  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 83.5 };
   const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
+  // ₹ per $1 — used to convert a USD-entered COGS to the canonical ₹ stored value.
+  const inrPerUsd = Number(rates.INR) || 83.5;
 
   // Aggregates per funnel — honors filterDate (single-day view when set)
   const funnelAggs = useMemo(() => {
@@ -216,7 +218,13 @@ export default function ProductDetailPage() {
   const animatedFunnelHit = useCountUp(hitRates.funnelHitRate, 500);
 
   const liveCount = funnels.filter((f) => f.status === 'live').length;
-  const totalCost = (product?.cogs ?? 0) + (product?.shipping ?? 0);
+  // Product economics — the single source of truth that flows to every LP & ad.
+  const cogsINR = Number(product?.cogs) || 0;
+  const spINR = Number(product?.sellingPrice) || 0;
+  const drPct = Number(product?.deliveryRate) || 0;
+  const econ = productEconomics(spINR, cogsINR, drPct);
+  const econPriced = spINR > 0 && drPct > 0;
+  const productBeroasVal = econPriced && Number.isFinite(econ.beroas) && econ.beroas > 0 ? econ.beroas : 0;
 
   // IST today/yesterday for the date filter — computed once per mount
   const dateChips = useMemo(() => {
@@ -367,7 +375,7 @@ export default function ProductDetailPage() {
 
                 {/* Currency toggle */}
                 <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5">
-                  {(['USD', 'EUR', 'INR'] as const).map((c) => (
+                  {(['USD', 'INR'] as const).map((c) => (
                     <button
                       key={c}
                       type="button"
@@ -383,46 +391,66 @@ export default function ProductDetailPage() {
                 </div>
               </div>
 
-              {/* Editable cost grid */}
-              <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-                <EditableMoneyCell
-                  label="COGS / unit"
-                  hint="supplier cost"
-                  value={product.cogs}
-                  saved={savedField === 'cogs'}
-                  onSave={(v) => saveProductField('cogs', v)}
-                  fmt={fmt}
-                  tone="violet"
-                />
-                <EditableMoneyCell
-                  label="Shipping / unit"
-                  hint="per-unit shipping"
-                  value={product.shipping}
-                  saved={savedField === 'shipping'}
-                  onSave={(v) => saveProductField('shipping', v)}
-                  fmt={fmt}
-                  tone="sky"
-                />
-                <ReadOnlyCell
-                  label="Total cost / unit"
-                  value={totalCost > 0 ? fmt(totalCost) : '—'}
-                  tone={totalCost > 0 ? 'amber' : 'neutral'}
-                  hint="cogs + shipping"
-                />
-                <ReadOnlyCell
-                  label="Funnels"
-                  value={`${liveCount} live · ${funnels.length} total`}
-                  tone={liveCount > 0 ? 'emerald' : 'neutral'}
-                />
+              {/* Economics — COGS · price · delivery → BEROAS & gross margin.
+                  The single source of truth: it flows to every LP & ad. */}
+              <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/[0.03] overflow-hidden">
+                <div className="flex items-center justify-between border-b border-primary/15 px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <FunnelIcon className="h-3.5 w-3.5 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground">Economics</h3>
+                    {(savedField === 'cogs' || savedField === 'sellingPrice' || savedField === 'deliveryRate' || savedField === 'costCurrency') && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400"><Check className="h-3 w-3" /> saved</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">3PL model · holds across every LP &amp; ad</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 px-4 py-4 md:grid-cols-3">
+                  <CogsEditor
+                    cogsINR={cogsINR}
+                    costCurrency={product.costCurrency === 'USD' ? 'USD' : 'INR'}
+                    inrPerUsd={inrPerUsd}
+                    onSave={(nextCogsINR, cur) => {
+                      saveProductField('cogs', nextCogsINR);
+                      if ((product.costCurrency === 'USD' ? 'USD' : 'INR') !== cur) saveProductField('costCurrency', cur);
+                    }}
+                  />
+                  <NumEditor
+                    label="Selling price"
+                    unit="₹"
+                    value={spINR}
+                    placeholder="0"
+                    onSave={(v) => saveProductField('sellingPrice', v)}
+                  />
+                  <NumEditor
+                    label="Delivery rate"
+                    unit="%"
+                    unitRight
+                    value={drPct}
+                    placeholder="0"
+                    max={100}
+                    onSave={(v) => saveProductField('deliveryRate', v)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3 border-t border-primary/15 px-4 py-4 md:grid-cols-3">
+                  <ReadOnlyCell
+                    label="Gross margin"
+                    value={econPriced ? `${econ.grossMarginPct.toFixed(1)}%` : '—'}
+                    tone={econPriced ? 'emerald' : 'neutral'}
+                    hint="before ad spend"
+                  />
+                  <ReadOnlyCell
+                    label="BEROAS"
+                    value={productBeroasVal > 0 ? `${productBeroasVal.toFixed(2)}x` : '—'}
+                    tone={productBeroasVal > 0 ? 'violet' : 'neutral'}
+                    hint={productBeroasVal > 0 ? `win ≥ ${(productBeroasVal + 1).toFixed(2)}x` : 'set price & delivery'}
+                  />
+                  <ReadOnlyCell
+                    label="LPs"
+                    value={`${liveCount} live · ${funnels.length} total`}
+                    tone={liveCount > 0 ? 'emerald' : 'neutral'}
+                  />
+                </div>
               </div>
-
-              {/* Per-market cost overrides */}
-              <PerMarketCostsEditor
-                product={product}
-                funnels={funnels}
-                fmt={fmt}
-                onSave={(map) => saveProductField('costsByCountry', map)}
-              />
             </div>
           </motion.div>
         );
@@ -501,13 +529,10 @@ export default function ProductDetailPage() {
         <span>Logged in as {user?.email ?? '—'}</span>
         <span>·</span>
         <Link href="/funnels" className="inline-flex items-center gap-1 text-primary hover:text-primary/80">
-          <FunnelIcon className="h-3 w-3" /> Funnels
-        </Link>
-        <Link href="/finance/funnels" className="inline-flex items-center gap-1 text-primary hover:text-primary/80">
-          <Wallet className="h-3 w-3" /> Finance
+          <FunnelIcon className="h-3 w-3" /> LPs
         </Link>
         <Link href="/ads-international" className="inline-flex items-center gap-1 text-primary hover:text-primary/80">
-          <Globe className="h-3 w-3" /> International Ads
+          <Layers className="h-3 w-3" /> Ads
         </Link>
       </div>
     </PageTransition>
@@ -545,74 +570,128 @@ const TONE_BORDER = {
 
 type Tone = keyof typeof TONE_TEXT;
 
-// Editable money input shown as a stat-like cell. Click into it like an input.
-function EditableMoneyCell({
-  label, hint, value, onSave, fmt, saved, tone,
+// COGS editor with a ₹/$ entry-unit toggle. COGS is stored canonical in ₹;
+// when entered in $ it's converted at the live rate. costCurrency just
+// remembers the unit so we can show it back the way you typed it.
+function CogsEditor({
+  cogsINR, costCurrency, inrPerUsd, onSave,
 }: {
-  label: string;
-  hint?: string;
-  value: number;
-  onSave: (v: number) => void;
-  fmt: (usd: number) => string;
-  saved: boolean;
-  tone: Tone;
+  cogsINR: number;
+  costCurrency: 'INR' | 'USD';
+  inrPerUsd: number;
+  onSave: (cogsINR: number, cur: 'INR' | 'USD') => void;
 }) {
-  // Controlled-uncontrolled toggle: when focused use local draft, when not focused
-  // we display the prop value directly so external updates flow through cleanly.
-  const [draft, setDraft] = useState<string>('');
+  const [unit, setUnit] = useState<'INR' | 'USD'>(costCurrency);
+  const shown = unit === 'USD' ? (cogsINR > 0 ? cogsINR / inrPerUsd : 0) : cogsINR;
+  const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
-  const displayString = focused ? draft : (value > 0 ? String(value) : '');
+  const displayString = focused ? draft : (shown > 0 ? String(Number(shown.toFixed(2))) : '');
 
   const flush = () => {
     const n = parseFloat(draft);
-    onSave(Number.isFinite(n) && n >= 0 ? n : 0);
+    const v = Number.isFinite(n) && n >= 0 ? n : 0;
+    const nextINR = unit === 'USD' ? Math.round(v * inrPerUsd) : v;
+    onSave(nextINR, unit);
     setFocused(false);
   };
 
   return (
     <div className={cn(
       'group relative overflow-hidden rounded-xl border bg-card p-3 transition-colors',
-      focused ? TONE_BORDER[tone] : 'border-border hover:border-border/80'
+      focused ? 'border-violet-500/30' : 'border-border hover:border-border/80'
     )}>
-      <div
-        className={cn('pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl transition-opacity duration-500', focused ? 'opacity-50' : 'opacity-0 group-hover:opacity-25')}
-        style={{ background: `radial-gradient(circle, ${TONE_GLOW[tone]}66, transparent 70%)` }}
-        aria-hidden
-      />
-      <div className="relative z-10">
-        <div className="flex items-baseline justify-between">
-          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-          {saved && <Check className="h-3 w-3 text-emerald-400" />}
+      <div className="flex items-center justify-between">
+        <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">COGS / unit</p>
+        <div className="inline-flex items-center rounded-md border border-border bg-background/60 p-0.5">
+          {(['INR', 'USD'] as const).map((u) => (
+            <button
+              key={u}
+              type="button"
+              onClick={() => setUnit(u)}
+              className={cn('rounded px-1.5 py-0.5 text-[9px] font-semibold transition', unit === u ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground')}
+            >
+              {u === 'INR' ? '₹' : '$'}
+            </button>
+          ))}
         </div>
-        <div className="mt-1 flex items-baseline gap-1">
-          <span className={cn('text-base font-semibold leading-none', TONE_TEXT[tone])}>$</span>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            inputMode="decimal"
-            value={displayString}
-            onChange={(e) => setDraft(e.target.value)}
-            onFocus={() => { setDraft(value > 0 ? String(value) : ''); setFocused(true); }}
-            onBlur={flush}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              if (e.key === 'Escape') {
-                setFocused(false);
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-            placeholder="0"
-            className="w-full bg-transparent text-[20px] font-semibold leading-none tabular-nums text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          />
-        </div>
-        {hint && !focused && <p className="mt-1 text-[9px] text-muted-foreground/60">{hint}</p>}
-        {focused && <p className="mt-1 text-[9px] text-muted-foreground/60">Press Enter to save · Esc to cancel</p>}
-        {/* Show the formatted display value as a sub-line if the converted currency differs from raw USD */}
-        {value > 0 && !focused && (
-          <p className="mt-0.5 text-[10px] text-muted-foreground/60">{fmt(value)} display</p>
-        )}
       </div>
+      <div className="mt-1.5 flex items-baseline gap-1">
+        <span className="text-base font-semibold leading-none text-violet-400">{unit === 'USD' ? '$' : '₹'}</span>
+        <input
+          type="number" step="0.01" min="0" inputMode="decimal"
+          value={displayString}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => { setDraft(shown > 0 ? String(Number(shown.toFixed(2))) : ''); setFocused(true); }}
+          onBlur={flush}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Escape') { setFocused(false); (e.target as HTMLInputElement).blur(); }
+          }}
+          placeholder="0"
+          className="w-full bg-transparent text-[20px] font-semibold leading-none tabular-nums text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+      </div>
+      <p className="mt-1 text-[9px] text-muted-foreground/60">
+        {focused
+          ? 'Enter to save · Esc to cancel'
+          : cogsINR > 0
+            ? `${formatINR(cogsINR)} stored${unit === 'USD' ? ` · ≈ $${(cogsINR / inrPerUsd).toFixed(2)}` : ''}`
+            : 'landed supplier cost'}
+      </p>
+    </div>
+  );
+}
+
+// Generic numeric cell editor (₹ price, % delivery rate, …).
+function NumEditor({
+  label, unit, unitRight, value, placeholder, max, onSave,
+}: {
+  label: string;
+  unit: string;
+  unitRight?: boolean;
+  value: number;
+  placeholder: string;
+  max?: number;
+  onSave: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const [focused, setFocused] = useState(false);
+  const displayString = focused ? draft : (value > 0 ? String(value) : '');
+
+  const flush = () => {
+    let n = parseFloat(draft);
+    if (!Number.isFinite(n) || n < 0) n = 0;
+    if (max != null && n > max) n = max;
+    onSave(n);
+    setFocused(false);
+  };
+
+  return (
+    <div className={cn(
+      'group relative overflow-hidden rounded-xl border bg-card p-3 transition-colors',
+      focused ? 'border-primary/30' : 'border-border hover:border-border/80'
+    )}>
+      <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      <div className="mt-1.5 flex items-baseline gap-1">
+        {!unitRight && <span className="text-base font-semibold leading-none text-foreground/70">{unit}</span>}
+        <input
+          type="number" step="0.01" min="0" inputMode="decimal"
+          value={displayString}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => { setDraft(value > 0 ? String(value) : ''); setFocused(true); }}
+          onBlur={flush}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Escape') { setFocused(false); (e.target as HTMLInputElement).blur(); }
+          }}
+          placeholder={placeholder}
+          className="w-full bg-transparent text-[20px] font-semibold leading-none tabular-nums text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        {unitRight && <span className="text-base font-semibold leading-none text-foreground/70">{unit}</span>}
+      </div>
+      <p className="mt-1 text-[9px] text-muted-foreground/60">
+        {focused ? 'Enter to save · Esc to cancel' : ' '}
+      </p>
     </div>
   );
 }
@@ -743,7 +822,7 @@ function FunnelsMiniSegment({
       <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-2.5">
         <div className="flex items-center gap-2">
           <FunnelIcon className="h-3.5 w-3.5 text-primary" />
-          <h2 className="text-sm font-medium text-foreground">Funnels across markets</h2>
+          <h2 className="text-sm font-medium text-foreground">LPs</h2>
         </div>
         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition group-hover:text-primary">
           View all <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
@@ -753,7 +832,7 @@ function FunnelsMiniSegment({
       {total === 0 ? (
         <div className="relative z-10 px-4 py-10 text-center">
           <FunnelIcon className="mx-auto h-7 w-7 text-muted-foreground/30" />
-          <p className="mt-2 text-[12px] text-muted-foreground">No funnels for this product yet.</p>
+          <p className="mt-2 text-[12px] text-muted-foreground">No LPs for this product yet.</p>
         </div>
       ) : (
         <div className="relative z-10 px-4 py-4 space-y-3">
@@ -779,12 +858,14 @@ function FunnelsMiniSegment({
                     'relative inline-flex shrink-0 items-center gap-2 rounded-md border px-2.5 py-1.5',
                     winning ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : 'border-border bg-background/40'
                   )}
-                  title={`${f.country} · ${f.language} — ${STATUS_LABEL[f.status]}`}
+                  title={`${f.funnelishUrl || 'No LP link'} — ${STATUS_LABEL[f.status]}`}
                 >
                   <span className={cn('h-1.5 w-1.5 rounded-full', tone.dot)} aria-hidden />
                   <div className="leading-tight">
-                    <p className="text-[11px] font-semibold text-foreground">{f.country}</p>
-                    <p className="text-[9px] text-muted-foreground">{f.language}</p>
+                    <p className="max-w-[120px] truncate text-[11px] font-semibold text-foreground">
+                      {f.funnelishUrl ? f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'LP'}
+                    </p>
+                    <p className="text-[9px] text-muted-foreground">{STATUS_LABEL[f.status]}</p>
                   </div>
                   <span className={cn('ml-1 text-[12px] font-semibold tabular-nums', !hasData ? 'text-muted-foreground/40' : winning ? 'text-emerald-400' : 'text-foreground')}>
                     {roasShown > 0 ? `${roasShown.toFixed(2)}x` : '—'}
@@ -868,7 +949,7 @@ function CreativesMiniSegment({
       )}
       <div className="relative z-10 flex items-center justify-between border-b border-border/60 px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <Globe className="h-3.5 w-3.5 text-primary" />
+          <Layers className="h-3.5 w-3.5 text-primary" />
           <h2 className="text-sm font-medium text-foreground">Creatives</h2>
         </div>
         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition group-hover:text-primary">
@@ -938,374 +1019,5 @@ function CreativesMiniSegment({
         </div>
       )}
     </motion.div>
-  );
-}
-
-// ── Per-market cost overrides ────────────────────────────────────────────
-// Lets you tweak COGS or Shipping per country. Empty inputs inherit the
-// product's base cost. Suggests countries from existing funnels first.
-
-function PerMarketCostsEditor({
-  product, funnels, fmt, onSave,
-}: {
-  product: ProductTrackerEntry;
-  funnels: Funnel[];
-  fmt: (usd: number) => string;
-  onSave: (map: Record<string, ProductCostOverride>) => void;
-}) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerQuery, setPickerQuery] = useState('');
-  const [showAll, setShowAll] = useState(false);
-  const pickerRef = useRef<HTMLDivElement>(null);
-
-  const baseCogs = Number(product.cogs) || 0;
-  const baseShip = Number(product.shipping) || 0;
-  const baseTotal = baseCogs + baseShip;
-  const overrides = useMemo(() => product.costsByCountry ?? {}, [product.costsByCountry]);
-  const usedCountries = useMemo(
-    () => Array.from(new Set(funnels.map((f) => f.country).filter(Boolean))).sort(),
-    [funnels]
-  );
-  const allCountries = useMemo(() => getCountries(), []);
-
-  // Default rows: countries with overrides + countries with active funnels.
-  // "Show all" expands to every market.
-  const visibleRows = useMemo(() => {
-    if (showAll) return allCountries;
-    const withOverride = Object.keys(overrides);
-    const set = new Set<string>([...withOverride, ...usedCountries]);
-    return Array.from(set).sort();
-  }, [overrides, usedCountries, allCountries, showAll]);
-
-  // Click-outside to close picker
-  useEffect(() => {
-    if (!pickerOpen) return;
-    const onClick = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
-        setPickerOpen(false);
-        setPickerQuery('');
-      }
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [pickerOpen]);
-
-  const setOverride = (country: string, patch: ProductCostOverride) => {
-    const next = { ...overrides };
-    const existing = next[country] ?? {};
-    const merged: ProductCostOverride = { ...existing, ...patch };
-    if (merged.cogs == null || !Number.isFinite(merged.cogs)) delete merged.cogs;
-    if (merged.shipping == null || !Number.isFinite(merged.shipping)) delete merged.shipping;
-    if (merged.cogs == null && merged.shipping == null) {
-      delete next[country];
-    } else {
-      next[country] = merged;
-    }
-    onSave(next);
-  };
-
-  const removeCountry = (country: string) => {
-    const next = { ...overrides };
-    delete next[country];
-    onSave(next);
-  };
-
-  const addCountryAndSeed = (country: string) => {
-    if (!overrides[country]) {
-      onSave({ ...overrides, [country]: { cogs: baseCogs, shipping: baseShip } });
-    }
-    setPickerOpen(false);
-    setPickerQuery('');
-  };
-
-  const pickerCountries = useMemo(() => {
-    const q = pickerQuery.trim().toLowerCase();
-    const pool = allCountries.filter((c) => !overrides[c]);
-    if (!q) return pool;
-    return pool.filter((c) => c.toLowerCase().includes(q));
-  }, [allCountries, overrides, pickerQuery]);
-
-  const overrideCount = Object.keys(overrides).length;
-  const missingFunnelCountries = usedCountries.filter((c) => !overrides[c]).length;
-
-  return (
-    <div className="mt-4 rounded-xl border border-border bg-background/40 p-4">
-      {/* Header */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground">
-            <Globe className="h-3 w-3 text-sky-400" />
-            Per-market cost overrides
-          </p>
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            Override COGS or shipping for specific markets — empty fields inherit the base cost above.
-          </p>
-        </div>
-
-        {/* Slate "Add country" with searchable popover */}
-        <div ref={pickerRef} className="relative">
-          <button
-            onClick={() => setPickerOpen((v) => !v)}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition',
-              pickerOpen
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-primary/15 text-primary hover:bg-primary/25'
-            )}
-          >
-            <Plus className="h-3 w-3" /> Add country
-          </button>
-          {pickerOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.15 }}
-              className="absolute right-0 top-full z-30 mt-1.5 w-72 overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
-            >
-              <div className="border-b border-border p-2">
-                <input
-                  autoFocus
-                  type="text"
-                  value={pickerQuery}
-                  onChange={(e) => setPickerQuery(e.target.value)}
-                  placeholder="Search country…"
-                  className="w-full bg-transparent px-2 py-1.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/40"
-                />
-              </div>
-              <div className="max-h-64 overflow-y-auto py-1">
-                {pickerCountries.length === 0 ? (
-                  <p className="px-3 py-3 text-center text-[11px] text-muted-foreground/60">No matching country.</p>
-                ) : (
-                  pickerCountries.map((c) => {
-                    const hasFunnel = usedCountries.includes(c);
-                    return (
-                      <button
-                        key={c}
-                        onClick={() => addCountryAndSeed(c)}
-                        className="group flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[12px] text-foreground transition hover:bg-white/[0.04]"
-                      >
-                        <span>{c}</span>
-                        {hasFunnel && (
-                          <span className="inline-flex items-center gap-1 text-[9px] font-medium uppercase tracking-wider text-sky-400/80">
-                            <span className="h-1 w-1 rounded-full bg-sky-400" />
-                            has funnel
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </motion.div>
-          )}
-        </div>
-      </div>
-
-      {/* Status strip */}
-      {(overrideCount > 0 || missingFunnelCountries > 0) && (
-        <div className="mb-2.5 flex flex-wrap items-center gap-2 text-[10px]">
-          <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 font-medium text-sky-400">
-            {overrideCount} override{overrideCount === 1 ? '' : 's'}
-          </span>
-          {missingFunnelCountries > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-400">
-              {missingFunnelCountries} market{missingFunnelCountries === 1 ? '' : 's'} with funnel · no override
-            </span>
-          )}
-          <span className="text-muted-foreground/60">
-            others inherit{baseTotal > 0 ? <> base <span className="font-semibold tabular-nums text-foreground/80">{fmt(baseTotal)}</span></> : ' base'}
-          </span>
-        </div>
-      )}
-
-      {visibleRows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card/40 p-5 text-center">
-          <p className="text-[11px] text-muted-foreground">
-            Every market uses the base cost{baseTotal > 0 ? <> of <span className="font-semibold tabular-nums text-foreground">{fmt(baseTotal)}</span></> : null}.
-          </p>
-          <p className="mt-1 text-[10px] text-muted-foreground/60">
-            Click <span className="text-foreground">Add country</span> to override a specific market.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-1">
-          {/* Column headers */}
-          <div className="grid grid-cols-12 gap-2 px-2.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground/60">
-            <div className="col-span-3">Country</div>
-            <div className="col-span-3">COGS / unit</div>
-            <div className="col-span-3">Shipping / unit</div>
-            <div className="col-span-2 text-right">Total</div>
-            <div className="col-span-1" />
-          </div>
-          {visibleRows.map((country) => {
-            const ov = overrides[country];
-            const hasOverride = !!ov;
-            const resolved = resolveProductCost(product, country);
-            const usedByFunnel = usedCountries.includes(country);
-            return (
-              <CostRow
-                key={country}
-                country={country}
-                hasOverride={hasOverride}
-                usedByFunnel={usedByFunnel}
-                cogs={ov?.cogs}
-                shipping={ov?.shipping}
-                resolvedCogs={resolved.cogs}
-                resolvedShipping={resolved.shipping}
-                total={resolved.total}
-                baseCogs={baseCogs}
-                baseShip={baseShip}
-                fmt={fmt}
-                onPatch={(patch) => setOverride(country, patch)}
-                onRemove={() => removeCountry(country)}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      {/* Show all / collapse */}
-      {(allCountries.length > visibleRows.length || showAll) && (
-        <button
-          onClick={() => setShowAll((v) => !v)}
-          className="mt-2.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground transition hover:text-foreground"
-        >
-          {showAll
-            ? 'Show only funnels & overrides'
-            : `Show all ${allCountries.length} markets`}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function CostRow({
-  country, hasOverride, usedByFunnel, cogs, shipping, resolvedCogs, resolvedShipping, total,
-  baseCogs, baseShip, fmt, onPatch, onRemove,
-}: {
-  country: string;
-  hasOverride: boolean;
-  usedByFunnel: boolean;
-  cogs?: number;
-  shipping?: number;
-  resolvedCogs: number;
-  resolvedShipping: number;
-  total: number;
-  baseCogs: number;
-  baseShip: number;
-  fmt: (usd: number) => string;
-  onPatch: (patch: ProductCostOverride) => void;
-  onRemove: () => void;
-}) {
-  const diff = total - (baseCogs + baseShip);
-  const diffTone = diff > 0 ? 'text-amber-400' : diff < 0 ? 'text-emerald-400' : 'text-muted-foreground/60';
-  const isBase = resolvedCogs === baseCogs && resolvedShipping === baseShip && diff === 0;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -4 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.2 }}
-      className={cn(
-        'group grid grid-cols-12 items-center gap-2 rounded-lg border bg-card/40 px-2 py-1.5 transition-colors',
-        hasOverride ? 'border-sky-500/20 hover:border-sky-500/40' : 'border-border hover:border-border/80'
-      )}
-    >
-      <div className="col-span-3 flex items-center gap-1.5 min-w-0">
-        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', hasOverride ? 'bg-sky-400 shadow-[0_0_6px_#38bdf8]' : 'bg-muted-foreground/30')} />
-        <div className="min-w-0">
-          <p className="truncate text-[12px] font-medium text-foreground">{country}</p>
-          {usedByFunnel && !hasOverride && (
-            <p className="text-[9px] text-muted-foreground/60">has funnel · inherits base</p>
-          )}
-          {!usedByFunnel && !hasOverride && (
-            <p className="text-[9px] text-muted-foreground/40">inherits base</p>
-          )}
-        </div>
-      </div>
-      <div className="col-span-3">
-        <CostInput
-          value={cogs}
-          placeholderValue={baseCogs}
-          onCommit={(v) => onPatch({ cogs: v })}
-        />
-      </div>
-      <div className="col-span-3">
-        <CostInput
-          value={shipping}
-          placeholderValue={baseShip}
-          onCommit={(v) => onPatch({ shipping: v })}
-        />
-      </div>
-      <div className="col-span-2 text-right">
-        <p className="text-[12px] font-semibold tabular-nums text-foreground">{fmt(total)}</p>
-        {diff !== 0 ? (
-          <p className={cn('text-[9px] tabular-nums', diffTone)}>
-            {diff > 0 ? '+' : '−'}{fmt(Math.abs(diff))}
-          </p>
-        ) : isBase ? (
-          <p className="text-[9px] text-muted-foreground/50">= base</p>
-        ) : null}
-      </div>
-      <div className="col-span-1 flex justify-end">
-        {hasOverride && (
-          <button
-            onClick={onRemove}
-            className="rounded-md p-1 text-muted-foreground/40 transition hover:bg-rose-500/10 hover:text-rose-400"
-            title={`Remove ${country} override`}
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        )}
-      </div>
-    </motion.div>
-  );
-}
-
-function CostInput({
-  value, placeholderValue, onCommit,
-}: {
-  value: number | undefined;
-  placeholderValue: number;
-  onCommit: (v: number | undefined) => void;
-}) {
-  const [draft, setDraft] = useState<string>('');
-  const [focused, setFocused] = useState(false);
-  // Controlled-uncontrolled toggle: while focused use local draft, otherwise
-  // display the live prop value. Avoids effect-driven state sync.
-  const display = focused ? draft : (value != null ? String(value) : '');
-
-  const flush = () => {
-    setFocused(false);
-    const trimmed = draft.trim();
-    if (trimmed === '') {
-      onCommit(undefined);
-      return;
-    }
-    const n = parseFloat(trimmed);
-    if (!Number.isFinite(n) || n < 0) return;
-    onCommit(n);
-  };
-
-  return (
-    <div className="flex items-center gap-1 rounded-md border border-border bg-background/60 px-2 py-1 transition-colors focus-within:border-emerald-500/40">
-      <span className="text-[10px] text-muted-foreground">$</span>
-      <input
-        type="number"
-        inputMode="decimal"
-        step="0.01"
-        min="0"
-        value={display}
-        onChange={(e) => setDraft(e.target.value)}
-        onFocus={() => { setDraft(value != null ? String(value) : ''); setFocused(true); }}
-        onBlur={flush}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          if (e.key === 'Escape') { setFocused(false); (e.target as HTMLInputElement).blur(); }
-        }}
-        placeholder={placeholderValue > 0 ? placeholderValue.toFixed(2) : '0.00'}
-        className="w-full bg-transparent text-[12px] tabular-nums text-foreground outline-none placeholder:text-muted-foreground/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-      />
-    </div>
   );
 }

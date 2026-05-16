@@ -1,6 +1,6 @@
 // Live FX rates (USD-base) — fetches from a free public endpoint and caches
-// in Firestore for ~24h. Used to convert funnel data (stored in USD) into
-// EUR / INR display.
+// in Firestore for ~24h. India-only: the only pair left is USD↔INR (COGS is
+// often sourced in USD).
 
 import { getFirestore, isFirebaseAvailable, COLLECTIONS } from './firebase';
 
@@ -12,14 +12,14 @@ const FX_DOC_ID = 'usd_base_v1';
 // Refresh occasionally if these drift dramatically.
 const FALLBACK_RATES: FxRates = {
   base: 'USD',
-  rates: { USD: 1, EUR: 0.92, INR: 83.5 },
+  rates: { USD: 1, INR: 83.5 },
   fetchedAt: 0,
   source: 'fallback',
 };
 
 export type FxRates = {
   base: 'USD';
-  rates: { USD: number; EUR: number; INR: number };
+  rates: { USD: number; INR: number };
   fetchedAt: number;        // epoch ms
   source: 'live' | 'cache' | 'fallback';
 };
@@ -39,7 +39,6 @@ async function readFirestoreCache(): Promise<FxRates | null> {
       base: 'USD',
       rates: {
         USD: 1,
-        EUR: Number(data.rates?.EUR) || FALLBACK_RATES.rates.EUR,
         INR: Number(data.rates?.INR) || FALLBACK_RATES.rates.INR,
       },
       fetchedAt: Number(data.fetchedAt) || 0,
@@ -74,7 +73,6 @@ async function fetchLive(): Promise<FxRates> {
     base: 'USD',
     rates: {
       USD: 1,
-      EUR: Number(data.rates?.EUR) || FALLBACK_RATES.rates.EUR,
       INR: Number(data.rates?.INR) || FALLBACK_RATES.rates.INR,
     },
     fetchedAt: Date.now(),

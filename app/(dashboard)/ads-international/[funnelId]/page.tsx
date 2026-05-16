@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Globe, ArrowLeft, Plus, Trash2, Pencil, Check, X, Loader2, AlertTriangle,
+  Link2, ArrowLeft, Plus, Trash2, Pencil, Check, X, Loader2, AlertTriangle,
   ExternalLink, Layers, Trophy, TrendingDown, Sparkles, Funnel as FunnelIcon,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
@@ -100,7 +100,7 @@ export default function AdsFunnelDetailPage() {
         fetch(`/api/creatives-intl?funnelId=${encodeURIComponent(funnelId)}`).then((r) => r.json()),
       ]);
       const f: Funnel | undefined = (funnelsRes.funnels ?? []).find((x: Funnel) => x.id === funnelId);
-      if (!f) { setError('Funnel not found.'); setFunnel(null); return; }
+      if (!f) { setError('LP not found.'); setFunnel(null); return; }
       setFunnel(f);
       const p: ProductTrackerEntry | undefined = (productsRes.entries ?? []).find((e: ProductTrackerEntry) =>
         (f.productId && e.id === f.productId) || (!f.productId && e.productName === f.productName)
@@ -267,7 +267,7 @@ export default function AdsFunnelDetailPage() {
         </Link>
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
           <AlertTriangle className="mx-auto h-6 w-6 text-destructive" />
-          <p className="mt-2 text-[13px] text-foreground">{error ?? 'Funnel not found.'}</p>
+          <p className="mt-2 text-[13px] text-foreground">{error ?? 'LP not found.'}</p>
         </div>
       </PageTransition>
     );
@@ -299,7 +299,7 @@ export default function AdsFunnelDetailPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-start gap-4 min-w-0 flex-1">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary shadow-lg shadow-primary/10">
-                <Globe className="h-5 w-5" />
+                <Layers className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -313,17 +313,21 @@ export default function AdsFunnelDetailPage() {
                   <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{funnel.productName}</h1>
                 )}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1">
-                    <Globe className="h-3.5 w-3.5 text-sky-400" aria-hidden />
-                    <span className="text-[13px] font-semibold tracking-tight text-foreground">{funnel.country}</span>
-                    <span className="text-sky-500/40">·</span>
-                    <span className="text-[13px] font-medium text-sky-300/90">{funnel.language}</span>
-                  </span>
+                  {funnel.funnelishUrl ? (
+                    <a href={funnel.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex max-w-[260px] items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1 text-[12px] font-medium text-sky-300 transition hover:bg-sky-500/15">
+                      <Link2 className="h-3.5 w-3.5 shrink-0 text-sky-400" aria-hidden />
+                      <span className="truncate">{funnel.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background/40 px-2.5 py-1 text-[12px] text-muted-foreground">
+                      <Link2 className="h-3.5 w-3.5 opacity-40" aria-hidden /> No LP link
+                    </span>
+                  )}
                   <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium', tone.bg, tone.border, tone.text)}>
                     {funnel.status}
                   </span>
                   <Link href={`/funnels/${funnel.id}`} className="inline-flex items-center gap-0.5 text-[12px] text-primary hover:text-primary/80">
-                    <FunnelIcon className="h-3 w-3" /> Funnel
+                    <FunnelIcon className="h-3 w-3" /> LP
                   </Link>
                 </div>
               </div>
@@ -683,8 +687,7 @@ export default function AdsFunnelDetailPage() {
       )}
 
       <p className="text-[10px] text-muted-foreground/60">
-        Logged in as {user?.email ?? '—'} · ad spend lives at the funnel level in{' '}
-        <Link href={`/finance/funnels/${funnel.id}`} className="text-primary hover:text-primary/80">Finance →</Link>
+        Logged in as {user?.email ?? '—'} · ad spend lives at the LP level · money tracking moves to Finance soon
       </p>
     </PageTransition>
   );
@@ -719,8 +722,6 @@ function InlineAddCreative({ funnel, today, onAdded, onCancel }: {
         body: JSON.stringify({
           funnelId: funnel.id,
           productName: funnel.productName,
-          country: funnel.country,
-          language: funnel.language,
           batchName: batchName.trim(),
           creativeType,
           folderLink: folderLink.trim(),

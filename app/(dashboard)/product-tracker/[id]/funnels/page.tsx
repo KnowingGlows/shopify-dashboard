@@ -75,7 +75,7 @@ export default function ProductFunnelsDetailPage() {
 
   useEffect(() => { if (id) loadAll(); }, [id, loadAll]);
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, EUR: 0.92, INR: 83.5 };
+  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 83.5 };
   const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
 
   const funnelAggs = useMemo(() => {
@@ -141,7 +141,7 @@ export default function ProductFunnelsDetailPage() {
             <FunnelIcon className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">Funnels — {product.productName || 'Unnamed product'}</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">LPs — {product.productName || 'Unnamed product'}</h1>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {funnels.length} funnel{funnels.length === 1 ? '' : 's'} across markets · launches &amp; performance
             </p>
@@ -150,7 +150,7 @@ export default function ProductFunnelsDetailPage() {
 
         <div className="flex items-center gap-2">
           <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
-            {(['USD', 'EUR', 'INR'] as const).map((c) => (
+            {(['USD', 'INR'] as const).map((c) => (
               <button
                 key={c}
                 type="button"
@@ -180,7 +180,7 @@ export default function ProductFunnelsDetailPage() {
       {funnels.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-10 text-center">
           <FunnelIcon className="mx-auto h-7 w-7 text-muted-foreground/30" />
-          <p className="mt-2 text-[13px] font-medium text-foreground">No funnels for this product yet.</p>
+          <p className="mt-2 text-[13px] font-medium text-foreground">No LPs for this product yet.</p>
           <Link
             href="/funnels"
             className="mt-3 inline-flex items-center gap-1 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/25"
@@ -214,17 +214,17 @@ export default function ProductFunnelsDetailPage() {
               >
                 <Link
                   href={`/funnels/${f.id}`}
-                  aria-label={`Open ${f.country} funnel`}
+                  aria-label="Open LP"
                   className="absolute inset-0 z-10 rounded-xl"
                 />
                 <div className={cn('absolute inset-x-0 top-0 h-[3px]', winning ? 'bg-gradient-to-r from-emerald-500/60 via-emerald-400 to-emerald-500/60' : tone.dot)} aria-hidden />
 
                 <div className="relative z-20 pointer-events-none flex items-start justify-between gap-3 p-4">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-[13px] font-semibold text-foreground">{f.country}</p>
-                      <span className="text-muted-foreground/40">·</span>
-                      <p className="text-[11px] text-muted-foreground">{f.language}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="truncate text-[13px] font-semibold text-foreground">
+                        {f.funnelishUrl ? f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (f.productName || 'LP')}
+                      </p>
                     </div>
                     <span className={cn('mt-1.5 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>
                       <span className={cn('h-1 w-1 rounded-full', tone.dot)} aria-hidden />

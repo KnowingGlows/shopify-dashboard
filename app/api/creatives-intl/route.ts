@@ -21,8 +21,6 @@ function sanitize(input: Record<string, unknown>, base?: Partial<Creative>): Par
   const out: Partial<Creative> = { ...base };
   if ('funnelId' in input) out.funnelId = String(input.funnelId ?? '').trim();
   if ('productName' in input) out.productName = String(input.productName ?? '').trim();
-  if ('country' in input) out.country = String(input.country ?? '').trim();
-  if ('language' in input) out.language = String(input.language ?? '').trim();
   if ('batchName' in input) out.batchName = String(input.batchName ?? '').trim();
   if ('creativeType' in input) out.creativeType = String(input.creativeType ?? '').trim();
   if ('folderLink' in input) out.folderLink = String(input.folderLink ?? '').trim();
@@ -47,7 +45,6 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const funnelId = searchParams.get('funnelId') ?? '';
-    const country = searchParams.get('country') ?? '';
     const status = searchParams.get('status') ?? '';
     const result = searchParams.get('result') ?? '';
 
@@ -63,8 +60,6 @@ export async function GET(request: Request) {
           id: data.id ?? doc.id,
           funnelId: data.funnelId ?? '',
           productName: data.productName ?? '',
-          country: data.country ?? '',
-          language: data.language ?? '',
           batchName: data.batchName ?? '',
           creativeType: data.creativeType ?? '',
           folderLink: data.folderLink ?? '',
@@ -81,7 +76,6 @@ export async function GET(request: Request) {
 
     const filtered = entries.filter((e) => {
       if (funnelId && e.funnelId !== funnelId) return false;
-      if (country && e.country !== country) return false;
       if (status && e.status !== status) return false;
       if (result && e.result !== result) return false;
       return true;
@@ -111,8 +105,6 @@ export async function POST(request: Request) {
       id: crypto.randomUUID(),
       funnelId: sanitized.funnelId,
       productName: sanitized.productName ?? '',
-      country: sanitized.country ?? '',
-      language: sanitized.language ?? '',
       batchName: sanitized.batchName,
       creativeType: sanitized.creativeType ?? '',
       folderLink: sanitized.folderLink ?? '',
