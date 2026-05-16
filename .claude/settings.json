@@ -13,7 +13,8 @@
       "Bash(grep -rn \"Open\\\\|product-tracker/\\\\${\" 'app/\\(dashboard\\)/product-tracker/page.tsx')",
       "Bash(mkdir -p 'app/\\(dashboard\\)/product-tracker/[id]/funnels' 'app/\\(dashboard\\)/product-tracker/[id]/creatives')",
       "Bash(mkdir -p 'app/\\(dashboard\\)/funnels/[id]/logs')",
-      "Bash(sed -i '' '636,664d' 'app/\\(dashboard\\)/funnels/[id]/page.tsx')"
+      "Bash(sed -i '' '636,664d' 'app/\\(dashboard\\)/funnels/[id]/page.tsx')",
+      "Bash(perl -0pi -e 's/<Num k=\"\\(\\\\w+\\)\" suffix=\"\\([^\"]*\\)\" \\\\/>/<NumInput value={String\\(v.$1\\)} onChange={\\(val\\) => set\\('\"'\"'$1'\"'\"', val\\)} suffix=\"$2\" \\\\/>/g; s/<Num k=\"\\(\\\\w+\\)\" \\\\/>/<NumInput value={String\\(v.$1\\)} onChange={\\(val\\) => set\\('\"'\"'$1'\"'\"', val\\)} \\\\/>/g' 'app/\\(dashboard\\)/finance/calculator/page.tsx')"
     ],
     "additionalDirectories": [
       "/tmp",

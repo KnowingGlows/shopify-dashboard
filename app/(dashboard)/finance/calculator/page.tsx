@@ -562,20 +562,6 @@ function ThreePLCalculator() {
   const setTranche = (i: number, key: keyof Tranche, val: string) =>
     setTranches((t) => t.map((row, idx) => (idx === i ? { ...row, [key]: val } : row)));
 
-  const Num = ({ k, suffix }: { k: keyof typeof THREEPL_DEFAULTS; suffix?: string }) => (
-    <div className="relative">
-      <input
-        type="text"
-        inputMode="decimal"
-        value={String(v[k])}
-        onChange={(e) => set(k, e.target.value as never)}
-        className="form-input pr-7 tabular-nums"
-      />
-      {suffix && (
-        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{suffix}</span>
-      )}
-    </div>
-  );
 
   return (
     <motion.div
@@ -607,12 +593,12 @@ function ThreePLCalculator() {
         <div className="space-y-5">
           <Section icon={<Package className="h-3.5 w-3.5" />} title="Order & product">
             <div className="grid grid-cols-2 gap-3">
-              <CalcField label="Selling price" hint="order value ₹"><Num k="sellingPrice" suffix="₹" /></CalcField>
-              <CalcField label="COGS / unit" hint="₹"><Num k="cogsPerUnit" suffix="₹" /></CalcField>
-              <CalcField label="Units / order"><Num k="unitsPerOrder" /></CalcField>
-              <CalcField label="Pkg weight" hint="grams"><Num k="weightGrams" suffix="g" /></CalcField>
-              <CalcField label="Delivery rate" hint="rest = RTO"><Num k="deliveryRate" suffix="%" /></CalcField>
-              <CalcField label="Ad spend / order" hint="cash, not credit"><Num k="adSpendPerOrder" suffix="₹" /></CalcField>
+              <CalcField label="Selling price" hint="order value ₹"><NumInput value={String(v.sellingPrice)} onChange={(val) => set('sellingPrice', val)} suffix="₹" /></CalcField>
+              <CalcField label="COGS / unit" hint="₹"><NumInput value={String(v.cogsPerUnit)} onChange={(val) => set('cogsPerUnit', val)} suffix="₹" /></CalcField>
+              <CalcField label="Units / order"><NumInput value={String(v.unitsPerOrder)} onChange={(val) => set('unitsPerOrder', val)} /></CalcField>
+              <CalcField label="Pkg weight" hint="grams"><NumInput value={String(v.weightGrams)} onChange={(val) => set('weightGrams', val)} suffix="g" /></CalcField>
+              <CalcField label="Delivery rate" hint="rest = RTO"><NumInput value={String(v.deliveryRate)} onChange={(val) => set('deliveryRate', val)} suffix="%" /></CalcField>
+              <CalcField label="Ad spend / order" hint="cash, not credit"><NumInput value={String(v.adSpendPerOrder)} onChange={(val) => set('adSpendPerOrder', val)} suffix="₹" /></CalcField>
             </div>
             <p className="mt-1 text-[10px] text-muted-foreground/70">
               {slabs} shipping slab{slabs === 1 ? '' : 's'} ({num(v.weightGrams)}g ÷ 500g)
@@ -621,38 +607,38 @@ function ThreePLCalculator() {
 
           <Section icon={<Truck className="h-3.5 w-3.5" />} title="Shipping & COD">
             <div className="grid grid-cols-2 gap-3">
-              <CalcField label="Forward / slab" hint="all-zone ₹55"><Num k="fwdShip" suffix="₹" /></CalcField>
-              <CalcField label="RTO ship / slab" hint="= forward"><Num k="rtoShip" suffix="₹" /></CalcField>
-              <CalcField label="COD fee flat"><Num k="codFlat" suffix="₹" /></CalcField>
-              <CalcField label="COD fee %" hint="whichever higher"><Num k="codPct" suffix="%" /></CalcField>
+              <CalcField label="Forward / slab" hint="all-zone ₹55"><NumInput value={String(v.fwdShip)} onChange={(val) => set('fwdShip', val)} suffix="₹" /></CalcField>
+              <CalcField label="RTO ship / slab" hint="= forward"><NumInput value={String(v.rtoShip)} onChange={(val) => set('rtoShip', val)} suffix="₹" /></CalcField>
+              <CalcField label="COD fee flat"><NumInput value={String(v.codFlat)} onChange={(val) => set('codFlat', val)} suffix="₹" /></CalcField>
+              <CalcField label="COD fee %" hint="whichever higher"><NumInput value={String(v.codPct)} onChange={(val) => set('codPct', val)} suffix="%" /></CalcField>
             </div>
           </Section>
 
           <Section icon={<Boxes className="h-3.5 w-3.5" />} title="Storage & handling" note="excl GST">
             <div className="grid grid-cols-2 gap-3">
-              <CalcField label="Inward / unit"><Num k="inward" suffix="₹" /></CalcField>
-              <CalcField label="Storage / unit / day"><Num k="storagePerDay" suffix="₹" /></CalcField>
-              <CalcField label="Avg storage days"><Num k="storageDays" suffix="d" /></CalcField>
-              <CalcField label="RTO handling / unit"><Num k="rtoHandling" suffix="₹" /></CalcField>
-              <CalcField label="Reverse pickup / unit"><Num k="reversePickup" suffix="₹" /></CalcField>
-              <CalcField label="RTV handling / unit" hint="0 if n/a"><Num k="rtvHandling" suffix="₹" /></CalcField>
-              <CalcField label="RTO COGS loss %" hint="damage on return"><Num k="rtoCogsLossPct" suffix="%" /></CalcField>
+              <CalcField label="Inward / unit"><NumInput value={String(v.inward)} onChange={(val) => set('inward', val)} suffix="₹" /></CalcField>
+              <CalcField label="Storage / unit / day"><NumInput value={String(v.storagePerDay)} onChange={(val) => set('storagePerDay', val)} suffix="₹" /></CalcField>
+              <CalcField label="Avg storage days"><NumInput value={String(v.storageDays)} onChange={(val) => set('storageDays', val)} suffix="d" /></CalcField>
+              <CalcField label="RTO handling / unit"><NumInput value={String(v.rtoHandling)} onChange={(val) => set('rtoHandling', val)} suffix="₹" /></CalcField>
+              <CalcField label="Reverse pickup / unit"><NumInput value={String(v.reversePickup)} onChange={(val) => set('reversePickup', val)} suffix="₹" /></CalcField>
+              <CalcField label="RTV handling / unit" hint="0 if n/a"><NumInput value={String(v.rtvHandling)} onChange={(val) => set('rtvHandling', val)} suffix="₹" /></CalcField>
+              <CalcField label="RTO COGS loss %" hint="damage on return"><NumInput value={String(v.rtoCogsLossPct)} onChange={(val) => set('rtoCogsLossPct', val)} suffix="%" /></CalcField>
             </div>
           </Section>
 
           <Section icon={<Package className="h-3.5 w-3.5" />} title="Fulfilment" note="excl GST">
             <div className="grid grid-cols-2 gap-3">
-              <CalcField label="Outbound / unit"><Num k="outbound" suffix="₹" /></CalcField>
-              <CalcField label="Printing / order"><Num k="printing" suffix="₹" /></CalcField>
-              <CalcField label="Packaging / order"><Num k="packaging" suffix="₹" /></CalcField>
+              <CalcField label="Outbound / unit"><NumInput value={String(v.outbound)} onChange={(val) => set('outbound', val)} suffix="₹" /></CalcField>
+              <CalcField label="Printing / order"><NumInput value={String(v.printing)} onChange={(val) => set('printing', val)} suffix="₹" /></CalcField>
+              <CalcField label="Packaging / order"><NumInput value={String(v.packaging)} onChange={(val) => set('packaging', val)} suffix="₹" /></CalcField>
             </div>
           </Section>
 
           <Section icon={<Receipt className="h-3.5 w-3.5" />} title="Platform fee" note="per delivered order, excl GST">
             <div className="grid grid-cols-3 gap-3">
-              <CalcField label="Conv. %"><Num k="convPct" suffix="%" /></CalcField>
-              <CalcField label="Min ₹"><Num k="convMin" suffix="₹" /></CalcField>
-              <CalcField label="Cap ₹"><Num k="convCap" suffix="₹" /></CalcField>
+              <CalcField label="Conv. %"><NumInput value={String(v.convPct)} onChange={(val) => set('convPct', val)} suffix="%" /></CalcField>
+              <CalcField label="Min ₹"><NumInput value={String(v.convMin)} onChange={(val) => set('convMin', val)} suffix="₹" /></CalcField>
+              <CalcField label="Cap ₹"><NumInput value={String(v.convCap)} onChange={(val) => set('convCap', val)} suffix="₹" /></CalcField>
             </div>
             <p className="mt-1 text-[10px] text-muted-foreground/70">
               max({num(v.convPct)}% of order, ₹{num(v.convMin)}) capped at ₹{num(v.convCap)} = <span className="text-foreground">{fmt(convenience)}</span>
@@ -661,7 +647,7 @@ function ThreePLCalculator() {
 
           <Section icon={<Landmark className="h-3.5 w-3.5" />} title="GST">
             <div className="grid grid-cols-2 gap-3">
-              <CalcField label="GST rate"><Num k="gstRate" suffix="%" /></CalcField>
+              <CalcField label="GST rate"><NumInput value={String(v.gstRate)} onChange={(val) => set('gstRate', val)} suffix="%" /></CalcField>
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Toggles</label>
                 <div className="flex flex-col gap-1.5">
@@ -677,8 +663,8 @@ function ThreePLCalculator() {
 
           <Section icon={<CreditCard className="h-3.5 w-3.5" />} title="Credit line" note="covers everything except ads">
             <div className="grid grid-cols-2 gap-3">
-              <CalcField label="Orders / month"><Num k="ordersPerMonth" /></CalcField>
-              <CalcField label="Financing fee" hint="flat % on financed"><Num k="financingFeePct" suffix="%" /></CalcField>
+              <CalcField label="Orders / month"><NumInput value={String(v.ordersPerMonth)} onChange={(val) => set('ordersPerMonth', val)} /></CalcField>
+              <CalcField label="Financing fee" hint="flat % on financed"><NumInput value={String(v.financingFeePct)} onChange={(val) => set('financingFeePct', val)} suffix="%" /></CalcField>
             </div>
             <div className="mt-3">
               <div className="mb-1.5 flex items-center justify-between">
@@ -832,6 +818,27 @@ function ThreePLCalculator() {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function NumInput({ value, onChange, suffix }: {
+  value: string;
+  onChange: (v: string) => void;
+  suffix?: string;
+}) {
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="form-input pr-7 tabular-nums"
+      />
+      {suffix && (
+        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">{suffix}</span>
+      )}
+    </div>
   );
 }
 
