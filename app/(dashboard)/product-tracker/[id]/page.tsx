@@ -37,6 +37,7 @@ const PRODUCT_STAGES = [
   'Testing Store Page Done',
   'Testing Ads',
   'Winner - Moved To OPS',
+  'Flop',
   'Dropped',
 ];
 
@@ -45,7 +46,8 @@ const STAGE_CONFIG: Record<string, { color: string; bg: string; border: string; 
   'Testing Store Page Done':{ color: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30',    dot: 'bg-blue-400',    gradient: 'from-blue-500/40 via-blue-400/60 to-blue-500/40' },
   'Testing Ads':            { color: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/30',   dot: 'bg-amber-400',   gradient: 'from-amber-500/40 via-amber-400/60 to-amber-500/40' },
   'Winner - Moved To OPS':  { color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', dot: 'bg-emerald-400', gradient: 'from-emerald-500/50 via-emerald-400/70 to-emerald-500/50' },
-  'Dropped':                { color: 'text-rose-400',    bg: 'bg-rose-500/10',    border: 'border-rose-500/30',    dot: 'bg-rose-400',    gradient: 'from-rose-500/40 via-rose-400/60 to-rose-500/40' },
+  'Flop':                   { color: 'text-rose-400',    bg: 'bg-rose-500/10',    border: 'border-rose-500/30',    dot: 'bg-rose-400',    gradient: 'from-rose-500/40 via-rose-400/60 to-rose-500/40' },
+  'Dropped':                { color: 'text-muted-foreground', bg: 'bg-border/30', border: 'border-border', dot: 'bg-muted-foreground', gradient: 'from-muted-foreground/30 via-muted-foreground/40 to-muted-foreground/30' },
 };
 
 const STAGE_FALLBACK = { color: 'text-muted-foreground', bg: 'bg-border/40', border: 'border-border', dot: 'bg-muted-foreground', gradient: 'from-muted-foreground/30 via-muted-foreground/40 to-muted-foreground/30' };

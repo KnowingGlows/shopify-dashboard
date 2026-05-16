@@ -22,6 +22,7 @@ const PRODUCT_STAGES = [
   'Testing Store Page Done',
   'Testing Ads',
   'Winner - Moved To OPS',
+  'Flop',
   'Dropped',
 ];
 
@@ -30,7 +31,8 @@ const STAGE_CONFIG: Record<string, { color: string; bg: string; dot: string }> =
   'Testing Store Page Done': { color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30', dot: 'bg-blue-400' },
   'Testing Ads': { color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30', dot: 'bg-amber-400' },
   'Winner - Moved To OPS': { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30', dot: 'bg-emerald-400' },
-  'Dropped': { color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30', dot: 'bg-red-400' },
+  'Flop': { color: 'text-rose-400', bg: 'bg-rose-500/10 border-rose-500/30', dot: 'bg-rose-400' },
+  'Dropped': { color: 'text-muted-foreground', bg: 'bg-border/30 border-border', dot: 'bg-muted-foreground' },
 };
 
 type TabKey = 'all' | 'active' | 'winners';
@@ -160,12 +162,15 @@ export default function ProductTrackerPage() {
     config: STAGE_CONFIG[stage],
   }));
 
+  // Hit rate = winners ÷ (winners + flops). Flop = tested & failed (counts);
+  // Dropped = never tested (excluded entirely).
   const winnersCount = entries.filter((e) => e.productStage === 'Winner - Moved To OPS').length;
-  const droppedCount = entries.filter((e) => e.productStage === 'Dropped').length;
-  const hitRate = droppedCount === 0 && winnersCount === 0 ? 0 : droppedCount === 0 ? 100 : Math.round((winnersCount / (winnersCount + droppedCount)) * 100);
+  const flopCount = entries.filter((e) => e.productStage === 'Flop').length;
+  const decidedCount = winnersCount + flopCount;
+  const hitRate = decidedCount === 0 ? 0 : Math.round((winnersCount / decidedCount) * 100);
 
-  // Products tested this month (only if stage is Testing Ads, Winner, or Dropped)
-  const TESTED_STAGES = ['Testing Ads', 'Winner - Moved To OPS', 'Dropped'];
+  // Products tested = reached an ad-test outcome (Flop is tested, Dropped is not)
+  const TESTED_STAGES = ['Testing Ads', 'Winner - Moved To OPS', 'Flop'];
   const testedThisMonth = useMemo(() => {
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -233,7 +238,7 @@ export default function ProductTrackerPage() {
             <p className={`text-xl font-bold ${hitRate >= 30 ? 'text-emerald-400' : hitRate > 0 ? 'text-amber-400' : 'text-muted-foreground'}`}>
               {hitRate > 0 ? `${hitRate}%` : '—'}
             </p>
-            <p className="text-[9px] text-muted-foreground/40 mt-0.5">{winnersCount}W / {droppedCount}D</p>
+            <p className="text-[9px] text-muted-foreground/40 mt-0.5">{winnersCount}W / {flopCount}F · {decidedCount} decided</p>
           </div>
         </StaggerItem>
         <StaggerItem>

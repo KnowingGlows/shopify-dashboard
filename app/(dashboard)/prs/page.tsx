@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 import {
   Plus, Trash2, Loader2, ExternalLink, Check,
-  X, Search, ChevronDown,
+  X, Search, ChevronDown, Ban,
 } from 'lucide-react';
 import type { PRSEntry } from '@/types/shopify';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
@@ -66,15 +67,18 @@ export default function PRSPage() {
   // Search/filter
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // Rejected products live on their own page — keep the research board clean.
+  const activeEntries = useMemo(() => entries.filter((e) => e.status !== 'Rejected'), [entries]);
+  const rejectedCount = entries.length - activeEntries.length;
   const filteredEntries = useMemo(() => {
-    let list = entries;
+    let list = activeEntries;
     if (statusFilter) list = list.filter((e) => e.status === statusFilter);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter((e) => e.productName.toLowerCase().includes(q));
     }
     return list;
-  }, [entries, statusFilter, searchQuery]);
+  }, [activeEntries, statusFilter, searchQuery]);
 
   const addEntry = async () => {
     if (!formName.trim()) return;
@@ -108,9 +112,33 @@ export default function PRSPage() {
     finally { setDeletingId(null); }
   };
 
-  // Stats
-  const statusStats = STATUS_OPTIONS.filter(Boolean).map((s) => ({
-    status: s, count: entries.filter((e) => e.status === s).length, config: STATUS_CONFIG[s],
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  // Approve → create the product in the Products tracker, then drop it from
+  // the research board (a true "move", not a duplicate).
+  const approveEntry = async (entry: PRSEntry) => {
+    if (!entry.productName.trim()) return;
+    setApprovingId(entry.id);
+    try {
+      const res = await fetch('/api/product-tracker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productName: entry.productName,
+          productFileLink: entry.websiteLink || entry.adLink || '',
+          productStage: 'Research Phase',
+          remarks: entry.adLink ? `Ad: ${entry.adLink}` : '',
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to create product');
+      await fetch(`/api/prs?id=${entry.id}`, { method: 'DELETE' });
+      setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+    } catch { /* silently fail — entry stays so it can be retried */ }
+    finally { setApprovingId(null); }
+  };
+
+  // Stats (exclude Rejected — those have a dedicated page)
+  const statusStats = STATUS_OPTIONS.filter((s) => s && s !== 'Rejected').map((s) => ({
+    status: s, count: activeEntries.filter((e) => e.status === s).length, config: STATUS_CONFIG[s],
   }));
 
   return (
@@ -131,6 +159,13 @@ export default function PRSPage() {
               className="h-9 w-40 rounded-lg border border-border bg-card pl-8 pr-3 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none transition"
             />
           </div>
+          <Link
+            href="/prs/rejected"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-[12px] font-medium text-muted-foreground transition hover:text-rose-400 hover:border-rose-500/30"
+          >
+            <Ban className="h-3.5 w-3.5" />
+            Rejected{rejectedCount > 0 && <span className="text-rose-400">({rejectedCount})</span>}
+          </Link>
           <button onClick={() => setShowForm(!showForm)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[12px] font-medium text-primary-foreground transition hover:bg-primary/90">
             {showForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
             {showForm ? 'Cancel' : 'Add'}
@@ -202,11 +237,15 @@ export default function PRSPage() {
       {/* Entries */}
       {loading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-      ) : entries.length === 0 ? (
+      ) : activeEntries.length === 0 ? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-xl border border-dashed border-border bg-card/50 py-16 text-center">
           <Search className="mx-auto h-8 w-8 text-muted-foreground/30 mb-3" />
-          <p className="text-sm text-muted-foreground">No products researched yet</p>
-          <p className="text-[11px] text-muted-foreground/60 mt-1">Click &quot;Add Product&quot; to get started</p>
+          <p className="text-sm text-muted-foreground">{entries.length === 0 ? 'No products researched yet' : 'No active products'}</p>
+          <p className="text-[11px] text-muted-foreground/60 mt-1">
+            {entries.length === 0
+              ? 'Click "Add Product" to get started'
+              : <>All products are rejected — <Link href="/prs/rejected" className="text-rose-400 hover:underline">view rejected</Link></>}
+          </p>
         </motion.div>
       ) : (
         <StaggerContainer className="space-y-2">
@@ -234,6 +273,21 @@ export default function PRSPage() {
                       {saveState[entry.id] === 'saved' && <Check className="h-3 w-3 text-emerald-400" />}
                       {entry.adLink && <a href={entry.adLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-primary transition"><ExternalLink className="h-3.5 w-3.5" /></a>}
                       {entry.websiteLink && <a href={entry.websiteLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-blue-400 transition"><ExternalLink className="h-3.5 w-3.5" /></a>}
+                      <button
+                        onClick={() => approveEntry(entry)}
+                        disabled={approvingId === entry.id}
+                        title="Approve → move to Products"
+                        className="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[10px] font-medium text-muted-foreground/50 transition hover:border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-400 disabled:opacity-50"
+                      >
+                        {approvingId === entry.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Approve
+                      </button>
+                      <button
+                        onClick={() => patchEntry(entry.id, 'status', 'Rejected')}
+                        title="Reject product"
+                        className="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-[10px] font-medium text-muted-foreground/50 transition hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400"
+                      >
+                        <Ban className="h-3.5 w-3.5" /> Reject
+                      </button>
                       <button onClick={() => setEditingId(isEditing ? null : entry.id)} className="rounded-md p-1 text-muted-foreground/40 hover:text-foreground transition">
                         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isEditing ? 'rotate-180' : ''}`} />
                       </button>
