@@ -37,6 +37,7 @@ export default function PRSPage() {
   const [formName, setFormName] = useState('');
   const [formAdLink, setFormAdLink] = useState('');
   const [formWebLink, setFormWebLink] = useState('');
+  const [formDriveLink, setFormDriveLink] = useState('');
   const [formStatus, setFormStatus] = useState('');
 
   const fetchEntries = useCallback(async () => {
@@ -62,7 +63,7 @@ export default function PRSPage() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const resetForm = () => { setFormName(''); setFormAdLink(''); setFormWebLink(''); setFormStatus(''); };
+  const resetForm = () => { setFormName(''); setFormAdLink(''); setFormWebLink(''); setFormDriveLink(''); setFormStatus(''); };
 
   // Search/filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -86,7 +87,7 @@ export default function PRSPage() {
     try {
       const res = await fetch('/api/prs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productName: formName, adLink: formAdLink, websiteLink: formWebLink, status: formStatus }),
+        body: JSON.stringify({ productName: formName, adLink: formAdLink, websiteLink: formWebLink, driveLink: formDriveLink, status: formStatus }),
       });
       const data = await res.json();
       if (data.entry) { setEntries((prev) => [data.entry, ...prev]); resetForm(); setShowForm(false); }
@@ -124,9 +125,12 @@ export default function PRSPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productName: entry.productName,
-          productFileLink: entry.websiteLink || entry.adLink || '',
+          productFileLink: entry.driveLink || '',
           productStage: 'Research Phase',
-          remarks: entry.adLink ? `Ad: ${entry.adLink}` : '',
+          remarks: [
+            entry.adLink && `Ad: ${entry.adLink}`,
+            entry.websiteLink && `Site: ${entry.websiteLink}`,
+          ].filter(Boolean).join(' · '),
         }),
       });
       if (!res.ok) throw new Error('Failed to create product');
@@ -222,6 +226,9 @@ export default function PRSPage() {
                 <FormField label="Website Link">
                   <input type="text" value={formWebLink} onChange={(e) => setFormWebLink(e.target.value)} placeholder="https://..." className="form-input" />
                 </FormField>
+                <FormField label="Drive Link">
+                  <input type="text" value={formDriveLink} onChange={(e) => setFormDriveLink(e.target.value)} placeholder="https://drive..." className="form-input" />
+                </FormField>
               </div>
               <div className="mt-4 flex items-center gap-3">
                 <button onClick={addEntry} disabled={adding || !formName.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-[13px] font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50">
@@ -271,8 +278,9 @@ export default function PRSPage() {
                       )}
                       {saveState[entry.id] === 'saving' && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
                       {saveState[entry.id] === 'saved' && <Check className="h-3 w-3 text-emerald-400" />}
-                      {entry.adLink && <a href={entry.adLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-primary transition"><ExternalLink className="h-3.5 w-3.5" /></a>}
-                      {entry.websiteLink && <a href={entry.websiteLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-blue-400 transition"><ExternalLink className="h-3.5 w-3.5" /></a>}
+                      {entry.adLink && <a href={entry.adLink} target="_blank" rel="noopener noreferrer" title="Ad link" className="text-muted-foreground/40 hover:text-primary transition"><ExternalLink className="h-3.5 w-3.5" /></a>}
+                      {entry.websiteLink && <a href={entry.websiteLink} target="_blank" rel="noopener noreferrer" title="Website link" className="text-muted-foreground/40 hover:text-blue-400 transition"><ExternalLink className="h-3.5 w-3.5" /></a>}
+                      {entry.driveLink && <a href={entry.driveLink} target="_blank" rel="noopener noreferrer" title="Drive link" className="text-muted-foreground/40 hover:text-amber-400 transition"><ExternalLink className="h-3.5 w-3.5" /></a>}
                       <button
                         onClick={() => approveEntry(entry)}
                         disabled={approvingId === entry.id}
@@ -303,6 +311,9 @@ export default function PRSPage() {
                           </FormField>
                           <FormField label="Website Link">
                             <input type="text" defaultValue={entry.websiteLink} onBlur={(e) => e.target.value !== entry.websiteLink && patchEntry(entry.id, 'websiteLink', e.target.value)} placeholder="https://..." className="form-input" />
+                          </FormField>
+                          <FormField label="Drive Link">
+                            <input type="text" defaultValue={entry.driveLink} onBlur={(e) => e.target.value !== entry.driveLink && patchEntry(entry.id, 'driveLink', e.target.value)} placeholder="https://drive..." className="form-input" />
                           </FormField>
                           <FormField label="Status">
                             <select value={entry.status} onChange={(e) => patchEntry(entry.id, 'status', e.target.value)} className={`form-input ${cfg?.color ?? ''}`}>

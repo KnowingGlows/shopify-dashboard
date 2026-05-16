@@ -202,10 +202,15 @@ export default function ProductTrackerPage() {
   const winnerEntries = entries.filter((e) => e.productStage === 'Winner - Moved To OPS');
   const activeEntries = entries.filter((e) => ACTIVE_STAGES.includes(e.productStage));
 
+  // Stage pill filter — click a stage to drill into just those products
+  const [stageFilter, setStageFilter] = useState<string | null>(null);
+
   // Pagination
   const ITEMS_PER_PAGE = 10;
   const [page, setPage] = useState(1);
-  const displayEntries = tab === 'winners' ? winnerEntries : tab === 'active' ? activeEntries : entries;
+  const displayEntries = stageFilter
+    ? entries.filter((e) => (e.productStage || '') === stageFilter)
+    : tab === 'winners' ? winnerEntries : tab === 'active' ? activeEntries : entries;
   const totalPages = Math.max(1, Math.ceil(displayEntries.length / ITEMS_PER_PAGE));
   const safePage = Math.min(page, totalPages);
   const paginatedEntries = displayEntries.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
@@ -273,15 +278,42 @@ export default function ProductTrackerPage() {
         </StaggerItem>
       </StaggerContainer>
 
-      {/* Stage pills + Winners toggle */}
+      {/* Stage pills — click to drill into a stage */}
       <div className="flex flex-wrap items-center gap-2">
-        {stageStats.filter((s) => s.stage !== 'Winner - Moved To OPS').map(({ stage, count, config }) => (
-          <div key={stage} className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${config.bg}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
-            <span className={config.color}>{stage}</span>
-            <span className="text-muted-foreground">{count}</span>
-          </div>
-        ))}
+        {stageStats.filter((s) => s.stage !== 'Winner - Moved To OPS').map(({ stage, count, config }) => {
+          const active = stageFilter === stage;
+          const dimmed = stageFilter !== null && !active;
+          return (
+            <motion.button
+              key={stage}
+              type="button"
+              onClick={() => { setStageFilter(active ? null : stage); setPage(1); }}
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.96 }}
+              transition={{ duration: 0.15 }}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12px] font-medium transition-all ${config.bg} ${
+                active
+                  ? 'ring-2 ring-primary/40 shadow-[0_4px_16px_-4px_rgba(167,139,250,0.35)] scale-[1.03]'
+                  : dimmed
+                    ? 'opacity-40 hover:opacity-100'
+                    : 'hover:brightness-125'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${config.dot} ${active ? 'shadow-[0_0_8px_currentColor]' : ''}`} />
+              <span className={config.color}>{stage}</span>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${active ? 'bg-primary/20 text-primary' : 'bg-background/50 text-muted-foreground'}`}>{count}</span>
+            </motion.button>
+          );
+        })}
+        {stageFilter && (
+          <button
+            type="button"
+            onClick={() => { setStageFilter(null); setPage(1); }}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground"
+          >
+            <X className="h-3 w-3" /> Clear
+          </button>
+        )}
         <div className="ml-auto inline-flex items-center rounded-full border border-border bg-card p-0.5">
           {([
             { key: 'all',     label: 'All',     count: entries.length,           tone: '' },
@@ -293,9 +325,9 @@ export default function ProductTrackerPage() {
               <button
                 key={t.key}
                 type="button"
-                onClick={() => { setTab(t.key); setPage(1); }}
+                onClick={() => { setTab(t.key); setStageFilter(null); setPage(1); }}
                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium transition ${
-                  active
+                  active && !stageFilter
                     ? t.tone === 'emerald'
                       ? 'bg-emerald-500/15 text-emerald-400'
                       : 'bg-primary/15 text-primary'

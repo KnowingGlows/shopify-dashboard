@@ -30,6 +30,7 @@ export async function GET() {
         productName: data.productName ?? '',
         adLink: data.adLink ?? '',
         websiteLink: data.websiteLink ?? '',
+        driveLink: data.driveLink ?? '',
         status: data.status ?? '',
         createdAt: data.createdAt ?? '',
         updatedAt: data.updatedAt ?? '',
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
       productName: (body.productName ?? '').trim(),
       adLink: (body.adLink ?? '').trim(),
       websiteLink: (body.websiteLink ?? '').trim(),
+      driveLink: (body.driveLink ?? '').trim(),
       status: body.status ?? '',
       createdAt: now,
       updatedAt: now,
@@ -108,6 +110,9 @@ export async function PATCH(request: Request) {
       }),
       ...(updates.websiteLink !== undefined && {
         websiteLink: updates.websiteLink.trim(),
+      }),
+      ...(updates.driveLink !== undefined && {
+        driveLink: updates.driveLink.trim(),
       }),
       ...(updates.status !== undefined && { status: updates.status }),
       updatedAt: now,

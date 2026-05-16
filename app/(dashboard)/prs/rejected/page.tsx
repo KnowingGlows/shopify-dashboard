@@ -119,6 +119,11 @@ export default function RejectedPRSPage() {
                         <ExternalLink className="h-3.5 w-3.5" />
                       </a>
                     )}
+                    {entry.driveLink && (
+                      <a href={entry.driveLink} target="_blank" rel="noopener noreferrer" className="text-muted-foreground/40 hover:text-amber-400 transition" title="Drive link">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
                     <button
                       onClick={() => restore(entry.id)}
                       disabled={busyId === entry.id}

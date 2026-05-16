@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Boxes, Plus, Trash2, Receipt, Bookmark, X, Pencil } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
-import { formatINR } from '@/lib/currency-converter';
+import { formatINR, formatUSD } from '@/lib/currency-converter';
 
 // ── Fixed 3PL rates (from your plan — these don't change) ──────────────────
 const FEES = {
@@ -61,6 +61,20 @@ export default function ThreePLCalculatorPage() {
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editingPresetName, setEditingPresetName] = useState('');
 
+  // Display currency — values are computed in ₹, optionally shown in $ at the
+  // latest live FX rate (USD-base, so INR rate = ₹ per $1).
+  const [currency, setCurrency] = useState<'INR' | 'USD'>('INR');
+  // Rate is prefilled from the live FX feed but fully editable — override it
+  // if the fetched rate looks off.
+  const [rateStr, setRateStr] = useState('83.5');
+  useEffect(() => {
+    fetch('/api/fx')
+      .then((r) => r.json())
+      .then((d) => { if (d?.rates?.INR) setRateStr(String(Number(d.rates.INR).toFixed(2))); })
+      .catch(() => {});
+  }, []);
+  const inrPerUsd = parseFloat(rateStr) || 83.5;
+
   useEffect(() => {
     fetch('/api/finance?action=presets&kind=3pl')
       .then((r) => r.json())
@@ -113,7 +127,8 @@ export default function ThreePLCalculatorPage() {
   const set = <K extends keyof typeof DEFAULTS>(k: K, val: (typeof DEFAULTS)[K]) =>
     setV((s) => ({ ...s, [k]: val }));
   const num = (s: string) => parseFloat(s) || 0;
-  const fmt = (a: number) => formatINR(a);
+  const fmt = (a: number) =>
+    currency === 'USD' ? formatUSD(inrPerUsd > 0 ? a / inrPerUsd : 0) : formatINR(a);
 
   // ── Inputs ────────────────────────────────────────────────────────────
   const sp = num(v.sellingPrice);
@@ -173,11 +188,6 @@ export default function ThreePLCalculatorPage() {
   const netPerShipped = blendedPre - ad - netGstBlended;
   const simpleNet = deliveredProfitPre - ad - netGstDeliveredOrder;
 
-  const kSlope = deliveredProfitPre - rtoProfitPre - netGstDeliveredOrder + netGstRtoOrder;
-  const kConst = rtoProfitPre - ad - netGstRtoOrder;
-  const breakevenD = kSlope !== 0 ? -kConst / kSlope : NaN;
-  const breakevenPct = Number.isFinite(breakevenD) ? Math.min(100, Math.max(0, breakevenD * 100)) : NaN;
-
   // ── Batch totals (for the order count you enter — no time frame) ──────
   const qty = Math.max(0, num(v.orders));
   const shipped = qty;
@@ -217,6 +227,9 @@ export default function ThreePLCalculatorPage() {
   const profitBeforeGst = moneyIn - outCOGS - total3PL - outAds - outFinancing;
   const netProfit = moneyIn - moneyOut;
   const netMarginPct = moneyIn > 0 ? (netProfit / moneyIn) * 100 : 0;
+  // Gross profit = revenue − product cost only (before 3PL fees, ads, GST).
+  const grossProfit = moneyIn - outCOGS;
+  const grossMarginPct = moneyIn > 0 ? (grossProfit / moneyIn) * 100 : 0;
 
   const flowRows = [
     { label: 'Product cost (COGS)', amount: outCOGS },
@@ -256,6 +269,33 @@ export default function ThreePLCalculatorPage() {
           <p className="text-[11px] text-muted-foreground">COD fulfilment profit, GST offset &amp; credit line</p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-lg border border-border bg-card overflow-hidden">
+            <button
+              onClick={() => setCurrency('INR')}
+              className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'INR' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              ₹ INR
+            </button>
+            <button
+              onClick={() => setCurrency('USD')}
+              className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'USD' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              $ USD
+            </button>
+          </div>
+          {currency === 'USD' && (
+            <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1.5" title="₹ per $1 — edit if the live rate is off">
+              <span className="text-[11px] text-muted-foreground">₹</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={rateStr}
+                onChange={(e) => setRateStr(e.target.value)}
+                className="w-14 bg-transparent text-[11px] font-semibold tabular-nums text-foreground outline-none"
+              />
+              <span className="text-[11px] text-muted-foreground">/ $</span>
+            </div>
+          )}
           <button
             onClick={() => setShowPresets(true)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:bg-accent/30"
@@ -311,8 +351,8 @@ export default function ThreePLCalculatorPage() {
             <div className="space-y-1.5">
               <ResultRow label="Breakeven ROAS (BEROAS)" value={Number.isFinite(beroas) ? `${beroas.toFixed(2)}x` : '—'} />
               <ResultRow label="Ad spend / order" value={fmt(ad)} />
-              <ResultRow label="Breakeven delivery rate" value={Number.isFinite(breakevenPct) ? `${breakevenPct.toFixed(1)}%` : '—'} />
               <ResultRow label="Revenue" value={fmt(moneyIn)} />
+              <ResultRow label="Gross profit" value={`${fmt(grossProfit)} · ${grossMarginPct.toFixed(1)}%`} />
               <ResultRow label="Profit before GST" value={fmt(profitBeforeGst)} />
               {gstActive ? (
                 <>
@@ -323,7 +363,7 @@ export default function ThreePLCalculatorPage() {
                 <ResultRow label="− Input GST paid (unrecoverable)" value={`− ${fmt(inputGstSunk)}`} />
               )}
               <ResultRow label="Net profit / order" value={fmt(netPerShipped)} highlight="primary" />
-              <ResultRow label="Net profit" value={fmt(netProfit)} highlight="success" />
+              <ResultRow label="Net profit (final)" value={`${fmt(netProfit)} · ${netMarginPct.toFixed(1)}%`} highlight="success" />
             </div>
 
             <div
@@ -337,7 +377,7 @@ export default function ThreePLCalculatorPage() {
                 {fmt(netProfit)}
               </p>
               <p className="relative z-10 mt-1.5 text-[11px] text-muted-foreground">
-                {netMarginPct.toFixed(1)}% net margin · breakeven {Number.isFinite(breakevenPct) ? `${breakevenPct.toFixed(1)}%` : '—'} delivery
+                {grossMarginPct.toFixed(1)}% gross · <span className="text-foreground font-medium">{netMarginPct.toFixed(1)}% net</span> — final, after all costs, ads &amp; GST
               </p>
             </div>
           </div>

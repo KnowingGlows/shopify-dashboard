@@ -121,6 +121,7 @@ export interface PRSEntry {
   productName: string;
   adLink: string;
   websiteLink: string;
+  driveLink: string;   // product file / drive link — carried to Products on approve
   status: string;
   createdAt: string;
   updatedAt: string;
