@@ -36,14 +36,14 @@ const DEFAULTS = {
   cogsPerUnit: '250',
   deliveryRate: '65',
   roas: '3',
-  ordersPerMonth: '1000',
+  orders: '1000',
   unitsPerOrder: '1',
   weightGrams: '500',
   storageDays: '20',
   rtoCogsLossPct: '0',
   financingFeePct: '0',
   spGstInclusive: true,
-  claimGstOnCogs: false,
+  chargeOutputGst: true,
 };
 
 export default function ThreePLCalculatorPage() {
@@ -92,11 +92,15 @@ export default function ThreePLCalculatorPage() {
   const blendedPre = d * deliveredProfitPre + rto * rtoProfitPre;
 
   // ── GST: output on delivered revenue only · input fully claimable ─────
-  const outputGstPerDelivered = v.spGstInclusive
-    ? sp * gstRate / (1 + gstRate)
-    : sp * gstRate;
-  const inputGstDeliveredOrder = (commonCost + deliveredExtra + (v.claimGstOnCogs ? cogs : 0)) * gstRate;
-  const inputGstRtoOrder = (commonCost + rtoExtra + (v.claimGstOnCogs ? rtoCogsLoss : 0)) * gstRate;
+  // COGS is entered pre-GST (product cost only). The 18% GST you pay on it
+  // is always claimable as input credit, so it nets out.
+  const outputGstPerDelivered = !v.chargeOutputGst
+    ? 0
+    : v.spGstInclusive
+      ? sp * gstRate / (1 + gstRate)
+      : sp * gstRate;
+  const inputGstDeliveredOrder = (commonCost + deliveredExtra + cogs) * gstRate;
+  const inputGstRtoOrder = (commonCost + rtoExtra + rtoCogsLoss) * gstRate;
   const netGstDeliveredOrder = outputGstPerDelivered - inputGstDeliveredOrder;
   const netGstRtoOrder = -inputGstRtoOrder;
   const netGstBlended = d * netGstDeliveredOrder + rto * netGstRtoOrder;
@@ -109,34 +113,36 @@ export default function ThreePLCalculatorPage() {
   const breakevenD = kSlope !== 0 ? -kConst / kSlope : NaN;
   const breakevenPct = Number.isFinite(breakevenD) ? Math.min(100, Math.max(0, breakevenD * 100)) : NaN;
 
-  // ── Monthly ───────────────────────────────────────────────────────────
-  const opm = Math.max(0, num(v.ordersPerMonth));
-  const monthlyShipped = opm;
-  const monthlyDelivered = opm * d;
-  const monthlyRTO = opm * rto;
-  const monthlyRevenue = monthlyDelivered * sp;
+  // ── Batch totals (for the order count you enter — no time frame) ──────
+  const qty = Math.max(0, num(v.orders));
+  const shipped = qty;
+  const delivered = qty * d;
+  const rtoOrders = qty * rto;
+  const totalRevenue = delivered * sp;
 
+  // Cash you must float = costs you pay GST-inclusive (you front the 18% on
+  // COGS even though you reclaim it later) + any net GST owed.
   const financedPerShipped =
-    d * (cogs + commonCost + deliveredExtra) +
-    rto * (rtoCogsLoss + commonCost + rtoExtra) +
+    d * (cogs * (1 + gstRate) + commonCost + deliveredExtra) +
+    rto * (rtoCogsLoss * (1 + gstRate) + commonCost + rtoExtra) +
     Math.max(0, netGstBlended);
-  const monthlyFinanced = monthlyShipped * financedPerShipped;
-  const financingFee = monthlyFinanced * (num(v.financingFeePct) / 100);
-  const monthlyCashUpfront = monthlyShipped * ad;
+  const financed = shipped * financedPerShipped;
+  const financingFee = financed * (num(v.financingFeePct) / 100);
+  const cashUpfront = shipped * ad;
 
-  const outCOGS = monthlyDelivered * cogs + monthlyRTO * rtoCogsLoss;
-  const outForward = monthlyShipped * fwdShip;
-  const outRTO = monthlyRTO * (rtoShip + rtoHandling + reversePickup + rtvHandling);
-  const outFulfilment = monthlyShipped * (outbound + printing + packaging);
-  const outStorage = monthlyShipped * (inward + storage);
-  const outCOD = monthlyDelivered * codFee;
-  const outPlatform = monthlyDelivered * convenience;
-  const outGst = monthlyShipped * netGstBlended;
-  const outAds = monthlyCashUpfront;
+  const outCOGS = delivered * cogs + rtoOrders * rtoCogsLoss;
+  const outForward = shipped * fwdShip;
+  const outRTO = rtoOrders * (rtoShip + rtoHandling + reversePickup + rtvHandling);
+  const outFulfilment = shipped * (outbound + printing + packaging);
+  const outStorage = shipped * (inward + storage);
+  const outCOD = delivered * codFee;
+  const outPlatform = delivered * convenience;
+  const outGst = shipped * netGstBlended;
+  const outAds = cashUpfront;
   const outFinancing = financingFee;
   const total3PL = outForward + outRTO + outFulfilment + outStorage + outCOD + outPlatform;
   const moneyOut = outCOGS + total3PL + outGst + outAds + outFinancing;
-  const moneyIn = monthlyRevenue;
+  const moneyIn = totalRevenue;
   const netProfit = moneyIn - moneyOut;
   const netMarginPct = moneyIn > 0 ? (netProfit / moneyIn) * 100 : 0;
 
@@ -212,8 +218,8 @@ export default function ThreePLCalculatorPage() {
               <CalcField label="Delivery Rate %" hint="rest is RTO">
                 <input type="text" inputMode="decimal" value={v.deliveryRate} onChange={(e) => set('deliveryRate', e.target.value)} className="form-input" />
               </CalcField>
-              <CalcField label="Orders / Month">
-                <input type="text" inputMode="decimal" value={v.ordersPerMonth} onChange={(e) => set('ordersPerMonth', e.target.value)} className="form-input" />
+              <CalcField label="Orders">
+                <input type="text" inputMode="decimal" value={v.orders} onChange={(e) => set('orders', e.target.value)} className="form-input" />
               </CalcField>
             </div>
 
@@ -223,9 +229,9 @@ export default function ThreePLCalculatorPage() {
               <ResultRow label="Breakeven ROAS (BEROAS)" value={Number.isFinite(beroas) ? `${beroas.toFixed(2)}x` : '—'} />
               <ResultRow label="Ad spend / order" value={fmt(ad)} />
               <ResultRow label="Breakeven delivery rate" value={Number.isFinite(breakevenPct) ? `${breakevenPct.toFixed(1)}%` : '—'} />
-              <ResultRow label="Revenue / month" value={fmt(moneyIn)} />
-              <ResultRow label="Net profit / shipped order" value={fmt(netPerShipped)} highlight="primary" />
-              <ResultRow label="Net profit / month" value={fmt(netProfit)} highlight="success" />
+              <ResultRow label="Revenue" value={fmt(moneyIn)} />
+              <ResultRow label="Net profit / order" value={fmt(netPerShipped)} highlight="primary" />
+              <ResultRow label="Net profit" value={fmt(netProfit)} highlight="success" />
             </div>
 
             <div
@@ -233,7 +239,7 @@ export default function ThreePLCalculatorPage() {
               style={{ '--glow-color': 'rgba(16, 185, 129, 0.12)' } as React.CSSProperties}
             >
               <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
-                Net Profit / Month
+                Net Profit
               </p>
               <p className={`relative z-10 text-4xl font-bold font-mono ${netProfit >= 0 ? 'gradient-text-emerald' : 'text-rose-400'}`}>
                 {fmt(netProfit)}
@@ -256,7 +262,7 @@ export default function ThreePLCalculatorPage() {
             <Receipt className="h-4 w-4 text-primary" />
             <div>
               <h2 className="text-sm font-semibold text-foreground">Cost Breakdown</h2>
-              <p className="text-[10px] text-muted-foreground">Where every rupee goes · monthly</p>
+              <p className="text-[10px] text-muted-foreground">Where every rupee goes</p>
             </div>
           </div>
           <div className="relative z-10 p-4 space-y-4">
@@ -278,8 +284,8 @@ export default function ThreePLCalculatorPage() {
             <div className="h-px bg-border" />
 
             <div className="space-y-1.5">
-              <ResultRow label="Cash you fund upfront — ads" value={fmt(monthlyCashUpfront)} />
-              <ResultRow label="Financed on credit — everything else" value={fmt(monthlyFinanced)} highlight="primary" />
+              <ResultRow label="Cash you fund upfront — ads" value={fmt(cashUpfront)} />
+              <ResultRow label="Financed on credit — everything else" value={fmt(financed)} highlight="primary" />
             </div>
 
             <div>
@@ -312,7 +318,7 @@ export default function ThreePLCalculatorPage() {
                   </div>
                 ))}
               </div>
-              {monthlyFinanced > 0 && (
+              {financed > 0 && (
                 <div className="mt-2 overflow-hidden rounded-lg border border-border">
                   <table className="w-full text-[11px]">
                     <thead>
@@ -329,7 +335,7 @@ export default function ThreePLCalculatorPage() {
                           <tr key={i} className="border-b border-border/40 last:border-0">
                             <td className="px-3 py-1.5 tabular-nums text-foreground">{num(t.days)} days</td>
                             <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{pct}%</td>
-                            <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums text-foreground">{fmt(monthlyFinanced * pct / 100)}</td>
+                            <td className="px-3 py-1.5 text-right font-mono font-semibold tabular-nums text-foreground">{fmt(financed * pct / 100)}</td>
                           </tr>
                         );
                       })}
@@ -361,25 +367,25 @@ export default function ThreePLCalculatorPage() {
 
             <div className="flex flex-wrap gap-2">
               <Toggle on={v.spGstInclusive} onClick={() => set('spGstInclusive', !v.spGstInclusive)} label="Selling price is GST-inclusive" />
-              <Toggle on={v.claimGstOnCogs} onClick={() => set('claimGstOnCogs', !v.claimGstOnCogs)} label="Claim input GST on COGS" />
+              <Toggle on={v.chargeOutputGst} onClick={() => set('chargeOutputGst', !v.chargeOutputGst)} label="Pay output GST on sales" />
             </div>
 
             <div className="h-px bg-border" />
 
             <div>
-              <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                3PL rates <span className="normal-case tracking-normal text-muted-foreground/50">(fixed)</span>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-foreground">
+                3PL rates <span className="normal-case tracking-normal font-normal text-muted-foreground/60">(fixed)</span>
               </p>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-lg border border-border bg-background/40 p-3">
+              <div className="grid grid-cols-2 gap-x-5 gap-y-2 rounded-lg border border-border bg-background/40 p-4">
                 {RATE_REFERENCE.map((r) => (
-                  <div key={r.label} className="flex items-center justify-between text-[11px]">
-                    <span className="text-muted-foreground/80">{r.label}</span>
-                    <span className="font-mono font-medium tabular-nums text-foreground">{r.value}</span>
+                  <div key={r.label} className="flex items-center justify-between text-[13px]">
+                    <span className="text-muted-foreground">{r.label}</span>
+                    <span className="font-mono font-semibold tabular-nums text-foreground">{r.value}</span>
                   </div>
                 ))}
               </div>
-              <p className="mt-2 text-[10px] text-muted-foreground/60">
-                Net / order @ 100% delivery would be <span className="text-foreground">{fmt(simpleNet)}</span>.
+              <p className="mt-2.5 text-[11px] text-muted-foreground/70">
+                Net / order @ 100% delivery would be <span className="font-medium text-foreground">{fmt(simpleNet)}</span>.
               </p>
             </div>
           </div>
