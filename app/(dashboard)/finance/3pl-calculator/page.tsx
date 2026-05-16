@@ -148,24 +148,19 @@ export default function ThreePLCalculatorPage() {
   const rtoProfitPre = -(rtoCogsLoss) - commonCost - rtoExtra;
   const blendedPre = d * deliveredProfitPre + rto * rtoProfitPre;
 
-  // ── GST: output on delivered revenue only · input fully claimable ─────
-  // GST you PAY on inputs (COGS pre-GST + fees, which are billed excl-GST).
-  const gstReg = v.chargeOutputGst; // toggle = "GST registered"
-  const outputGstPerDelivered = v.spGstInclusive
-    ? sp * gstRate / (1 + gstRate)
-    : sp * gstRate;
+  // ── GST ───────────────────────────────────────────────────────────────
+  // Output GST: on delivered sales — toggled off when below threshold.
+  // Input GST: always claimable on COGS (pre-GST) + the excl-GST fees.
+  // Net profit = profit-before-GST − output GST owed + input GST claimed.
+  const outputGstPerDelivered = !v.chargeOutputGst
+    ? 0
+    : v.spGstInclusive
+      ? sp * gstRate / (1 + gstRate)
+      : sp * gstRate;
   const inputGstDeliveredOrder = (commonCost + deliveredExtra + cogs) * gstRate;
   const inputGstRtoOrder = (commonCost + rtoExtra + rtoCogsLoss) * gstRate;
-
-  // Registered: owe output GST on sales, reclaim input GST → net it.
-  // Not registered (below threshold / testing): no output GST, but you
-  // CANNOT reclaim input GST — it becomes an unrecoverable real cost.
-  const netGstDeliveredOrder = gstReg
-    ? outputGstPerDelivered - inputGstDeliveredOrder   // can be ±, net position
-    : inputGstDeliveredOrder;                          // unrecoverable → pure cost
-  const netGstRtoOrder = gstReg
-    ? -inputGstRtoOrder                                // pure input credit
-    : inputGstRtoOrder;                                // unrecoverable → cost
+  const netGstDeliveredOrder = outputGstPerDelivered - inputGstDeliveredOrder;
+  const netGstRtoOrder = -inputGstRtoOrder;
   const netGstBlended = d * netGstDeliveredOrder + rto * netGstRtoOrder;
 
   const netPerShipped = blendedPre - ad - netGstBlended;
@@ -201,16 +196,16 @@ export default function ThreePLCalculatorPage() {
   const outCOD = delivered * codFee;
   const outPlatform = delivered * convenience;
   const outGst = shipped * netGstBlended;
-  const outGstOutput = gstReg ? delivered * outputGstPerDelivered : 0;
-  const outGstInput = gstReg
-    ? -(delivered * inputGstDeliveredOrder + rtoOrders * inputGstRtoOrder)  // reclaimed credit
-    : (delivered * inputGstDeliveredOrder + rtoOrders * inputGstRtoOrder);   // unrecoverable cost
+  const outputGstOwed = delivered * outputGstPerDelivered;                                  // GST you owe on sales
+  const inputGstClaimed = delivered * inputGstDeliveredOrder + rtoOrders * inputGstRtoOrder; // GST you reclaim
   const outAds = cashUpfront;
   const outFinancing = financingFee;
   const total3PL = outForward + outRTO + outFulfilment + outStorage + outCOD + outPlatform;
   const moneyOut = outCOGS + total3PL + outGst + outAds + outFinancing;
   const moneyIn = totalRevenue;
-  const netProfit = moneyIn - moneyOut;
+  // Profit before GST is the anchor; net profit = it − output owed + input claimed.
+  const profitBeforeGst = moneyIn - outCOGS - total3PL - outAds - outFinancing;
+  const netProfit = moneyIn - moneyOut; // ≡ profitBeforeGst − outputGstOwed + inputGstClaimed
   const netMarginPct = moneyIn > 0 ? (netProfit / moneyIn) * 100 : 0;
 
   const flowRows = [
@@ -222,8 +217,8 @@ export default function ThreePLCalculatorPage() {
     { label: 'Storage & inward', amount: outStorage },
     { label: 'COD collection fees', amount: outCOD },
     { label: 'Platform fee', amount: outPlatform },
-    { label: 'Output GST on sales', amount: outGstOutput },
-    { label: gstReg ? 'Input GST credit (reclaimed)' : 'Input GST (unrecoverable)', amount: outGstInput },
+    { label: 'Output GST on sales', amount: outputGstOwed },
+    { label: 'Input GST credit (reclaimed)', amount: -inputGstClaimed },
     { label: 'Financing fee', amount: outFinancing },
   ].filter((r) => Math.abs(r.amount) > 0.5).sort((a, b) => b.amount - a.amount);
 
@@ -307,6 +302,9 @@ export default function ThreePLCalculatorPage() {
               <ResultRow label="Ad spend / order" value={fmt(ad)} />
               <ResultRow label="Breakeven delivery rate" value={Number.isFinite(breakevenPct) ? `${breakevenPct.toFixed(1)}%` : '—'} />
               <ResultRow label="Revenue" value={fmt(moneyIn)} />
+              <ResultRow label="Profit before GST" value={fmt(profitBeforeGst)} />
+              <ResultRow label="− Output GST owed" value={`− ${fmt(outputGstOwed)}`} />
+              <ResultRow label="+ Input GST claimed" value={`+ ${fmt(inputGstClaimed)}`} />
               <ResultRow label="Net profit / order" value={fmt(netPerShipped)} highlight="primary" />
               <ResultRow label="Net profit" value={fmt(netProfit)} highlight="success" />
             </div>
@@ -444,7 +442,7 @@ export default function ThreePLCalculatorPage() {
 
             <div className="flex flex-wrap gap-2">
               <Toggle on={v.spGstInclusive} onClick={() => set('spGstInclusive', !v.spGstInclusive)} label="Selling price is GST-inclusive" />
-              <Toggle on={v.chargeOutputGst} onClick={() => set('chargeOutputGst', !v.chargeOutputGst)} label="GST registered (pay output, claim input)" />
+              <Toggle on={v.chargeOutputGst} onClick={() => set('chargeOutputGst', !v.chargeOutputGst)} label="Pay output GST on sales" />
             </div>
 
             <div className="h-px bg-border" />
