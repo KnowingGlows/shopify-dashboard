@@ -40,7 +40,6 @@ const DEFAULTS = {
   unitsPerOrder: '1',
   weightGrams: '500',
   storageDays: '20',
-  rtoCogsLossPct: '0',
   financingFeePct: '0',
   spGstInclusive: true,
   chargeOutputGst: true,
@@ -153,14 +152,17 @@ export default function ThreePLCalculatorPage() {
   const rtoHandling = FEES.rtoHandling * units;
   const reversePickup = FEES.reversePickup * units;
   const rtvHandling = FEES.rtvHandling * units;
-  const rtoCogsLoss = cogs * (num(v.rtoCogsLossPct) / 100);
 
   const commonCost = inward + storage + outbound + printing + packaging + fwdShip;
   const deliveredExtra = codFee + convenience;
   const rtoExtra = rtoShip + rtoHandling + reversePickup + rtvHandling;
 
+  // You pay the FULL COGS up front for every unit procured/shipped. A
+  // delivered order consumes its unit (real COGS). An RTO order's unit comes
+  // back as reusable stock → that COGS is recovered, so the only true RTO
+  // losses are shipping + handling (commonCost + rtoExtra).
   const deliveredProfitPre = sp - cogs - commonCost - deliveredExtra;
-  const rtoProfitPre = -(rtoCogsLoss) - commonCost - rtoExtra;
+  const rtoProfitPre = -commonCost - rtoExtra;
   const blendedPre = d * deliveredProfitPre + rto * rtoProfitPre;
 
   // ── GST ───────────────────────────────────────────────────────────────
@@ -175,9 +177,11 @@ export default function ThreePLCalculatorPage() {
     : v.spGstInclusive
       ? sp * gstRate / (1 + gstRate)
       : sp * gstRate;
-  // GST physically paid on each order's inputs (independent of registration).
+  // Input GST you pay on each order's inputs. COGS GST is claimed on EVERY
+  // unit procured (you were charged it at purchase) — a returned RTO unit
+  // doesn't reverse that credit and generates no fresh GST when reshipped.
   const inputGstDeliveredOrder = (commonCost + deliveredExtra + cogs) * gstRate;
-  const inputGstRtoOrder = (commonCost + rtoExtra + rtoCogsLoss) * gstRate;
+  const inputGstRtoOrder = (commonCost + rtoExtra + cogs) * gstRate;
   // Registered → input is reclaimed (credit); not registered → it's a cost.
   const netGstDeliveredOrder = gstActive
     ? outputGstPerDelivered - inputGstDeliveredOrder
@@ -199,13 +203,14 @@ export default function ThreePLCalculatorPage() {
   // COGS even though you reclaim it later) + any net GST owed.
   const financedPerShipped =
     d * (cogs * (1 + gstRate) + commonCost + deliveredExtra) +
-    rto * (rtoCogsLoss * (1 + gstRate) + commonCost + rtoExtra) +
+    rto * (cogs * (1 + gstRate) + commonCost + rtoExtra) +
     Math.max(0, netGstBlended);
   const financed = shipped * financedPerShipped;
   const financingFee = financed * (num(v.financingFeePct) / 100);
   const cashUpfront = shipped * ad;
 
-  const outCOGS = delivered * cogs + rtoOrders * rtoCogsLoss;
+  const outCOGS = shipped * cogs;                 // full product cost paid procuring all units
+  const stockRecovered = rtoOrders * cogs;        // RTO units returned to inventory (added back)
   const outForward = shipped * fwdShip;
   const outRTO = rtoOrders * (rtoShip + rtoHandling + reversePickup + rtvHandling);
   const outFulfilment = shipped * (outbound + printing + packaging);
@@ -220,19 +225,21 @@ export default function ThreePLCalculatorPage() {
   const outAds = cashUpfront;
   const outFinancing = financingFee;
   const total3PL = outForward + outRTO + outFulfilment + outStorage + outCOD + outPlatform;
-  const moneyOut = outCOGS + total3PL + outGst + outAds + outFinancing;
+  // outCOGS is the full procurement spend; stockRecovered nets the RTO units
+  // back (they re-enter inventory), so net product cost = delivered × cogs.
+  const moneyOut = outCOGS - stockRecovered + total3PL + outGst + outAds + outFinancing;
   const moneyIn = totalRevenue;
-  // Profit-before-GST is the anchor. Registered: − output owed + input claimed.
-  // Not registered: − input GST paid (unrecoverable, no output, no claim).
-  const profitBeforeGst = moneyIn - outCOGS - total3PL - outAds - outFinancing;
+  const profitBeforeGst = moneyIn - outCOGS + stockRecovered - total3PL - outAds - outFinancing;
   const netProfit = moneyIn - moneyOut;
   const netMarginPct = moneyIn > 0 ? (netProfit / moneyIn) * 100 : 0;
-  // Gross profit = revenue − product cost only (before 3PL fees, ads, GST).
-  const grossProfit = moneyIn - outCOGS;
+  // Gross profit = revenue − net product cost consumed (after RTO recovery),
+  // before 3PL fees, ads & GST.
+  const grossProfit = moneyIn - (outCOGS - stockRecovered);
   const grossMarginPct = moneyIn > 0 ? (grossProfit / moneyIn) * 100 : 0;
 
   const flowRows = [
-    { label: 'Product cost (COGS)', amount: outCOGS },
+    { label: 'Product cost (COGS) — all units', amount: outCOGS },
+    { label: 'RTO stock recovered (back to inventory)', amount: -stockRecovered },
     { label: 'Ad spend', amount: outAds },
     { label: 'Forward shipping', amount: outForward },
     { label: 'RTO shipping & handling', amount: outRTO },
@@ -488,9 +495,6 @@ export default function ThreePLCalculatorPage() {
               </CalcField>
               <CalcField label="Avg Storage Days">
                 <input type="text" inputMode="decimal" value={v.storageDays} onChange={(e) => set('storageDays', e.target.value)} className="form-input" />
-              </CalcField>
-              <CalcField label="RTO Damage %" hint="COGS lost on returns">
-                <input type="text" inputMode="decimal" value={v.rtoCogsLossPct} onChange={(e) => set('rtoCogsLossPct', e.target.value)} className="form-input" />
               </CalcField>
               <CalcField label="Financing Fee %">
                 <input type="text" inputMode="decimal" value={v.financingFeePct} onChange={(e) => set('financingFeePct', e.target.value)} className="form-input" />
