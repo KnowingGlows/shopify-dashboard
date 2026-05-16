@@ -212,6 +212,16 @@ export default function ThreePLCalculatorPage() {
 
   const outCOGS = shipped * cogs;                 // full product cost paid procuring all units
   const stockRecovered = rtoOrders * cogs;        // RTO units returned to inventory (added back)
+
+  // ── Procurement cost (display only — what cash it takes to get stock in) ─
+  // Combines numbers already used elsewhere; NOT added to money-out/profit.
+  const procUnits = shipped * units;                       // total pieces procured
+  const procPricePerUnit = num(v.cogsPerUnit);
+  const procCogsBase = outCOGS;                            // = procUnits × price
+  const procCogsGst = procCogsBase * gstRate;
+  const procInwardBase = shipped * inward;                 // ₹5/unit × all units
+  const procInwardGst = procInwardBase * gstRate;
+  const procurementCost = procCogsBase + procCogsGst + procInwardBase + procInwardGst;
   const outForward = shipped * fwdShip;
   const outRTO = rtoOrders * (rtoShip + rtoHandling + reversePickup + rtvHandling);
   const outFulfilment = shipped * (outbound + printing + packaging);
@@ -506,6 +516,22 @@ export default function ThreePLCalculatorPage() {
             <div className="flex flex-wrap gap-2">
               <Toggle on={v.spGstInclusive} onClick={() => set('spGstInclusive', !v.spGstInclusive)} label="Selling price is GST-inclusive" />
               <Toggle on={v.chargeOutputGst} onClick={() => set('chargeOutputGst', !v.chargeOutputGst)} label="GST registered — pay output & claim input" />
+            </div>
+
+            <div className="h-px bg-border" />
+
+            {/* Procurement cost — visualization only, not part of money-out */}
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-foreground">
+                Procurement cost <span className="normal-case tracking-normal font-normal text-muted-foreground/60">(cash to get stock in — not added to totals)</span>
+              </p>
+              <div className="space-y-1.5 rounded-lg border border-border bg-background/40 p-3">
+                <ResultRow label={`Quantity × price (${procUnits.toLocaleString('en-IN')} pcs × ${fmt(procPricePerUnit)})`} value={fmt(procCogsBase)} />
+                <ResultRow label="+ 18% GST on product" value={`+ ${fmt(procCogsGst)}`} />
+                <ResultRow label={`Inward fees (₹5 × ${procUnits.toLocaleString('en-IN')} pcs)`} value={fmt(procInwardBase)} />
+                <ResultRow label="+ 18% GST on inward" value={`+ ${fmt(procInwardGst)}`} />
+                <ResultRow label="Total procurement cost" value={fmt(procurementCost)} highlight="primary" />
+              </div>
             </div>
 
             <div className="h-px bg-border" />
