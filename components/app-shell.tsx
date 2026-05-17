@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart3, Box, ClipboardList, Home, LogOut,
   Menu, Megaphone, Package, Search, Settings, Truck, Users, X,
-  Calculator, PackageCheck, PackageX, Funnel as FunnelIcon, Layers, Trophy, Boxes, Ban,
+  Calculator, PackageCheck, PackageX, Funnel as FunnelIcon, Layers, Trophy, Boxes, Ban, Target,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SplashScreen } from './splash-screen';
@@ -33,6 +33,7 @@ const navItems: NavItem[] = [
   { href: '/orders/breakdown', label: 'Breakdown', icon: BarChart3, section: 'core', parent: '/orders' },
   { href: '/finance/calculator', label: 'Calculator', icon: Calculator, section: 'finance' },
   { href: '/finance/3pl-calculator', label: '3PL Calculator', icon: Boxes, section: 'finance' },
+  { href: '/finance/strategy', label: 'Strategy', icon: Target, section: 'finance' },
   { href: '/prs', label: 'PRS', icon: Search, section: 'marketing' },
   { href: '/prs/rejected', label: 'Rejected', icon: Ban, section: 'marketing', parent: '/prs' },
   { href: '/product-tracker', label: 'Products', icon: Package, section: 'marketing' },
