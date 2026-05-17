@@ -231,8 +231,8 @@ export default function StrategyPage() {
           </div>
           <div className="relative z-10 p-4 space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <CalcField label={`Target — ₹ / ${v.basis}`} hint="your goal, e.g. 1cr/day = 10000000">
-                <input type="text" inputMode="decimal" value={v.targetRevenue} onChange={(e) => set('targetRevenue', e.target.value)} className="form-input" />
+              <CalcField label={`Target — ₹ / ${v.basis}`} hint="your goal, e.g. 1cr/day" sub={inrWords(n(v.targetRevenue))}>
+                <input type="text" inputMode="decimal" value={v.targetRevenue} onChange={(e) => set('targetRevenue', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" />
               </CalcField>
               <CalcField label="Basis" hint="is the target per day or per month">
                 <select value={v.basis} onChange={(e) => set('basis', e.target.value as State['basis'])} className="form-input">
@@ -244,16 +244,16 @@ export default function StrategyPage() {
                   <option value="booked">Booked</option><option value="collected">Collected (COD)</option>
                 </select>
               </CalcField>
-              <CalcField label="Current run-rate — ₹ / day" hint="what you do today; 0 if starting fresh">
-                <input type="text" inputMode="decimal" value={v.baselineRevenue} onChange={(e) => set('baselineRevenue', e.target.value)} className="form-input" />
+              <CalcField label="Current run-rate — ₹ / day" hint="what you do today; 0 if starting fresh" sub={inrWords(n(v.baselineRevenue))}>
+                <input type="text" inputMode="decimal" value={v.baselineRevenue} onChange={(e) => set('baselineRevenue', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" />
               </CalcField>
-              <CalcField label="AOV — ₹" hint="avg order value / selling price"><input type="text" inputMode="decimal" value={v.sellingPrice} onChange={(e) => set('sellingPrice', e.target.value)} className="form-input" /></CalcField>
-              <CalcField label="COGS — ₹" hint="product cost per unit"><input type="text" inputMode="decimal" value={v.cogsPerUnit} onChange={(e) => set('cogsPerUnit', e.target.value)} className="form-input" /></CalcField>
+              <CalcField label="AOV — ₹" hint="avg order value / selling price" sub={inrWords(n(v.sellingPrice))}><input type="text" inputMode="decimal" value={v.sellingPrice} onChange={(e) => set('sellingPrice', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" /></CalcField>
+              <CalcField label="COGS — ₹" hint="product cost per unit" sub={inrWords(n(v.cogsPerUnit))}><input type="text" inputMode="decimal" value={v.cogsPerUnit} onChange={(e) => set('cogsPerUnit', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" /></CalcField>
               <CalcField label="ROAS" hint="expected return on ad spend, e.g. 2.2"><input type="text" inputMode="decimal" value={v.roas} onChange={(e) => set('roas', e.target.value)} className="form-input" /></CalcField>
               <CalcField label="Delivery Rate %" hint="% of orders delivered; rest is RTO"><input type="text" inputMode="decimal" value={v.deliveryRate} onChange={(e) => set('deliveryRate', e.target.value)} className="form-input" /></CalcField>
               <CalcField label="New winners / month" hint="winning products you can onboard each month"><input type="text" inputMode="decimal" value={v.winnersPerMonth} onChange={(e) => set('winnersPerMonth', e.target.value)} className="form-input" /></CalcField>
-              <CalcField label="Launch ₹/day per winner" hint="a fresh product's starting daily revenue"><input type="text" inputMode="decimal" value={v.startPerDay} onChange={(e) => set('startPerDay', e.target.value)} className="form-input" /></CalcField>
-              <CalcField label="Ceiling ₹/day per product" hint="max ₹/day one product can sustain"><input type="text" inputMode="decimal" value={v.ceilingPerDay} onChange={(e) => set('ceilingPerDay', e.target.value)} className="form-input" /></CalcField>
+              <CalcField label="Launch ₹/day per winner" hint="a fresh product's starting daily revenue" sub={inrWords(n(v.startPerDay))}><input type="text" inputMode="decimal" value={v.startPerDay} onChange={(e) => set('startPerDay', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" /></CalcField>
+              <CalcField label="Ceiling ₹/day per product" hint="max ₹/day one product can sustain" sub={inrWords(n(v.ceilingPerDay))}><input type="text" inputMode="decimal" value={v.ceilingPerDay} onChange={(e) => set('ceilingPerDay', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" /></CalcField>
               <CalcField label="Months to ~ceiling" hint="how long a product takes to scale up"><input type="text" inputMode="decimal" value={v.monthsToCeiling} onChange={(e) => set('monthsToCeiling', e.target.value)} className="form-input" /></CalcField>
             </div>
 
@@ -348,11 +348,11 @@ export default function StrategyPage() {
                 <div className="h-px bg-border" />
 
                 <div className="grid grid-cols-2 gap-3">
-                  <CalcField label="Available capital — ₹" hint="your own cash to deploy"><input type="text" inputMode="decimal" value={v.availableCapital} onChange={(e) => set('availableCapital', e.target.value)} className="form-input" /></CalcField>
+                  <CalcField label="Available capital — ₹" hint="your own cash to deploy" sub={inrWords(n(v.availableCapital))}><input type="text" inputMode="decimal" value={v.availableCapital} onChange={(e) => set('availableCapital', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" /></CalcField>
                   <CalcField label="Credit line — % of procurement" hint="share of stock cost the line funds, revolving over the cash cycle, e.g. 70"><input type="text" inputMode="decimal" value={v.creditPctProcurement} onChange={(e) => set('creditPctProcurement', e.target.value)} className="form-input" /></CalcField>
                   <CalcField label="Cash cycle — days" hint="days from paying to COD back; also the credit term, ~21"><input type="text" inputMode="decimal" value={v.cashCycleDays} onChange={(e) => set('cashCycleDays', e.target.value)} className="form-input" /></CalcField>
                   <CalcField label="Reinvest net %" hint="% of profit put back as capital"><input type="text" inputMode="decimal" value={v.reinvestPct} onChange={(e) => set('reinvestPct', e.target.value)} className="form-input" /></CalcField>
-                  <CalcField label="Capital + / month — ₹" hint="extra capital you add each month, if any"><input type="text" inputMode="decimal" value={v.capitalInjection} onChange={(e) => set('capitalInjection', e.target.value)} className="form-input" /></CalcField>
+                  <CalcField label="Capital + / month — ₹" hint="extra capital you add each month, if any" sub={inrWords(n(v.capitalInjection))}><input type="text" inputMode="decimal" value={v.capitalInjection} onChange={(e) => set('capitalInjection', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" /></CalcField>
                   <CalcField label="Max horizon — months" hint="how far ahead to project, e.g. 36"><input type="text" inputMode="decimal" value={v.maxHorizon} onChange={(e) => set('maxHorizon', e.target.value)} className="form-input" /></CalcField>
                   <CalcField label="Want it by — month" hint="deadline for the 'levers' below"><input type="text" inputMode="decimal" value={v.goalMonths} onChange={(e) => set('goalMonths', e.target.value)} className="form-input" /></CalcField>
                 </div>
@@ -529,15 +529,30 @@ export default function StrategyPage() {
   );
 }
 
-function CalcField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function CalcField({ label, hint, children, sub }: { label: string; hint?: string; children: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
         {label}{hint && <span className="ml-1 normal-case tracking-normal text-muted-foreground/50">({hint})</span>}
       </label>
       {children}
+      {sub && <p className="text-[10.5px] font-semibold tabular-nums text-primary/80">{sub}</p>}
     </div>
   );
+}
+
+/** Indian-words readout so you never count zeros — 200000 → "₹2,00,000 · 2 lakh". */
+function inrWords(num: number): string {
+  if (!Number.isFinite(num) || num === 0) return '';
+  const a = Math.abs(num);
+  const sgn = num < 0 ? '−' : '';
+  const grouped = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(a);
+  const t = (x: number) => x.toFixed(2).replace(/\.?0+$/, '');
+  const word = a >= 1e7 ? `${t(a / 1e7)} crore`
+    : a >= 1e5 ? `${t(a / 1e5)} lakh`
+    : a >= 1e3 ? `${t(a / 1e3)} thousand`
+    : `${a}`;
+  return `${sgn}₹${grouped} · ${word}`;
 }
 
 function ResultRow({ label, value, highlight }: { label: string; value: string; highlight?: 'primary' | 'success' }) {
