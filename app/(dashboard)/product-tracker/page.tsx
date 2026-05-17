@@ -13,7 +13,7 @@ import type { Funnel } from '@/types/funnel';
 import { PageTransition, StaggerContainer, StaggerItem } from '@/components/motion';
 import { LinkChip } from '@/components/link-chip';
 import { formatINR } from '@/lib/currency-converter';
-import { productEconomics } from '@/lib/3pl';
+import { productEconomicsOf } from '@/lib/3pl';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -57,6 +57,8 @@ export default function ProductTrackerPage() {
   const [formStage, setFormStage] = useState('');
   const [formSpent, setFormSpent] = useState('');
   const [formRemarks, setFormRemarks] = useState('');
+  const [formMode, setFormMode] = useState<'3pl' | 'own'>('3pl');
+  const [formPacking, setFormPacking] = useState('');
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -78,7 +80,7 @@ export default function ProductTrackerPage() {
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
   const resetForm = () => {
-    setFormName(''); setFormLink(''); setFormAdLink(''); setFormWebLink(''); setFormStage(''); setFormSpent(''); setFormRemarks('');
+    setFormName(''); setFormLink(''); setFormAdLink(''); setFormWebLink(''); setFormStage(''); setFormSpent(''); setFormRemarks(''); setFormMode('3pl'); setFormPacking('');
   };
 
   const addEntry = async () => {
@@ -95,6 +97,8 @@ export default function ProductTrackerPage() {
           websiteLink: formWebLink,
           productStage: formStage,
           totalSpent: Number(formSpent) || 0,
+          fulfilmentMode: formMode,
+          ownPackingCost: Number(formPacking) || 0,
           remarks: formRemarks,
         }),
       });
@@ -419,6 +423,23 @@ export default function ProductTrackerPage() {
                     className="form-input"
                   />
                 </FormField>
+                <FormField label="Fulfilment">
+                  <select value={formMode} onChange={(e) => setFormMode(e.target.value as '3pl' | 'own')} className="form-input">
+                    <option value="3pl">3PL</option>
+                    <option value="own">Own warehouse</option>
+                  </select>
+                </FormField>
+                {formMode === 'own' && (
+                  <FormField label="Packing + warehouse ₹/order">
+                    <input
+                      type="number"
+                      value={formPacking}
+                      onChange={(e) => setFormPacking(e.target.value)}
+                      placeholder="0"
+                      className="form-input"
+                    />
+                  </FormField>
+                )}
                 <div className="sm:col-span-2">
                   <FormField label="Remarks">
                     <input
@@ -674,7 +695,7 @@ export default function ProductTrackerPage() {
                           </FormField>
                         </div>
                         {entry.sellingPrice > 0 && entry.deliveryRate > 0 && (() => {
-                          const ec = productEconomics(entry.sellingPrice, entry.cogs, entry.deliveryRate);
+                          const ec = productEconomicsOf(entry);
                           const be = Number.isFinite(ec.beroas) && ec.beroas > 0 ? ec.beroas : 0;
                           return (
                             <div className="border-t border-border px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground">

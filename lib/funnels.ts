@@ -6,7 +6,7 @@
 
 import type { Funnel, FunnelDailyLog } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
-import { productBeroas } from '@/lib/3pl';
+import { productBeroasOf } from '@/lib/3pl';
 
 /**
  * The effective BEROAS for an LP = its linked product's BEROAS, computed from
@@ -19,10 +19,9 @@ import { productBeroas } from '@/lib/3pl';
 export function effectiveBeroas(_funnel: Funnel, product?: ProductTrackerEntry | null): number {
   if (!product) return 0;
   const sp = Number(product.sellingPrice) || 0;
-  const cogs = Number(product.cogs) || 0;
   const dr = Number(product.deliveryRate) || 0;
   if (sp <= 0 || dr <= 0) return 0;
-  return productBeroas(sp, cogs, dr);
+  return productBeroasOf(product);
 }
 
 /**

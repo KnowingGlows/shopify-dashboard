@@ -12,7 +12,7 @@ import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { productEconomics } from '@/lib/3pl';
+import { productEconomicsOf } from '@/lib/3pl';
 import { formatINR } from '@/lib/currency-converter';
 import { isWinning, effectiveBeroas, aggregateLogs } from '@/lib/funnels';
 import type { ProductTrackerEntry } from '@/types/shopify';
@@ -417,10 +417,11 @@ function ProductEconomicsPanel({ product, productId }: {
   const sp = product ? Number(product.sellingPrice) || 0 : 0;
   const cogs = product ? Number(product.cogs) || 0 : 0;
   const dr = product ? Number(product.deliveryRate) || 0 : 0;
-  const econ = productEconomics(sp, cogs, dr);
+  const econ = productEconomicsOf(product ?? {});
   const beroas = Number.isFinite(econ.beroas) && econ.beroas > 0 ? econ.beroas : 0;
   const winThreshold = beroas > 0 ? beroas + 1 : 0;
   const priced = !!product && sp > 0 && dr > 0;
+  const own = product?.fulfilmentMode === 'own';
 
   return (
     <motion.div
@@ -433,6 +434,11 @@ function ProductEconomicsPanel({ product, productId }: {
         <div className="flex items-center gap-2">
           <Target className="h-3.5 w-3.5 text-primary" />
           <h3 className="text-sm font-semibold text-foreground">Product economics</h3>
+          {product && (
+            <span className="rounded-full border border-border bg-card px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+              {own ? 'Own warehouse' : '3PL'}
+            </span>
+          )}
         </div>
         {!product ? (
           <span className="text-[10px] text-amber-400">Link a product first</span>
@@ -452,7 +458,7 @@ function ProductEconomicsPanel({ product, productId }: {
         <ReadStat label="BEROAS" value={beroas > 0 ? `${beroas.toFixed(2)}x` : '—'} tone="primary" hint={winThreshold > 0 ? `win ≥ ${winThreshold.toFixed(2)}x` : undefined} />
       </div>
       <p className="px-5 pb-3 text-[10px] text-muted-foreground/70">
-        Computed from the product&apos;s COGS · price · delivery rate via the 3PL model. This holds across every LP &amp; ad of this product.
+        Computed from the product&apos;s COGS · price · delivery rate via the {own ? 'own-warehouse' : '3PL'} model. This holds across every LP &amp; ad of this product.
       </p>
     </motion.div>
   );

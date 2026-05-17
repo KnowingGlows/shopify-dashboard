@@ -125,7 +125,9 @@ export default function PRSPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productName: entry.productName,
-          productFileLink: entry.driveLink || '',
+          // Ad & website links carry to their own product fields.
+          // The drive link is NOT assigned on move — it stays research-only.
+          productFileLink: '',
           adLink: entry.adLink || '',
           websiteLink: entry.websiteLink || '',
           productStage: 'Research Phase',

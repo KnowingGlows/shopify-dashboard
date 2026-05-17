@@ -11,7 +11,7 @@ import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { productEconomics } from '@/lib/3pl';
+import { productEconomicsOf } from '@/lib/3pl';
 import { formatINR } from '@/lib/currency-converter';
 import { isWinning, aggregateLogs, hitRate, effectiveBeroas } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
@@ -1112,13 +1112,7 @@ function AddFunnelModal({
 
   // BEROAS + margin are the PRODUCT's economics — every LP of this product
   // inherits them. Shown read-only so you know what you're launching against.
-  const econ = selectedProduct
-    ? productEconomics(
-        Number(selectedProduct.sellingPrice) || 0,
-        Number(selectedProduct.cogs) || 0,
-        Number(selectedProduct.deliveryRate) || 0,
-      )
-    : null;
+  const econ = selectedProduct ? productEconomicsOf(selectedProduct) : null;
   const beroasComputed = econ && Number.isFinite(econ.beroas) ? econ.beroas : 0;
   const grossMarginPct = econ ? econ.grossMarginPct : 0;
   const winThreshold = beroasComputed > 0 ? beroasComputed + 1 : 0;

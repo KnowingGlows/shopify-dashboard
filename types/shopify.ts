@@ -94,6 +94,11 @@ export interface ProductTrackerEntry {
   costCurrency: 'INR' | 'USD';        // input-unit hint only — cogs stays ₹
   sellingPrice: number;               // ₹ per unit (GST-inclusive)
   deliveryRate: number;               // 0–100 percent successfully delivered
+  // Fulfilment model driving BEROAS/margin: '3pl' uses the full 3PL fee
+  // schedule; 'own' uses COGS + a fixed packing/warehousing cost + 3%
+  // payment processing only.
+  fulfilmentMode: '3pl' | 'own';
+  ownPackingCost: number;             // ₹ per order — packing + warehousing (own mode)
 
   remarks: string;
   createdAt: string;

@@ -11,7 +11,7 @@ export const FEES = {
   fwdShip: 55, rtoShip: 55, codFlat: 35, codPct: 1.7,
   inward: 5, storagePerDay: 0.1, rtoHandling: 5, reversePickup: 5, rtvHandling: 0,
   outbound: 8, printing: 2, packaging: 10,
-  convPct: 3, convMin: 30, convCap: 120, gstRate: 18,
+  convPct: 3, convMin: 30, convCap: 120, paymentPct: 3, gstRate: 18,
 };
 
 export const RATE_REFERENCE: { label: string; value: string }[] = [
@@ -26,6 +26,7 @@ export const RATE_REFERENCE: { label: string; value: string }[] = [
   { label: 'Printing / order', value: '₹2' },
   { label: 'Packaging / order', value: '₹10' },
   { label: 'Platform fee', value: '3% · min ₹30 · cap ₹120' },
+  { label: 'Payment processing', value: '3%' },
   { label: 'GST', value: '18%' },
 ];
 
@@ -56,6 +57,8 @@ export interface ThreePLResult {
   commonCost: number;
   deliveredExtra: number;
   rtoExtra: number;
+  payment: number;
+  outPayment: number;
   deliveredProfitPre: number;
   rtoProfitPre: number;
   blendedPre: number;
@@ -129,6 +132,9 @@ export function compute3PL(i: ThreePLInput): ThreePLResult {
   const printing = FEES.printing;
   const packaging = FEES.packaging;
   const convenience = Math.min(FEES.convCap, Math.max(FEES.convMin, sp * FEES.convPct / 100));
+  // Payment processing — flat 3% of total revenue (every booked order). No
+  // GST treatment: a straight deduction from the order value.
+  const payment = sp * FEES.paymentPct / 100;
   const rtoHandling = FEES.rtoHandling * units;
   const reversePickup = FEES.reversePickup * units;
   const rtvHandling = FEES.rtvHandling * units;
@@ -141,8 +147,10 @@ export function compute3PL(i: ThreePLInput): ThreePLResult {
   // delivered order consumes its unit (real COGS). An RTO order's unit comes
   // back as reusable stock → that COGS is recovered, so the only true RTO
   // losses are shipping + handling (commonCost + rtoExtra).
-  const deliveredProfitPre = sp - cogs - commonCost - deliveredExtra;
-  const rtoProfitPre = -commonCost - rtoExtra;
+  // Payment processing: flat 3% of revenue on EVERY booked order (delivered or
+  // RTO), no GST treatment — a straight deduction from the order value.
+  const deliveredProfitPre = sp - cogs - commonCost - deliveredExtra - payment;
+  const rtoProfitPre = -commonCost - rtoExtra - payment;
   const blendedPre = d * deliveredProfitPre + rto * rtoProfitPre;
 
   // ── GST ───────────────────────────────────────────────────────────────
@@ -190,6 +198,7 @@ export function compute3PL(i: ThreePLInput): ThreePLResult {
   const outStorage = shipped * (inward + storage);
   const outCOD = delivered * codFee;
   const outPlatform = delivered * convenience;
+  const outPayment = shipped * payment; // 3% on every booked order
   const outGst = shipped * netGstBlended;
   const outputGstOwed = delivered * outputGstPerDelivered;
   const inputGstPaid = delivered * inputGstDeliveredOrder + rtoOrders * inputGstRtoOrder;
@@ -197,7 +206,7 @@ export function compute3PL(i: ThreePLInput): ThreePLResult {
   const inputGstSunk = gstActive ? 0 : inputGstPaid;
   const outAds = cashUpfront;
   const outFinancing = financingFee;
-  const total3PL = outForward + outRTO + outFulfilment + outStorage + outCOD + outPlatform;
+  const total3PL = outForward + outRTO + outFulfilment + outStorage + outCOD + outPlatform + outPayment;
   const moneyOut = outCOGS - stockRecovered + total3PL + outGst + outAds + outFinancing;
   const moneyIn = totalRevenue;
   const profitBeforeGst = moneyIn - outCOGS + stockRecovered - total3PL - outAds - outFinancing;
@@ -211,7 +220,7 @@ export function compute3PL(i: ThreePLInput): ThreePLResult {
 
   return {
     sp, cogs, units, slabs, d, rto, roas, ad, gstRate,
-    commonCost, deliveredExtra, rtoExtra,
+    commonCost, deliveredExtra, rtoExtra, payment, outPayment,
     deliveredProfitPre, rtoProfitPre, blendedPre,
     outputGstPerDelivered, inputGstDeliveredOrder, inputGstRtoOrder,
     netGstDeliveredOrder, netGstRtoOrder, netGstBlended,
@@ -272,5 +281,86 @@ export function productBeroas(
   deliveryRate: number,
 ): number {
   const b = productEconomics(sellingPrice, cogsPerUnitINR, deliveryRate).beroas;
+  return Number.isFinite(b) && b > 0 ? b : 0;
+}
+
+export type FulfilmentMode = '3pl' | 'own';
+
+/**
+ * Own-warehouse economics — when you fulfil from your own warehouse instead of
+ * the 3PL. No 3PL shipping / COD / storage / inward fees. Only:
+ *   • COGS (₹ per order)
+ *   • a fixed packing + warehousing cost per order
+ *   • flat 3% payment processing on every booked order (no GST on it)
+ * GST handled the same way as the product 3PL path (price GST-inclusive, GST
+ * registered → output GST owed, input GST on COGS + packing reclaimed). RTO
+ * recovers the unit (COGS back to stock); packing/warehousing and the 3% are
+ * still incurred.
+ */
+export function ownWarehouseEconomics(
+  sellingPrice: number,
+  cogsPerUnitINR: number,
+  deliveryRate: number,
+  packingPerOrder: number,
+): ProductEconomics {
+  const sp = Number.isFinite(sellingPrice) ? sellingPrice : 0;
+  const cogs = Number.isFinite(cogsPerUnitINR) ? cogsPerUnitINR : 0;
+  const packing = Number.isFinite(packingPerOrder) ? Math.max(0, packingPerOrder) : 0;
+  const d = Math.min(1, Math.max(0, (Number(deliveryRate) || 0) / 100));
+  const rto = 1 - d;
+  const gstRate = FEES.gstRate / 100;
+  const payment = sp * FEES.paymentPct / 100;
+
+  // Payment processing: flat 3% of revenue on every booked order, NO GST.
+  const deliveredProfitPre = sp - cogs - packing - payment;
+  const rtoProfitPre = -packing - payment; // COGS recovered; packing + 3% still incurred
+  const blendedPre = d * deliveredProfitPre + rto * rtoProfitPre;
+
+  // Price is GST-inclusive, GST registered (mirrors productEconomics).
+  // Payment processing is NOT in the GST base.
+  const outputGstPerDelivered = sp * gstRate / (1 + gstRate);
+  const inputGstDeliveredOrder = (cogs + packing) * gstRate;
+  const inputGstRtoOrder = (cogs + packing) * gstRate;
+  const netGstDeliveredOrder = outputGstPerDelivered - inputGstDeliveredOrder;
+  const netGstRtoOrder = -inputGstRtoOrder;
+  const netGstBlended = d * netGstDeliveredOrder + rto * netGstRtoOrder;
+
+  const profitBeforeAdPerShipped = blendedPre - netGstBlended;
+  const beroas = profitBeforeAdPerShipped > 0 ? sp / profitBeforeAdPerShipped : NaN;
+
+  // No ads (ROAS-independent), 1 shipped order basis — matches productEconomics.
+  const moneyIn = d * sp;
+  const moneyOut = d * cogs            // net COGS (RTO recovered)
+    + packing                          // packing incurred on the shipped order
+    + payment                          // 3% on every booked order
+    + netGstBlended;                   // net GST (owed − reclaimed)
+  const net = moneyIn - moneyOut;
+  const marginPct = moneyIn > 0 ? (net / moneyIn) * 100 : 0;
+  return { beroas, grossMarginPct: marginPct, netMarginPct: marginPct };
+}
+
+interface ProductLike {
+  sellingPrice?: number;
+  cogs?: number;
+  deliveryRate?: number;
+  fulfilmentMode?: FulfilmentMode;
+  ownPackingCost?: number;
+}
+
+/** Economics for a product, picking the 3PL or own-warehouse model by its
+ *  fulfilmentMode. */
+export function productEconomicsOf(p: ProductLike): ProductEconomics {
+  const sp = Number(p.sellingPrice) || 0;
+  const cogs = Number(p.cogs) || 0;
+  const dr = Number(p.deliveryRate) || 0;
+  if (p.fulfilmentMode === 'own') {
+    return ownWarehouseEconomics(sp, cogs, dr, Number(p.ownPackingCost) || 0);
+  }
+  return productEconomics(sp, cogs, dr);
+}
+
+/** Breakeven ROAS for a product (mode-aware). 0 when not computable. */
+export function productBeroasOf(p: ProductLike): number {
+  const b = productEconomicsOf(p).beroas;
   return Number.isFinite(b) && b > 0 ? b : 0;
 }

@@ -11,7 +11,7 @@ const FEES = {
   fwdShip: 55, rtoShip: 55, codFlat: 35, codPct: 1.7,
   inward: 5, storagePerDay: 0.1, rtoHandling: 5, reversePickup: 5, rtvHandling: 0,
   outbound: 8, printing: 2, packaging: 10,
-  convPct: 3, convMin: 30, convCap: 120, gstRate: 18,
+  convPct: 3, convMin: 30, convCap: 120, paymentPct: 3, gstRate: 18,
 };
 
 const RATE_REFERENCE: { label: string; value: string }[] = [
@@ -26,6 +26,7 @@ const RATE_REFERENCE: { label: string; value: string }[] = [
   { label: 'Printing / order', value: '₹2' },
   { label: 'Packaging / order', value: '₹10' },
   { label: 'Platform fee', value: '3% · min ₹30 · cap ₹120' },
+  { label: 'Payment processing', value: '3%' },
   { label: 'GST', value: '18%' },
 ];
 
@@ -149,6 +150,8 @@ export default function ThreePLCalculatorPage() {
   const printing = FEES.printing;
   const packaging = FEES.packaging;
   const convenience = Math.min(FEES.convCap, Math.max(FEES.convMin, sp * FEES.convPct / 100));
+  // Payment processing — flat 3% of revenue on every booked order. No GST.
+  const payment = sp * FEES.paymentPct / 100;
   const rtoHandling = FEES.rtoHandling * units;
   const reversePickup = FEES.reversePickup * units;
   const rtvHandling = FEES.rtvHandling * units;
@@ -161,8 +164,8 @@ export default function ThreePLCalculatorPage() {
   // delivered order consumes its unit (real COGS). An RTO order's unit comes
   // back as reusable stock → that COGS is recovered, so the only true RTO
   // losses are shipping + handling (commonCost + rtoExtra).
-  const deliveredProfitPre = sp - cogs - commonCost - deliveredExtra;
-  const rtoProfitPre = -commonCost - rtoExtra;
+  const deliveredProfitPre = sp - cogs - commonCost - deliveredExtra - payment;
+  const rtoProfitPre = -commonCost - rtoExtra - payment;
   const blendedPre = d * deliveredProfitPre + rto * rtoProfitPre;
 
   // ── GST ───────────────────────────────────────────────────────────────
@@ -223,6 +226,7 @@ export default function ThreePLCalculatorPage() {
   const outStorage = shipped * (inward + storage);
   const outCOD = delivered * codFee;
   const outPlatform = delivered * convenience;
+  const outPayment = shipped * payment; // 3% on every booked order
   const outGst = shipped * netGstBlended;
   const outputGstOwed = delivered * outputGstPerDelivered;                                  // GST owed on sales (0 if not registered)
   const inputGstPaid = delivered * inputGstDeliveredOrder + rtoOrders * inputGstRtoOrder;   // GST you actually pay on inputs
@@ -230,7 +234,7 @@ export default function ThreePLCalculatorPage() {
   const inputGstSunk = gstActive ? 0 : inputGstPaid;                                         // unrecoverable if not registered
   const outAds = cashUpfront;
   const outFinancing = financingFee;
-  const total3PL = outForward + outRTO + outFulfilment + outStorage + outCOD + outPlatform;
+  const total3PL = outForward + outRTO + outFulfilment + outStorage + outCOD + outPlatform + outPayment;
   // outCOGS is the full procurement spend; stockRecovered nets the RTO units
   // back (they re-enter inventory), so net product cost = delivered × cogs.
   const moneyOut = outCOGS - stockRecovered + total3PL + outGst + outAds + outFinancing;
@@ -253,6 +257,7 @@ export default function ThreePLCalculatorPage() {
     { label: 'Storage & inward', amount: outStorage },
     { label: 'COD collection fees', amount: outCOD },
     { label: 'Platform fee', amount: outPlatform },
+    { label: 'Payment processing (3%)', amount: outPayment },
     { label: 'Output GST on sales', amount: outputGstOwed },
     { label: 'Input GST credit (reclaimed)', amount: -inputGstClaimed },
     { label: 'Input GST paid (unrecoverable)', amount: inputGstSunk },

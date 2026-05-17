@@ -13,7 +13,7 @@ import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { isWinning, effectiveBeroas } from '@/lib/funnels';
-import { productEconomics } from '@/lib/3pl';
+import { productEconomicsOf } from '@/lib/3pl';
 import { formatINR, formatMoney, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, Creative, FunnelStatus } from '@/types/funnel';
@@ -222,7 +222,8 @@ export default function ProductDetailPage() {
   const cogsINR = Number(product?.cogs) || 0;
   const spINR = Number(product?.sellingPrice) || 0;
   const drPct = Number(product?.deliveryRate) || 0;
-  const econ = productEconomics(spINR, cogsINR, drPct);
+  const ownMode = product?.fulfilmentMode === 'own';
+  const econ = productEconomicsOf(product ?? {});
   const econPriced = spINR > 0 && drPct > 0;
   const productBeroasVal = econPriced && Number.isFinite(econ.beroas) && econ.beroas > 0 ? econ.beroas : 0;
 
@@ -413,15 +414,32 @@ export default function ProductDetailPage() {
               {/* Economics — COGS · price · delivery → BEROAS & gross margin.
                   The single source of truth: it flows to every LP & ad. */}
               <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/[0.03] overflow-hidden">
-                <div className="flex items-center justify-between border-b border-primary/15 px-4 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/15 px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <FunnelIcon className="h-3.5 w-3.5 text-primary" />
                     <h3 className="text-sm font-semibold text-foreground">Economics</h3>
-                    {(savedField === 'cogs' || savedField === 'sellingPrice' || savedField === 'deliveryRate' || savedField === 'costCurrency') && (
+                    {(savedField === 'cogs' || savedField === 'sellingPrice' || savedField === 'deliveryRate' || savedField === 'costCurrency' || savedField === 'fulfilmentMode' || savedField === 'ownPackingCost') && (
                       <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400"><Check className="h-3 w-3" /> saved</span>
                     )}
                   </div>
-                  <span className="text-[10px] text-muted-foreground">3PL model · holds across every LP &amp; ad</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted-foreground">{ownMode ? 'Own warehouse' : '3PL'} model · holds across every LP &amp; ad</span>
+                    <div className="inline-flex items-center rounded-md border border-border bg-card p-0.5">
+                      {(['3pl', 'own'] as const).map((md) => (
+                        <button
+                          key={md}
+                          type="button"
+                          onClick={() => saveProductField('fulfilmentMode', md)}
+                          className={`rounded px-2 py-0.5 text-[10px] font-semibold transition ${
+                            (product.fulfilmentMode === 'own' ? 'own' : '3pl') === md
+                              ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          {md === '3pl' ? '3PL' : 'Own WH'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 px-4 py-4 md:grid-cols-3">
                   <CogsEditor
@@ -449,6 +467,15 @@ export default function ProductDetailPage() {
                     max={100}
                     onSave={(v) => saveProductField('deliveryRate', v)}
                   />
+                  {ownMode && (
+                    <NumEditor
+                      label="Packing + warehouse ₹/order"
+                      unit="₹"
+                      value={Number(product.ownPackingCost) || 0}
+                      placeholder="0"
+                      onSave={(v) => saveProductField('ownPackingCost', v)}
+                    />
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3 border-t border-primary/15 px-4 py-4 md:grid-cols-3">
                   <ReadOnlyCell

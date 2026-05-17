@@ -31,11 +31,10 @@ const DEFAULTS = {
   monthsToCeiling: '6',
   reinvestPct: '100',
   capitalInjection: '0',
-  creditGrowthPct: '0',
   maxHorizon: '36',
   goalMonths: '12',
   availableCapital: '0',
-  creditLine: '0',
+  creditPctProcurement: '0',
   cashCycleDays: '21',
 };
 type State = typeof DEFAULTS;
@@ -49,7 +48,8 @@ function analyze(v: State) {
   const targetDay = perDay(n(v.targetRevenue));
   const ceiling = n(v.ceilingPerDay);
   const econReady = sp > 0 && dr > 0 && targetDay > 0 && ceiling > 0;
-  const available = n(v.availableCapital) + n(v.creditLine);
+  const capital = n(v.availableCapital);
+  const creditPct = n(v.creditPctProcurement);
 
   const econ: RoadmapEconomics = {
     sellingPrice: sp,
@@ -73,42 +73,44 @@ function analyze(v: State) {
     startPerDay: n(v.startPerDay),
     ceilingPerDay: ceiling,
     monthsToCeiling: Math.max(0.5, n(v.monthsToCeiling)),
-    capital: n(v.availableCapital),
-    creditLine: n(v.creditLine),
+    capital,
+    creditPctOfProcurement: creditPct,
     reinvestPct: Math.max(0, n(v.reinvestPct)),
     capitalInjectionPerMonth: n(v.capitalInjection),
-    creditGrowthPctPerMonth: n(v.creditGrowthPct),
     maxHorizonMonths: Math.max(1, n(v.maxHorizon)),
   };
 
-  if (!econReady) return { econReady: false as const, targetDay, ceiling, available };
+  if (!econReady) return { econReady: false as const, targetDay, ceiling, capital, creditPct };
 
   const roadmap = runRoadmap(input);
-  const at = portfolioAt(econ, targetDay, ceiling);
+  const at = portfolioAt(econ, targetDay, ceiling, creditPct);
 
   const fracs = [1, 0.66, 0.5, 0.33, 0.2];
   const seen = new Set<number>();
   const spectrum = fracs.map((fr) => Math.round(ceiling * fr)).filter((pp) => {
     if (pp <= 0 || seen.has(pp)) return false; seen.add(pp); return true;
   }).map((pp) => {
-    const p = portfolioAt(econ, targetDay, pp);
-    return { pp, products: p.products, ad: p.ad, net: p.net, wc: p.wc, ok: p.wc <= available, tight: p.wc <= available && p.wc > 0.85 * available };
+    const p = portfolioAt(econ, targetDay, pp, creditPct);
+    return {
+      pp, products: p.products, ad: p.ad, net: p.net, wc: p.wc, credit: p.credit, ownerWc: p.ownerWc,
+      ok: p.ownerWc <= capital, tight: p.ownerWc <= capital && p.ownerWc > 0.85 * capital,
+    };
   });
 
   const goal = Math.max(1, Math.round(n(v.goalMonths)));
-  const levers: Lever[] = ['capital', 'creditLine', 'winnersPerMonth', 'roas', 'reinvestPct'];
+  const levers: Lever[] = ['capital', 'creditPct', 'winnersPerMonth', 'roas', 'reinvestPct'];
   const gap = levers.map((lv) => ({ lever: lv, r: solveLever(input, lv, goal) }));
 
   const etaRow = roadmap.etaMonth != null ? roadmap.rows.find((r) => r.month === roadmap.etaMonth) ?? null : null;
   const perProdAtEta = etaRow && etaRow.liveProducts > 0 ? etaRow.revPerDay / etaRow.liveProducts : 0;
   const bindingNow = roadmap.rows[0]?.binding ?? 'cadence';
 
-  return { econReady: true as const, targetDay, ceiling, available, roadmap, at, spectrum, gap, goal, etaRow, perProdAtEta, bindingNow };
+  return { econReady: true as const, targetDay, ceiling, capital, creditPct, roadmap, at, spectrum, gap, goal, etaRow, perProdAtEta, bindingNow };
 }
 
 const BIND_LABEL: Record<string, string> = { capital: 'Capital', cadence: 'Launch cadence', ramp: 'Product ramp', target: 'At target' };
 const BIND_TONE: Record<string, string> = { capital: 'text-rose-400', cadence: 'text-sky-400', ramp: 'text-amber-400', target: 'text-emerald-400' };
-const LEVER_LABEL: Record<Lever, string> = { capital: 'More capital', creditLine: 'More credit line', winnersPerMonth: 'Winners / month', roas: 'Better ROAS', reinvestPct: 'Reinvest %' };
+const LEVER_LABEL: Record<Lever, string> = { capital: 'More capital', creditPct: 'Higher credit % of procurement', winnersPerMonth: 'Winners / month', roas: 'Better ROAS', reinvestPct: 'Reinvest %' };
 
 export default function StrategyPage() {
   const [v, setV] = useState<State>(DEFAULTS);
@@ -268,7 +270,11 @@ export default function StrategyPage() {
                   <ResultRow label={`Gross margin · per product ${fmt(A.ceiling)}/day`} value={`${A.at.gm.toFixed(1)}%`} />
                   <ResultRow label="Net profit / day" value={fmt(A.at.net)} highlight="primary" />
                   <ResultRow label="Net profit / month (×30)" value={fmt(A.at.net * 30)} highlight="success" />
-                  <ResultRow label="Working capital vs available" value={`${fmt(A.at.wc)} / ${fmt(A.available)}`} />
+                  <ResultRow label="Working capital (gross)" value={fmt(A.at.wc)} />
+                  <ResultRow label={`Credit covers (${A.creditPct.toFixed(0)}% of procurement)`} value={`− ${fmt(A.at.credit)}`} />
+                  <ResultRow label="You fund vs your capital"
+                    value={`${fmt(A.at.ownerWc)} / ${fmt(A.capital)}`}
+                    highlight={A.at.ownerWc <= A.capital ? 'success' : undefined} />
                 </div>
 
                 <div className="stat-shimmer glow-pulse rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
@@ -326,7 +332,7 @@ export default function StrategyPage() {
                     const same = Math.abs(r.value - r.from) < 1e-6;
                     const vTxt = lever === 'winnersPerMonth' ? `${Math.round(r.value)}/mo`
                       : lever === 'roas' ? `${r.value.toFixed(2)}x`
-                      : lever === 'reinvestPct' ? `${r.value.toFixed(0)}%`
+                      : lever === 'reinvestPct' || lever === 'creditPct' ? `${r.value.toFixed(0)}%`
                       : fmt(r.value);
                     return (
                       <ResultRow key={lever} label={LEVER_LABEL[lever]}
@@ -342,12 +348,11 @@ export default function StrategyPage() {
                 <div className="h-px bg-border" />
 
                 <div className="grid grid-cols-2 gap-3">
-                  <CalcField label="Available capital — ₹" hint="cash you can deploy right now"><input type="text" inputMode="decimal" value={v.availableCapital} onChange={(e) => set('availableCapital', e.target.value)} className="form-input" /></CalcField>
-                  <CalcField label="Credit line — ₹" hint="extra credit you can draw on"><input type="text" inputMode="decimal" value={v.creditLine} onChange={(e) => set('creditLine', e.target.value)} className="form-input" /></CalcField>
-                  <CalcField label="Cash cycle — days" hint="days from paying to COD cash back, ~21"><input type="text" inputMode="decimal" value={v.cashCycleDays} onChange={(e) => set('cashCycleDays', e.target.value)} className="form-input" /></CalcField>
+                  <CalcField label="Available capital — ₹" hint="your own cash to deploy"><input type="text" inputMode="decimal" value={v.availableCapital} onChange={(e) => set('availableCapital', e.target.value)} className="form-input" /></CalcField>
+                  <CalcField label="Credit line — % of procurement" hint="share of stock cost the line funds, revolving over the cash cycle, e.g. 70"><input type="text" inputMode="decimal" value={v.creditPctProcurement} onChange={(e) => set('creditPctProcurement', e.target.value)} className="form-input" /></CalcField>
+                  <CalcField label="Cash cycle — days" hint="days from paying to COD back; also the credit term, ~21"><input type="text" inputMode="decimal" value={v.cashCycleDays} onChange={(e) => set('cashCycleDays', e.target.value)} className="form-input" /></CalcField>
                   <CalcField label="Reinvest net %" hint="% of profit put back as capital"><input type="text" inputMode="decimal" value={v.reinvestPct} onChange={(e) => set('reinvestPct', e.target.value)} className="form-input" /></CalcField>
                   <CalcField label="Capital + / month — ₹" hint="extra capital you add each month, if any"><input type="text" inputMode="decimal" value={v.capitalInjection} onChange={(e) => set('capitalInjection', e.target.value)} className="form-input" /></CalcField>
-                  <CalcField label="Credit growth % / month" hint="how much the credit line grows monthly"><input type="text" inputMode="decimal" value={v.creditGrowthPct} onChange={(e) => set('creditGrowthPct', e.target.value)} className="form-input" /></CalcField>
                   <CalcField label="Max horizon — months" hint="how far ahead to project, e.g. 36"><input type="text" inputMode="decimal" value={v.maxHorizon} onChange={(e) => set('maxHorizon', e.target.value)} className="form-input" /></CalcField>
                   <CalcField label="Want it by — month" hint="deadline for the 'levers' below"><input type="text" inputMode="decimal" value={v.goalMonths} onChange={(e) => set('goalMonths', e.target.value)} className="form-input" /></CalcField>
                 </div>
@@ -385,7 +390,7 @@ export default function StrategyPage() {
               <table className="w-full text-[11px]">
                 <thead>
                   <tr className="border-b border-border bg-background/40 text-left text-muted-foreground">
-                    {['Month', 'Launch', 'Live', 'Rev / day', '% tgt', 'Ad / day', 'Net / day', 'Cum net', 'Work. cap', 'Available', 'Binding'].map((h) => (
+                    {['Month', 'Launch', 'Live', 'Rev / day', '% tgt', 'Ad / day', 'Net / day', 'Cum net', 'Work. cap', 'On credit', 'You fund', 'Binding'].map((h) => (
                       <th key={h} className="px-3 py-1.5 font-medium">{h}</th>
                     ))}
                   </tr>
@@ -404,7 +409,8 @@ export default function StrategyPage() {
                         <td className={`px-3 py-1.5 font-mono tabular-nums ${r.netPerDay >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmt(r.netPerDay)}</td>
                         <td className="px-3 py-1.5 font-mono tabular-nums text-foreground">{fmt(r.cumNet)}</td>
                         <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{fmt(r.workingCapital)}</td>
-                        <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{fmt(r.available)}</td>
+                        <td className="px-3 py-1.5 tabular-nums text-sky-400">{fmt(r.creditDrawn)}</td>
+                        <td className="px-3 py-1.5 tabular-nums text-foreground">{fmt(r.ownerCapital)}</td>
                         <td className={`px-3 py-1.5 text-[10px] font-medium ${BIND_TONE[r.binding]}`}>{r.throttled ? 'throttled' : BIND_LABEL[r.binding]}</td>
                       </tr>
                     );
@@ -433,7 +439,7 @@ export default function StrategyPage() {
               <table className="w-full text-[11px]">
                 <thead>
                   <tr className="border-b border-border bg-background/40 text-left text-muted-foreground">
-                    {['Per product', 'Products', 'Ad / day', 'Net / month', 'Working capital', 'Fundability', 'Trade-off'].map((h) => (
+                    {['Per product', 'Products', 'Ad / day', 'Net / month', 'Gross WC', 'On credit', 'You fund', 'Fundability', 'Trade-off'].map((h) => (
                       <th key={h} className="px-3 py-1.5 font-medium">{h}</th>
                     ))}
                   </tr>
@@ -446,7 +452,9 @@ export default function StrategyPage() {
                       <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{fmt(o.ad)}</td>
                       <td className="px-3 py-1.5 tabular-nums text-emerald-400">{fmt(o.net * 30)}</td>
                       <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{fmt(o.wc)}</td>
-                      <td className={`px-3 py-1.5 ${o.ok ? (o.tight ? 'text-amber-400' : 'text-emerald-400') : 'text-rose-400'}`}>{o.ok ? (o.tight ? 'tight' : 'fundable') : `short ${fmt(o.wc - A.available)}`}</td>
+                      <td className="px-3 py-1.5 tabular-nums text-sky-400">{fmt(o.credit)}</td>
+                      <td className="px-3 py-1.5 tabular-nums text-foreground">{fmt(o.ownerWc)}</td>
+                      <td className={`px-3 py-1.5 ${o.ok ? (o.tight ? 'text-amber-400' : 'text-emerald-400') : 'text-rose-400'}`}>{o.ok ? (o.tight ? 'tight' : 'fundable') : `short ${fmt(o.ownerWc - A.capital)}`}</td>
                       <td className="px-3 py-1.5 text-[10px] text-muted-foreground">{i === 0 ? 'max concentration / ad-fatigue' : i >= A.spectrum.length - 1 ? 'heavy testing & ops load' : 'balanced'}</td>
                     </tr>
                   ))}

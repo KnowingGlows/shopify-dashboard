@@ -3,6 +3,7 @@ import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
 import { ProductTrackerEntry } from '@/types/shopify';
 
 const asCurrency = (v: unknown): 'INR' | 'USD' => (v === 'USD' ? 'USD' : 'INR');
+const asMode = (v: unknown): '3pl' | 'own' => (v === 'own' ? 'own' : '3pl');
 
 // In-memory fallback when Firebase is not configured
 const inMemoryStore: ProductTrackerEntry[] = [];
@@ -39,6 +40,8 @@ export async function GET() {
         costCurrency: asCurrency(data.costCurrency),
         sellingPrice: Number(data.sellingPrice) || 0,
         deliveryRate: Number(data.deliveryRate) || 0,
+        fulfilmentMode: asMode(data.fulfilmentMode),
+        ownPackingCost: Number(data.ownPackingCost) || 0,
         remarks: data.remarks ?? '',
         createdAt: data.createdAt ?? '',
         updatedAt: data.updatedAt ?? '',
@@ -74,6 +77,8 @@ export async function POST(request: Request) {
       costCurrency: asCurrency(body.costCurrency),
       sellingPrice: Number(body.sellingPrice) || 0,
       deliveryRate: Number(body.deliveryRate) || 0,
+      fulfilmentMode: asMode(body.fulfilmentMode),
+      ownPackingCost: Number(body.ownPackingCost) || 0,
       remarks: body.remarks ?? '',
       createdAt: now,
       updatedAt: now,
@@ -127,6 +132,8 @@ export async function PATCH(request: Request) {
     if (updates.costCurrency !== undefined) sanitizedUpdates.costCurrency = asCurrency(updates.costCurrency);
     if (updates.sellingPrice !== undefined) sanitizedUpdates.sellingPrice = Number(updates.sellingPrice) || 0;
     if (updates.deliveryRate !== undefined) sanitizedUpdates.deliveryRate = Number(updates.deliveryRate) || 0;
+    if (updates.fulfilmentMode !== undefined) sanitizedUpdates.fulfilmentMode = asMode(updates.fulfilmentMode);
+    if (updates.ownPackingCost !== undefined) sanitizedUpdates.ownPackingCost = Number(updates.ownPackingCost) || 0;
     if (updates.remarks !== undefined) sanitizedUpdates.remarks = updates.remarks;
     sanitizedUpdates.updatedAt = now;
 
