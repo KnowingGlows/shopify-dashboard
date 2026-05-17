@@ -60,6 +60,18 @@ export function formatFromUSD(amount: number, to: SupportedCurrency, rates: UsdR
   return formatUSD(converted);
 }
 
+/**
+ * Format an INR-native amount in the chosen display currency.
+ * All money in the app is stored in ₹. When USD is selected we divide by the
+ * live ₹-per-$ rate. This is the ONLY money formatter UI pages should use for
+ * the currency toggle — `formatFromUSD` is for legacy USD-stored data only.
+ */
+export function formatMoney(amountInr: number, currency: SupportedCurrency, inrPerUsd: number): string {
+  if (!Number.isFinite(amountInr)) amountInr = 0;
+  if (currency === 'USD') return formatUSD(inrPerUsd > 0 ? amountInr / inrPerUsd : 0);
+  return formatINR(amountInr);
+}
+
 export function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;

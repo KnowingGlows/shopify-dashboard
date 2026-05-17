@@ -12,6 +12,7 @@ import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { productEconomics } from '@/lib/3pl';
+import { formatINR } from '@/lib/currency-converter';
 import { isWinning, aggregateLogs, hitRate, effectiveBeroas } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
@@ -814,7 +815,7 @@ function PerformanceView({
         <div className="rounded-xl border border-dashed border-border bg-card/50 p-8 text-center">
           <BarChart3 className="mx-auto h-7 w-7 text-muted-foreground/30" />
           <p className="mt-2 text-[13px] font-medium text-foreground">No performance data yet</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">Log daily ROAS / spend / revenue inside any funnel to populate this view.</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Log daily ROAS / spend / revenue inside any LP to populate this view.</p>
         </div>
       )}
 
@@ -856,7 +857,7 @@ function PerfMoneyTile({ label, value, accent, delay = 0, signed }: {
   const text = { emerald: 'text-emerald-400', amber: 'text-amber-400', sky: 'text-sky-400', rose: 'text-rose-400' }[accent];
   const border = { emerald: 'border-emerald-500/30', amber: 'border-amber-500/30', sky: 'border-sky-500/30', rose: 'border-rose-500/30' }[accent];
   const glow = { emerald: '#34d399', amber: '#fbbf24', sky: '#38bdf8', rose: '#fb7185' }[accent];
-  const display = `${signed && value < 0 ? '−' : ''}$${Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  const display = `${signed && value < 0 ? '−' : ''}${formatINR(Math.abs(value))}`;
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -875,7 +876,7 @@ function PerfMoneyTile({ label, value, accent, delay = 0, signed }: {
         <span className="h-1.5 w-1.5 rounded-full" style={{ background: glow }} aria-hidden />
       </div>
       <p className={cn('relative z-10 mt-2 text-[22px] font-semibold leading-none tabular-nums tracking-tight', text)}>{display}</p>
-      <p className="relative z-10 mt-1.5 text-[10px] text-muted-foreground/70">USD across funnels</p>
+      <p className="relative z-10 mt-1.5 text-[10px] text-muted-foreground/70">across LPs</p>
     </motion.div>
   );
 }
@@ -966,7 +967,7 @@ function PerfBreakdown({ title, icon, rows }: {
                       {r.roas > 0 ? `${r.roas.toFixed(2)}x` : '—'}
                     </p>
                     <p className={cn('mt-1 text-[10px] tabular-nums', profitTone)}>
-                      {r.profit >= 0 ? '+' : '−'}${Math.abs(r.profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                      {r.profit >= 0 ? '+' : '−'}{formatINR(Math.abs(r.profit))}
                     </p>
                   </div>
                 </div>
@@ -980,8 +981,8 @@ function PerfBreakdown({ title, icon, rows }: {
                   />
                 </div>
                 <div className="mt-1 flex items-center justify-between text-[9px] text-muted-foreground/70">
-                  <span>spend ${r.spend.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
-                  <span>rev ${r.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                  <span>spend {formatINR(r.spend)}</span>
+                  <span>rev {formatINR(r.revenue)}</span>
                 </div>
               </motion.li>
             );
@@ -1022,7 +1023,7 @@ function FunnelRanking({ title, tone, funnels }: {
         <span className="text-[10px] text-muted-foreground">{funnels.length}</span>
       </div>
       {funnels.length === 0 ? (
-        <p className="relative z-10 px-4 py-6 text-center text-[12px] text-muted-foreground">No funnels with data yet.</p>
+        <p className="relative z-10 px-4 py-6 text-center text-[12px] text-muted-foreground">No LPs with data yet.</p>
       ) : (
         <ul className="relative z-10 divide-y divide-border/60">
           {funnels.map(({ funnel: f, roasShown, beroas, profit, winning }, i) => {
@@ -1064,7 +1065,7 @@ function FunnelRanking({ title, tone, funnels }: {
                       {roasShown.toFixed(2)}x
                     </p>
                     <p className={cn('mt-0.5 text-[10px] tabular-nums', profitTone)}>
-                      {profit >= 0 ? '+' : '−'}${Math.abs(profit).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                      {profit >= 0 ? '+' : '−'}{formatINR(Math.abs(profit))}
                     </p>
                   </div>
                 </Link>

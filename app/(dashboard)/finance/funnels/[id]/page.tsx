@@ -13,7 +13,7 @@ import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { isWinning, effectiveBeroas } from '@/lib/funnels';
-import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
+import { formatMoney, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 import type { FxRates } from '@/lib/fx-rates';
@@ -66,7 +66,7 @@ export default function FunnelFinanceDetailPage() {
   const [fx, setFx] = useState<FxRates | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<SupportedCurrency>('USD');
+  const [currency, setCurrency] = useState<SupportedCurrency>('INR');
   const [filterDate, setFilterDate] = useState<string>('');
 
   const loadAll = useCallback(async () => {
@@ -122,8 +122,8 @@ export default function FunnelFinanceDetailPage() {
     }
   };
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 83.5 };
-  const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
+  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 95 };
+  const fmt = (inr: number) => formatMoney(inr, currency, rates.INR || 95);
 
   // Filtered logs by date
   const scopedLogs = useMemo(() => filterDate ? logs.filter((l) => l.date === filterDate) : logs, [logs, filterDate]);

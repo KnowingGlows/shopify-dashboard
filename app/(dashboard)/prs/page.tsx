@@ -126,11 +126,10 @@ export default function PRSPage() {
         body: JSON.stringify({
           productName: entry.productName,
           productFileLink: entry.driveLink || '',
+          adLink: entry.adLink || '',
+          websiteLink: entry.websiteLink || '',
           productStage: 'Research Phase',
-          remarks: [
-            entry.adLink && `Ad: ${entry.adLink}`,
-            entry.websiteLink && `Site: ${entry.websiteLink}`,
-          ].filter(Boolean).join(' · '),
+          remarks: '',
         }),
       });
       if (!res.ok) throw new Error('Failed to create product');

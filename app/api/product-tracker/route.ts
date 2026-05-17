@@ -31,6 +31,8 @@ export async function GET() {
         id: data.id ?? doc.id,
         productName: data.productName ?? '',
         productFileLink: data.productFileLink ?? '',
+        adLink: data.adLink ?? '',
+        websiteLink: data.websiteLink ?? '',
         productStage: data.productStage ?? '',
         totalSpent: data.totalSpent ?? 0,
         cogs: Number(data.cogs) || 0,
@@ -64,6 +66,8 @@ export async function POST(request: Request) {
       id: crypto.randomUUID(),
       productName: body.productName ?? '',
       productFileLink: body.productFileLink ?? '',
+      adLink: body.adLink ?? '',
+      websiteLink: body.websiteLink ?? '',
       productStage: body.productStage ?? '',
       totalSpent: Number(body.totalSpent) || 0,
       cogs: Number(body.cogs) || 0,
@@ -115,6 +119,8 @@ export async function PATCH(request: Request) {
 
     if (updates.productName !== undefined) sanitizedUpdates.productName = updates.productName;
     if (updates.productFileLink !== undefined) sanitizedUpdates.productFileLink = updates.productFileLink;
+    if (updates.adLink !== undefined) sanitizedUpdates.adLink = updates.adLink;
+    if (updates.websiteLink !== undefined) sanitizedUpdates.websiteLink = updates.websiteLink;
     if (updates.productStage !== undefined) sanitizedUpdates.productStage = updates.productStage;
     if (updates.totalSpent !== undefined) sanitizedUpdates.totalSpent = Number(updates.totalSpent) || 0;
     if (updates.cogs !== undefined) sanitizedUpdates.cogs = Number(updates.cogs) || 0;

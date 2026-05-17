@@ -12,7 +12,7 @@ import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { effectiveBeroas, isWinning } from '@/lib/funnels';
-import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
+import { formatMoney, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, Creative } from '@/types/funnel';
 import type { FxRates } from '@/lib/fx-rates';
@@ -76,7 +76,7 @@ export default function WinnersPage() {
   const [fx, setFx] = useState<FxRates | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<SupportedCurrency>('USD');
+  const [currency, setCurrency] = useState<SupportedCurrency>('INR');
   const [filterDate, setFilterDate] = useState<string>('');
   const [activeOnly, setActiveOnly] = useState(true);
 
@@ -121,8 +121,8 @@ export default function WinnersPage() {
     }
   };
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 83.5 };
-  const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
+  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 95 };
+  const fmt = (inr: number) => formatMoney(inr, currency, rates.INR || 95);
 
   // Per-product roll-up
   const summaries = useMemo<ProductSummary[]>(() => {
@@ -426,9 +426,9 @@ function WinnerCard({
             </h2>
           </div>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {liveCount > 0 ? `${liveCount} live` : 'no live funnels'}
+            {liveCount > 0 ? `${liveCount} live` : 'no live LPs'}
             {' · '}{funnels.length} total
-            {markets.length > 0 && <> · {markets.length} market{markets.length === 1 ? '' : 's'}</>}
+            {markets.length > 0 && <> · {markets.length} LP link{markets.length === 1 ? '' : 's'}</>}
             {lastActivity && <> · last log {lastActivity}</>}
           </p>
         </div>
@@ -569,7 +569,7 @@ function FunnelBars({ perFunnel }: { perFunnel: PerFunnelMetrics[] }) {
         );
       })}
       {perFunnel.length > 5 && (
-        <p className="text-[10px] text-muted-foreground/70">+ {perFunnel.length - 5} more funnel{perFunnel.length - 5 === 1 ? '' : 's'}</p>
+        <p className="text-[10px] text-muted-foreground/70">+ {perFunnel.length - 5} more LP{perFunnel.length - 5 === 1 ? '' : 's'}</p>
       )}
     </div>
   );

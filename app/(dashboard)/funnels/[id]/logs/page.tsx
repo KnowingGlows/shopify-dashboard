@@ -106,7 +106,7 @@ export default function FunnelLogsPage() {
     return (
       <PageTransition className="mx-auto max-w-7xl p-5">
         <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> <span>{error ?? 'Funnel not found.'}</span>
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> <span>{error ?? 'LP not found.'}</span>
         </div>
       </PageTransition>
     );

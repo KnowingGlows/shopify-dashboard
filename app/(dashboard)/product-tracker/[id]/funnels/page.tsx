@@ -12,7 +12,7 @@ import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { isWinning, effectiveBeroas } from '@/lib/funnels';
-import { formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
+import { formatMoney, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 import type { FxRates } from '@/lib/fx-rates';
@@ -40,7 +40,7 @@ export default function ProductFunnelsDetailPage() {
   const [fx, setFx] = useState<FxRates | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<SupportedCurrency>('USD');
+  const [currency, setCurrency] = useState<SupportedCurrency>('INR');
   const [filterDate, setFilterDate] = useState<string>('');
 
   const loadAll = useCallback(async () => {
@@ -75,8 +75,8 @@ export default function ProductFunnelsDetailPage() {
 
   useEffect(() => { if (id) loadAll(); }, [id, loadAll]);
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 83.5 };
-  const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
+  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 95 };
+  const fmt = (inr: number) => formatMoney(inr, currency, rates.INR || 95);
 
   const funnelAggs = useMemo(() => {
     return funnels.map((f) => {
@@ -143,7 +143,7 @@ export default function ProductFunnelsDetailPage() {
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-foreground">LPs — {product.productName || 'Unnamed product'}</h1>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {funnels.length} funnel{funnels.length === 1 ? '' : 's'} across markets · launches &amp; performance
+              {funnels.length} LP{funnels.length === 1 ? '' : 's'} · launches &amp; performance
             </p>
           </div>
         </div>

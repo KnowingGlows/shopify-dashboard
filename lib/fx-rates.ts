@@ -12,7 +12,7 @@ const FX_DOC_ID = 'usd_base_v1';
 // Refresh occasionally if these drift dramatically.
 const FALLBACK_RATES: FxRates = {
   base: 'USD',
-  rates: { USD: 1, INR: 83.5 },
+  rates: { USD: 1, INR: 95 },
   fetchedAt: 0,
   source: 'fallback',
 };

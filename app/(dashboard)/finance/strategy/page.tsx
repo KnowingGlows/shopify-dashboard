@@ -123,11 +123,11 @@ export default function StrategyPage() {
   const [threePL, setThreePL] = useState<Preset[]>([]);
 
   const [currency, setCurrency] = useState<'INR' | 'USD'>('INR');
-  const [rateStr, setRateStr] = useState('83.5');
+  const [rateStr, setRateStr] = useState('95');
   useEffect(() => {
     fetch('/api/fx').then((r) => r.json()).then((d) => { if (d?.rates?.INR) setRateStr(String(Number(d.rates.INR).toFixed(2))); }).catch(() => {});
   }, []);
-  const inrPerUsd = parseFloat(rateStr) || 83.5;
+  const inrPerUsd = parseFloat(rateStr) || 95;
 
   useEffect(() => {
     fetch('/api/finance?action=presets&kind=strategy').then((r) => r.json()).then((d) => setScenarios(d.presets ?? [])).catch(() => {});

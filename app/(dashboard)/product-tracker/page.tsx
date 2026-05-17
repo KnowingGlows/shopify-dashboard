@@ -52,6 +52,8 @@ export default function ProductTrackerPage() {
   // Form state
   const [formName, setFormName] = useState('');
   const [formLink, setFormLink] = useState('');
+  const [formAdLink, setFormAdLink] = useState('');
+  const [formWebLink, setFormWebLink] = useState('');
   const [formStage, setFormStage] = useState('');
   const [formSpent, setFormSpent] = useState('');
   const [formRemarks, setFormRemarks] = useState('');
@@ -76,7 +78,7 @@ export default function ProductTrackerPage() {
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
   const resetForm = () => {
-    setFormName(''); setFormLink(''); setFormStage(''); setFormSpent(''); setFormRemarks('');
+    setFormName(''); setFormLink(''); setFormAdLink(''); setFormWebLink(''); setFormStage(''); setFormSpent(''); setFormRemarks('');
   };
 
   const addEntry = async () => {
@@ -89,6 +91,8 @@ export default function ProductTrackerPage() {
         body: JSON.stringify({
           productName: formName,
           productFileLink: formLink,
+          adLink: formAdLink,
+          websiteLink: formWebLink,
           productStage: formStage,
           totalSpent: Number(formSpent) || 0,
           remarks: formRemarks,
@@ -374,11 +378,25 @@ export default function ProductTrackerPage() {
                     autoFocus
                   />
                 </FormField>
-                <FormField label="File / Drive Link">
+                <FormField label="Drive / file link">
                   <LinkChip
                     value={formLink}
                     onChange={setFormLink}
                     placeholder="https://drive.google.com/..."
+                  />
+                </FormField>
+                <FormField label="Ad link">
+                  <LinkChip
+                    value={formAdLink}
+                    onChange={setFormAdLink}
+                    placeholder="https://facebook.com/ads/..."
+                  />
+                </FormField>
+                <FormField label="Website link">
+                  <LinkChip
+                    value={formWebLink}
+                    onChange={setFormWebLink}
+                    placeholder="https://competitor-store.com/..."
                   />
                 </FormField>
                 <FormField label="Stage">
@@ -498,9 +516,9 @@ export default function ProductTrackerPage() {
                         return (
                           <span
                             className="inline-flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-300"
-                            title={`${summary.total} funnel${summary.total === 1 ? '' : 's'} · ${summary.live} live`}
+                            title={`${summary.total} LP${summary.total === 1 ? '' : 's'} · ${summary.live} live`}
                           >
-                            {summary.total} funnel{summary.total === 1 ? '' : 's'}
+                            {summary.total} LP{summary.total === 1 ? '' : 's'}
                             {summary.live > 0 && (
                               <span className="inline-flex items-center gap-0.5 text-emerald-400">
                                 <span className="h-1 w-1 rounded-full bg-emerald-400" /> {summary.live} live
@@ -566,12 +584,28 @@ export default function ProductTrackerPage() {
                         className="overflow-hidden"
                       >
                         <div className="border-t border-border px-4 py-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                          <FormField label="File Link">
+                          <FormField label="Drive / file link">
                             <LinkChip
                               value={entry.productFileLink}
                               onChange={(val) => updateLocalField(entry.id, 'productFileLink', val)}
                               onBlur={(val) => handleBlur(entry.id, 'productFileLink', val)}
-                              placeholder="https://..."
+                              placeholder="https://drive.google.com/..."
+                            />
+                          </FormField>
+                          <FormField label="Ad link">
+                            <LinkChip
+                              value={entry.adLink}
+                              onChange={(val) => updateLocalField(entry.id, 'adLink', val)}
+                              onBlur={(val) => handleBlur(entry.id, 'adLink', val)}
+                              placeholder="https://facebook.com/ads/..."
+                            />
+                          </FormField>
+                          <FormField label="Website link">
+                            <LinkChip
+                              value={entry.websiteLink}
+                              onChange={(val) => updateLocalField(entry.id, 'websiteLink', val)}
+                              onBlur={(val) => handleBlur(entry.id, 'websiteLink', val)}
+                              placeholder="https://competitor-store.com/..."
                             />
                           </FormField>
                           <FormField label="Stage">

@@ -14,7 +14,7 @@ import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { isWinning, effectiveBeroas } from '@/lib/funnels';
 import { productEconomics } from '@/lib/3pl';
-import { formatINR, formatFromUSD, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
+import { formatINR, formatMoney, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, Creative, FunnelStatus } from '@/types/funnel';
 import type { FxRates } from '@/lib/fx-rates';
@@ -85,7 +85,7 @@ export default function ProductDetailPage() {
   const [fx, setFx] = useState<FxRates | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<SupportedCurrency>('USD');
+  const [currency, setCurrency] = useState<SupportedCurrency>('INR');
   // Date filter: '' = all-time, otherwise YYYY-MM-DD limits all log aggregation to that date
   const [filterDate, setFilterDate] = useState<string>('');
   // Inline-edit state for the product fields
@@ -160,10 +160,10 @@ export default function ProductDetailPage() {
     }
   };
 
-  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 83.5 };
-  const fmt = (usd: number) => formatFromUSD(usd, currency, rates);
+  const rates: UsdRates = fx?.rates ?? { USD: 1, INR: 95 };
+  const fmt = (inr: number) => formatMoney(inr, currency, rates.INR || 95);
   // ₹ per $1 — used to convert a USD-entered COGS to the canonical ₹ stored value.
-  const inrPerUsd = Number(rates.INR) || 83.5;
+  const inrPerUsd = Number(rates.INR) || 95;
 
   // Aggregates per funnel — honors filterDate (single-day view when set)
   const funnelAggs = useMemo(() => {
@@ -337,13 +337,18 @@ export default function ProductDetailPage() {
                       </select>
 
                       {product.productFileLink ? (
-                        <a
-                          href={product.productFileLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition hover:text-primary hover:border-primary/30"
-                        >
-                          <ExternalLink className="h-3 w-3" /> File
+                        <a href={product.productFileLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition hover:text-primary hover:border-primary/30">
+                          <ExternalLink className="h-3 w-3" /> Drive
+                        </a>
+                      ) : null}
+                      {product.adLink ? (
+                        <a href={product.adLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition hover:text-primary hover:border-primary/30">
+                          <ExternalLink className="h-3 w-3" /> Ad
+                        </a>
+                      ) : null}
+                      {product.websiteLink ? (
+                        <a href={product.websiteLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground transition hover:text-primary hover:border-primary/30">
+                          <ExternalLink className="h-3 w-3" /> Site
                         </a>
                       ) : null}
                       {savedField === 'productStage' && (
@@ -353,14 +358,28 @@ export default function ProductDetailPage() {
                       )}
                     </div>
 
-                    {/* Editable file link + remarks (compact inline) */}
+                    {/* Editable links + remarks (compact inline) */}
                     <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
                       <InlineField
-                        label="File link"
+                        label="Drive / file link"
                         value={product.productFileLink}
-                        placeholder="https://…"
+                        placeholder="https://drive.google.com/…"
                         saved={savedField === 'productFileLink'}
                         onSave={(v) => saveProductField('productFileLink', v)}
+                      />
+                      <InlineField
+                        label="Ad link"
+                        value={product.adLink}
+                        placeholder="https://facebook.com/ads/…"
+                        saved={savedField === 'adLink'}
+                        onSave={(v) => saveProductField('adLink', v)}
+                      />
+                      <InlineField
+                        label="Website link"
+                        value={product.websiteLink}
+                        placeholder="https://competitor-store.com/…"
+                        saved={savedField === 'websiteLink'}
+                        onSave={(v) => saveProductField('websiteLink', v)}
                       />
                       <InlineField
                         label="Remarks"
@@ -815,7 +834,7 @@ function FunnelsMiniSegment({
       {productId && (
         <Link
           href={`/product-tracker/${productId}/funnels`}
-          aria-label="Open full funnels detail"
+          aria-label="Open full LPs detail"
           className="absolute inset-0 z-20 rounded-xl"
         />
       )}

@@ -82,7 +82,9 @@ export interface ExchangeRates {
 export interface ProductTrackerEntry {
   id: string;
   productName: string;
-  productFileLink: string;
+  productFileLink: string;   // drive / product file link (carried from PRS)
+  adLink: string;            // winning ad reference (carried from PRS)
+  websiteLink: string;       // competitor / store page (carried from PRS)
   productStage: string;
   totalSpent: number;
 

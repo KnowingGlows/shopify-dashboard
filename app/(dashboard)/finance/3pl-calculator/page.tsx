@@ -65,14 +65,14 @@ export default function ThreePLCalculatorPage() {
   const [currency, setCurrency] = useState<'INR' | 'USD'>('INR');
   // Rate is prefilled from the live FX feed but fully editable — override it
   // if the fetched rate looks off.
-  const [rateStr, setRateStr] = useState('83.5');
+  const [rateStr, setRateStr] = useState('95');
   useEffect(() => {
     fetch('/api/fx')
       .then((r) => r.json())
       .then((d) => { if (d?.rates?.INR) setRateStr(String(Number(d.rates.INR).toFixed(2))); })
       .catch(() => {});
   }, []);
-  const inrPerUsd = parseFloat(rateStr) || 83.5;
+  const inrPerUsd = parseFloat(rateStr) || 95;
 
   useEffect(() => {
     fetch('/api/finance?action=presets&kind=3pl')
