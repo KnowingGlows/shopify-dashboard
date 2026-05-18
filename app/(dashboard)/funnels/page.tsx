@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   Funnel as FunnelIcon, Plus, Check, X, Loader2,
-  AlertTriangle, Link2, Search, ArrowRight, BarChart3,
+  AlertTriangle, Link2, Search, ArrowRight, BarChart3, Package,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -384,6 +384,7 @@ export default function FunnelsPage() {
                 winning={winning}
                 tone={tone}
                 linked={linked}
+                hideProduct={filterProduct !== 'all'}
                 index={i}
               />
             );
@@ -532,7 +533,7 @@ function FilterPill({ label, count, active, onClick, tone = 'gray' }: {
 // ── Funnel card ────────────────────────────────────────────────────────────
 
 function FunnelCard({
-  funnel: f, beroas, latestRoas, lastLogDate, totalOrders, winning, tone, linked, index,
+  funnel: f, beroas, latestRoas, lastLogDate, totalOrders, winning, tone, linked, hideProduct, index,
 }: {
   funnel: Funnel;
   beroas: number;
@@ -542,6 +543,7 @@ function FunnelCard({
   winning: boolean;
   tone: { text: string; bg: string; border: string; bar: string; dot: string };
   linked: boolean;
+  hideProduct: boolean;
   index: number;
 }) {
   const hasData = latestRoas > 0;
@@ -579,15 +581,18 @@ function FunnelCard({
       <div className="relative z-10 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <p className="truncate text-[13px] font-semibold text-foreground">{lpLabel(f)}</p>
+            <p className="truncate text-[14px] font-semibold text-foreground">{lpLabel(f)}</p>
             {!linked && (
               <span title="Not linked to a product — open to fix" className="shrink-0">
                 <AlertTriangle className="h-3 w-3 text-amber-400" />
               </span>
             )}
           </div>
-          {f.productName && (
-            <p className="truncate text-[10px] text-muted-foreground/70">{f.productName}</p>
+          {!hideProduct && f.productName && (
+            <span className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-background/40 px-2 py-0.5">
+              <Package className="h-3 w-3 shrink-0 text-muted-foreground/60" aria-hidden />
+              <span className="truncate text-[11px] font-medium text-muted-foreground">{f.productName}</span>
+            </span>
           )}
           <div className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background/40 px-2 py-0.5">
             <Link2 className={cn('h-3 w-3 shrink-0', f.funnelishUrl ? 'text-sky-400' : 'text-muted-foreground/40')} aria-hidden />
