@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
+import { getFirestore, isFirebaseAvailable, COLLECTIONS, resolveDocRef } from '@/lib/firebase';
 import { AdsTrackerEntry } from '@/types/shopify';
 
 // In-memory fallback when Firebase is not configured
@@ -151,12 +151,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Firebase is not available.' }, { status: 500 });
     }
 
-    const docRef = db.collection(COLLECTIONS.ADS_TRACKER).doc(id);
-    const doc = await docRef.get();
-
-    if (!doc.exists) {
+    const found = await resolveDocRef(db.collection(COLLECTIONS.ADS_TRACKER), id);
+    if (!found) {
       return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
     }
+    const docRef = found.ref;
 
     await docRef.update(sanitizedUpdates);
     const updated = await docRef.get();
@@ -220,14 +219,12 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Firebase is not available.' }, { status: 500 });
     }
 
-    const docRef = db.collection(COLLECTIONS.ADS_TRACKER).doc(id);
-    const doc = await docRef.get();
-
-    if (!doc.exists) {
+    const found = await resolveDocRef(db.collection(COLLECTIONS.ADS_TRACKER), id);
+    if (!found) {
       return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
     }
 
-    await docRef.delete();
+    await found.ref.delete();
 
     return NextResponse.json({ success: true });
   } catch (error) {

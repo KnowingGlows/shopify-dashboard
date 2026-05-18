@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth';
-import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
+import { getFirestore, isFirebaseAvailable, COLLECTIONS, resolveDocRef } from '@/lib/firebase';
 import type { DailyDispatchEntry } from '@/types/shopify';
 
 const db = () => (isFirebaseAvailable() ? getFirestore() : null);
@@ -131,12 +131,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: true, entry: inMemoryStore[idx] });
     }
 
-    const docRef = firestore.collection(COLLECTIONS.DAILY_DISPATCHES).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
+    const found = await resolveDocRef(firestore.collection(COLLECTIONS.DAILY_DISPATCHES), id);
+    if (!found) return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
 
-    await docRef.update(sanitized);
-    const updated = { ...doc.data(), ...sanitized } as DailyDispatchEntry;
+    await found.ref.update(sanitized);
+    const updated = { ...found.snap.data(), ...sanitized } as DailyDispatchEntry;
     return NextResponse.json({ success: true, entry: updated });
   } catch (error) {
     console.error('Error updating dispatch entry:', error);
@@ -162,11 +161,10 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: true });
     }
 
-    const docRef = firestore.collection(COLLECTIONS.DAILY_DISPATCHES).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
+    const found = await resolveDocRef(firestore.collection(COLLECTIONS.DAILY_DISPATCHES), id);
+    if (!found) return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
 
-    await docRef.delete();
+    await found.ref.delete();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting dispatch entry:', error);

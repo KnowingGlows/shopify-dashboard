@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
+import { getFirestore, isFirebaseAvailable, COLLECTIONS, resolveDocRef } from '@/lib/firebase';
 import type { InventoryEntry, InventoryDispatch } from '@/types/shopify';
 
 // In-memory fallback
@@ -10,7 +10,6 @@ function getISTDate(date?: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date ?? new Date());
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = () => (isFirebaseAvailable() ? getFirestore() : null);
 
 // ── GET /api/inventory ───────────────────────────────────────────────────────
@@ -174,11 +173,11 @@ async function handleDispatch(body: Record<string, unknown>) {
     await firestore.collection(COLLECTIONS.INVENTORY_DISPATCHES).doc(dispatchRecord.id).set(dispatchRecord);
 
     // Update inventory entry
-    const docRef = firestore.collection(COLLECTIONS.INVENTORY).doc(d.inventoryId);
-    const doc = await docRef.get();
-    if (!doc.exists) continue;
+    const invFound = await resolveDocRef(firestore.collection(COLLECTIONS.INVENTORY), d.inventoryId);
+    if (!invFound) continue;
+    const docRef = invFound.ref;
 
-    const data = doc.data()!;
+    const data = invFound.snap.data()!;
     const newStock = Math.max(0, (data.currentStock ?? 0) - d.quantity);
 
     // Calculate 7-day rolling avg (single-field query to avoid composite index)
@@ -252,12 +251,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: true, entry: inMemoryStore[idx] });
     }
 
-    const docRef = firestore.collection(COLLECTIONS.INVENTORY).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
+    const found = await resolveDocRef(firestore.collection(COLLECTIONS.INVENTORY), id);
+    if (!found) return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
 
-    await docRef.update(sanitizedUpdates);
-    const updated = { ...doc.data(), ...sanitizedUpdates } as InventoryEntry;
+    await found.ref.update(sanitizedUpdates);
+    const updated = { ...found.snap.data(), ...sanitizedUpdates } as InventoryEntry;
     return NextResponse.json({ success: true, entry: updated });
   } catch (error) {
     console.error('Error updating inventory entry:', error);
@@ -284,11 +282,10 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: true });
     }
 
-    const docRef = firestore.collection(COLLECTIONS.INVENTORY).doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
+    const found = await resolveDocRef(firestore.collection(COLLECTIONS.INVENTORY), id);
+    if (!found) return NextResponse.json({ error: 'Entry not found.' }, { status: 404 });
 
-    await docRef.delete();
+    await found.ref.delete();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting inventory entry:', error);

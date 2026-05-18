@@ -73,12 +73,15 @@ export function LinkChip({ value, onChange, onBlur, placeholder = 'https://...' 
     <input
       type="text"
       value={value}
+      // Stay in input mode while the field has focus — without this the
+      // component collapses to a chip the moment the value looks like a URL
+      // (mid-typing/paste), unmounting the input so its onBlur (the save)
+      // never fires and the edit is lost on reload.
+      onFocus={() => setEditing(true)}
       onChange={(e) => onChange(e.target.value)}
       onBlur={(e) => {
         onBlur?.(e.target.value);
-        if (e.target.value && (e.target.value.startsWith('http://') || e.target.value.startsWith('https://'))) {
-          setEditing(false);
-        }
+        setEditing(false);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && value && (value.startsWith('http://') || value.startsWith('https://'))) {
