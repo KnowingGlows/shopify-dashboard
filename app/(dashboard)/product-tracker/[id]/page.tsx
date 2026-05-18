@@ -99,17 +99,25 @@ export default function ProductDetailPage() {
   const saveProductField = async <K extends keyof ProductTrackerEntry>(field: K, value: ProductTrackerEntry[K]) => {
     if (!product) return;
     if (product[field] === value) return;
+    const prev = product[field];
     setProduct({ ...product, [field]: value });
+    setError(null);
     try {
-      await fetch('/api/product-tracker', {
+      const r = await fetch('/api/product-tracker', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: product.id, [field]: value }),
       });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d?.error || `HTTP ${r.status}`);
+      }
       setSavedField(field as string);
       setTimeout(() => setSavedField((cur) => (cur === field ? null : cur)), 1200);
-    } catch {
-      setError('Failed to save change.');
+    } catch (e) {
+      // Revert the optimistic change so the UI matches what's actually stored.
+      setProduct((p) => (p ? { ...p, [field]: prev } : p));
+      setError(e instanceof Error ? `Couldn't save ${String(field)}: ${e.message}` : 'Failed to save change.');
     }
   };
 

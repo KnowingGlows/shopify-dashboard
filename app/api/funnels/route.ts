@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth';
-import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
+import { getFirestore, isFirebaseAvailable, COLLECTIONS, resolveDocRef } from '@/lib/firebase';
 import type { Funnel, FunnelStatus } from '@/types/funnel';
 
 const VALID_STATUSES: FunnelStatus[] = ['draft', 'testing', 'live', 'paused', 'killed'];
@@ -138,11 +138,11 @@ export async function PATCH(request: Request) {
       inMemory[idx] = { ...inMemory[idx], ...sanitized };
       return NextResponse.json({ success: true, funnel: inMemory[idx] });
     }
-    const ref = firestore.collection(COLLECTIONS.FUNNELS).doc(id);
-    const doc = await ref.get();
-    if (!doc.exists) return NextResponse.json({ error: 'Funnel not found.' }, { status: 404 });
+    const found = await resolveDocRef(firestore.collection(COLLECTIONS.FUNNELS), id);
+    if (!found) return NextResponse.json({ error: 'Funnel not found.' }, { status: 404 });
+    const ref = found.ref;
     await ref.update(sanitized);
-    const updated = { ...doc.data(), ...sanitized } as Funnel;
+    const updated = { ...found.snap.data(), ...sanitized } as Funnel;
     return NextResponse.json({ success: true, funnel: updated });
   } catch (error) {
     console.error('Error updating funnel:', error);
@@ -168,9 +168,9 @@ export async function DELETE(request: Request) {
       inMemory.splice(idx, 1);
       return NextResponse.json({ success: true });
     }
-    const ref = firestore.collection(COLLECTIONS.FUNNELS).doc(id);
-    const doc = await ref.get();
-    if (!doc.exists) return NextResponse.json({ error: 'Funnel not found.' }, { status: 404 });
+    const found = await resolveDocRef(firestore.collection(COLLECTIONS.FUNNELS), id);
+    if (!found) return NextResponse.json({ error: 'Funnel not found.' }, { status: 404 });
+    const ref = found.ref;
 
     // Cascade: daily logs + creatives bound to this funnel
     const [logsSnap, creativesSnap] = await Promise.all([

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
+import { getFirestore, isFirebaseAvailable, COLLECTIONS, resolveDocRef } from '@/lib/firebase';
 import type { PRSEntry } from '@/types/shopify';
 
 // In-memory fallback when Firebase is not configured
@@ -138,19 +138,18 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const docRef = db.collection(COLLECTIONS.PRS).doc(id);
-    const doc = await docRef.get();
+    const found = await resolveDocRef(db.collection(COLLECTIONS.PRS), id);
 
-    if (!doc.exists) {
+    if (!found) {
       return NextResponse.json(
         { error: 'Entry not found.' },
         { status: 404 }
       );
     }
 
-    await docRef.update(patchData);
+    await found.ref.update(patchData);
 
-    const updated = { ...doc.data(), ...patchData } as PRSEntry;
+    const updated = { ...found.snap.data(), ...patchData } as PRSEntry;
     return NextResponse.json({ success: true, entry: updated });
   } catch (error) {
     console.error('Error updating PRS entry:', error);
@@ -194,17 +193,16 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const docRef = db.collection(COLLECTIONS.PRS).doc(id);
-    const doc = await docRef.get();
+    const found = await resolveDocRef(db.collection(COLLECTIONS.PRS), id);
 
-    if (!doc.exists) {
+    if (!found) {
       return NextResponse.json(
         { error: 'Entry not found.' },
         { status: 404 }
       );
     }
 
-    await docRef.delete();
+    await found.ref.delete();
 
     return NextResponse.json({ success: true });
   } catch (error) {

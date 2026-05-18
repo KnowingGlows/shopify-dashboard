@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth';
-import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
+import { getFirestore, isFirebaseAvailable, COLLECTIONS, resolveDocRef } from '@/lib/firebase';
 import type { FunnelDailyLog } from '@/types/funnel';
 
 const db = () => (isFirebaseAvailable() ? getFirestore() : null);
@@ -158,11 +158,10 @@ export async function PATCH(request: Request) {
       inMemory[idx] = { ...inMemory[idx], ...sanitized };
       return NextResponse.json({ success: true, log: inMemory[idx] });
     }
-    const ref = firestore.collection(COLLECTIONS.FUNNEL_DAILY_LOGS).doc(id);
-    const doc = await ref.get();
-    if (!doc.exists) return NextResponse.json({ error: 'Log not found.' }, { status: 404 });
-    await ref.update(sanitized);
-    const updated = { ...doc.data(), ...sanitized } as FunnelDailyLog;
+    const found = await resolveDocRef(firestore.collection(COLLECTIONS.FUNNEL_DAILY_LOGS), id);
+    if (!found) return NextResponse.json({ error: 'Log not found.' }, { status: 404 });
+    await found.ref.update(sanitized);
+    const updated = { ...found.snap.data(), ...sanitized } as FunnelDailyLog;
     return NextResponse.json({ success: true, log: updated });
   } catch (error) {
     console.error('Error updating funnel log:', error);
@@ -187,10 +186,9 @@ export async function DELETE(request: Request) {
       inMemory.splice(idx, 1);
       return NextResponse.json({ success: true });
     }
-    const ref = firestore.collection(COLLECTIONS.FUNNEL_DAILY_LOGS).doc(id);
-    const doc = await ref.get();
-    if (!doc.exists) return NextResponse.json({ error: 'Log not found.' }, { status: 404 });
-    await ref.delete();
+    const found = await resolveDocRef(firestore.collection(COLLECTIONS.FUNNEL_DAILY_LOGS), id);
+    if (!found) return NextResponse.json({ error: 'Log not found.' }, { status: 404 });
+    await found.ref.delete();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting funnel log:', error);

@@ -50,6 +50,25 @@ export const getFirestore = () => {
   return admin.firestore(admin.apps[0]!);
 };
 
+/**
+ * Resolve a document by id, tolerating a doc-id ↔ stored `id` field mismatch.
+ * Tries `collection.doc(id)` first; if that doesn't exist, falls back to a
+ * `where('id','==',id)` query. Returns null when neither finds anything.
+ * Use this for every by-id update/delete so saves never silently 404 on
+ * legacy/imported docs whose Firestore doc-id differs from their `id` field.
+ */
+export async function resolveDocRef(
+  col: admin.firestore.CollectionReference,
+  id: string,
+): Promise<{ ref: admin.firestore.DocumentReference; snap: admin.firestore.DocumentSnapshot } | null> {
+  const direct = col.doc(id);
+  const s = await direct.get();
+  if (s.exists) return { ref: direct, snap: s };
+  const q = await col.where('id', '==', id).limit(1).get();
+  if (q.empty) return null;
+  return { ref: q.docs[0].ref, snap: q.docs[0] };
+}
+
 export const COLLECTIONS = {
   STORES: 'shopify_stores',
   PNL_ENTRIES: 'pnl_entries',
