@@ -25,6 +25,18 @@ export function effectiveBeroas(_funnel: Funnel, product?: ProductTrackerEntry |
 }
 
 /**
+ * Display label for an LP: its given name, else the LP link host, else the
+ * product name. Use this everywhere an LP is shown so naming is consistent.
+ */
+export function lpLabel(f: { name?: string; funnelishUrl?: string; productName?: string }): string {
+  if (f.name && f.name.trim()) return f.name.trim();
+  if (f.funnelishUrl && f.funnelishUrl.trim()) {
+    return f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  }
+  return (f.productName && f.productName.trim()) || 'Unnamed LP';
+}
+
+/**
  * An LP is "winning" when its ROAS is at least BEROAS + 1.
  * Returns false when either input is missing/non-positive.
  */

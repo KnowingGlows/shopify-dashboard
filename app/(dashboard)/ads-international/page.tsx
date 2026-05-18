@@ -11,6 +11,7 @@ import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
+import { lpLabel } from '@/lib/funnels';
 import type { Creative, Funnel, FunnelStatus } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
 
@@ -155,7 +156,7 @@ export default function AdsPage() {
         if (statusFilter === 'with-creatives' && s.total === 0) return false;
         if (statusFilter !== 'all' && statusFilter !== 'with-creatives' && s.funnel.status !== statusFilter) return false;
         if (q) {
-          const hay = [s.funnel.productName, s.funnel.funnelishUrl].join(' ').toLowerCase();
+          const hay = [s.funnel.name, s.funnel.productName, s.funnel.funnelishUrl].join(' ').toLowerCase();
           if (!hay.includes(q)) return false;
         }
         return true;
@@ -338,7 +339,8 @@ function FunnelAdCard({ summary: s, index }: { summary: FunnelAdsSummary; index:
 
       <div className="relative z-10 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-foreground">{s.funnel.productName}</p>
+          <p className="truncate text-[13px] font-semibold text-foreground">{lpLabel(s.funnel)}</p>
+          {s.funnel.productName && <p className="truncate text-[10px] text-muted-foreground/70">{s.funnel.productName}</p>}
           <div className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background/40 px-2 py-0.5">
             <Link2 className={cn('h-3 w-3 shrink-0', s.funnel.funnelishUrl ? 'text-sky-400' : 'text-muted-foreground/40')} aria-hidden />
             <span className="truncate text-[11px] font-medium text-muted-foreground">

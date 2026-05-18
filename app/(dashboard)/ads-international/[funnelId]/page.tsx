@@ -5,13 +5,14 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Link2, ArrowLeft, Plus, Trash2, Pencil, Check, X, Loader2, AlertTriangle,
+  Link2, ArrowLeft, ArrowRight, Plus, Trash2, Pencil, Check, X, Loader2, AlertTriangle,
   ExternalLink, Layers, Trophy, TrendingDown, Sparkles, Funnel as FunnelIcon,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
+import { lpLabel } from '@/lib/funnels';
 import type { Creative, CreativeStatus, CreativeResult, Funnel, FunnelStatus } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
 
@@ -305,13 +306,14 @@ export default function AdsFunnelDetailPage() {
                 <div className="flex items-center gap-2">
                   <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Ad creatives for</p>
                 </div>
+                <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{lpLabel(funnel)}</h1>
                 {productId ? (
-                  <Link href={`/product-tracker/${productId}`} className="inline-flex items-center gap-1.5 text-2xl font-semibold tracking-tight text-foreground hover:text-primary">
-                    <span className="truncate">{funnel.productName}</span>
+                  <Link href={`/product-tracker/${productId}`} className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-muted-foreground transition hover:text-primary">
+                    {funnel.productName || 'product'} <ArrowRight className="h-3 w-3" />
                   </Link>
-                ) : (
-                  <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{funnel.productName}</h1>
-                )}
+                ) : funnel.productName ? (
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">{funnel.productName}</p>
+                ) : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {funnel.funnelishUrl ? (
                     <a href={funnel.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex max-w-[260px] items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1 text-[12px] font-medium text-sky-300 transition hover:bg-sky-500/15">

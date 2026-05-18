@@ -13,7 +13,7 @@ import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { productEconomicsOf } from '@/lib/3pl';
 import { formatINR } from '@/lib/currency-converter';
-import { isWinning, aggregateLogs, hitRate, effectiveBeroas } from '@/lib/funnels';
+import { isWinning, aggregateLogs, hitRate, effectiveBeroas, lpLabel } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
 
@@ -142,7 +142,7 @@ export default function FunnelsPage() {
       if (statusFilter !== 'all' && f.status !== statusFilter) return false;
       if (filterProduct !== 'all' && f.productName !== filterProduct) return false;
       if (q) {
-        const hay = [f.productName, f.funnelishUrl, f.notes].join(' ').toLowerCase();
+        const hay = [f.name, f.productName, f.funnelishUrl, f.notes].join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -579,13 +579,16 @@ function FunnelCard({
       <div className="relative z-10 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <p className="truncate text-[13px] font-semibold text-foreground">{f.productName}</p>
+            <p className="truncate text-[13px] font-semibold text-foreground">{lpLabel(f)}</p>
             {!linked && (
               <span title="Not linked to a product — open to fix" className="shrink-0">
                 <AlertTriangle className="h-3 w-3 text-amber-400" />
               </span>
             )}
           </div>
+          {f.productName && (
+            <p className="truncate text-[10px] text-muted-foreground/70">{f.productName}</p>
+          )}
           <div className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background/40 px-2 py-0.5">
             <Link2 className={cn('h-3 w-3 shrink-0', f.funnelishUrl ? 'text-sky-400' : 'text-muted-foreground/40')} aria-hidden />
             <span className="truncate text-[11px] font-medium text-muted-foreground">
@@ -1045,7 +1048,7 @@ function FunnelRanking({ title, tone, funnels }: {
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-medium text-foreground group-hover:text-primary">{f.productName}</p>
+                    <p className="truncate text-[12px] font-medium text-foreground group-hover:text-primary">{lpLabel(f)}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       {beroas > 0 && <span className="text-[10px] text-muted-foreground">BEROAS {beroas.toFixed(2)}x</span>}
                     </div>
@@ -1083,6 +1086,7 @@ function FunnelRanking({ title, tone, funnels }: {
 type NewFunnelInput = {
   productId: string;
   productName: string;
+  name: string;
   funnelishUrl: string;
   inspoLink: string;
   status: FunnelStatus;
@@ -1100,6 +1104,7 @@ function AddFunnelModal({
   onSubmit: (input: NewFunnelInput) => Promise<void>;
 }) {
   const [productId, setProductId] = useState<string>(products[0]?.id ?? '');
+  const [name, setName] = useState('');
   const [funnelishUrl, setFunnelishUrl] = useState('');
   const [inspoLink, setInspoLink] = useState('');
   const [status, setStatus] = useState<FunnelStatus>('draft');
@@ -1128,6 +1133,7 @@ function AddFunnelModal({
       await onSubmit({
         productId,
         productName: selectedProduct.productName,
+        name: name.trim(),
         funnelishUrl: funnelishUrl.trim(),
         inspoLink: inspoLink.trim(),
         status,
@@ -1240,6 +1246,10 @@ function AddFunnelModal({
               </Link>
             </FormCell>
           )}
+
+          <FormCell label="LP name" hint="how you'll refer to this LP, e.g. 'Hero v2', 'TikTok angle'">
+            <input value={name} onChange={(e) => setName(e.target.value)} className="form-input" placeholder="Optional — defaults to the LP link" />
+          </FormCell>
 
           <div className="grid grid-cols-2 gap-3">
             <FormCell label="Status">

@@ -11,7 +11,7 @@ import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { effectiveBeroas, isWinning } from '@/lib/funnels';
+import { effectiveBeroas, isWinning, lpLabel } from '@/lib/funnels';
 import { formatMoney, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, Creative } from '@/types/funnel';
@@ -474,7 +474,7 @@ function WinnerCard({
               <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-400">
                 <TrendingUp className="h-3 w-3" />
                 <span className="font-medium">Best:</span>
-                <span className="max-w-[160px] truncate">{bestFunnel.funnel.funnelishUrl ? bestFunnel.funnel.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'LP'}</span>
+                <span className="max-w-[160px] truncate">{lpLabel(bestFunnel.funnel)}</span>
                 <span className="font-semibold tabular-nums">{bestFunnel.blendedRoas.toFixed(2)}x</span>
               </span>
             )}
@@ -482,7 +482,7 @@ function WinnerCard({
               <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-400">
                 <TrendingDown className="h-3 w-3" />
                 <span className="font-medium">Worst:</span>
-                <span className="max-w-[160px] truncate">{worstFunnel.funnel.funnelishUrl ? worstFunnel.funnel.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'LP'}</span>
+                <span className="max-w-[160px] truncate">{lpLabel(worstFunnel.funnel)}</span>
                 <span className="font-semibold tabular-nums">{worstFunnel.blendedRoas.toFixed(2)}x</span>
               </span>
             )}
@@ -551,7 +551,7 @@ function FunnelBars({ perFunnel }: { perFunnel: PerFunnelMetrics[] }) {
           <div key={f.id}>
             <div className="flex items-center justify-between gap-2 text-[11px]">
               <span className="truncate text-muted-foreground">
-                {f.funnelishUrl ? f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (f.productName || 'LP')}
+                {lpLabel(f)}
               </span>
               <span className={cn('shrink-0 tabular-nums', !hasData ? 'text-muted-foreground/50' : winning ? 'text-emerald-400 font-semibold' : 'text-foreground')}>
                 {hasData ? `${blendedRoas.toFixed(2)}x` : 'no data'}

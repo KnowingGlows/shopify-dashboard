@@ -11,7 +11,7 @@ import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { isWinning, effectiveBeroas } from '@/lib/funnels';
+import { isWinning, effectiveBeroas, lpLabel } from '@/lib/funnels';
 import type { Funnel, FunnelDailyLog } from '@/types/funnel';
 import type { ProductTrackerEntry } from '@/types/shopify';
 
@@ -118,7 +118,7 @@ export default function FunnelLogsPage() {
         href={`/funnels/${funnelId}`}
         className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground transition hover:text-foreground"
       >
-        <ArrowLeft className="h-3 w-3" /> Back to {funnel.productName || 'LP'}
+        <ArrowLeft className="h-3 w-3" /> Back to {lpLabel(funnel)}
       </Link>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -129,7 +129,7 @@ export default function FunnelLogsPage() {
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-foreground">Daily performance log</h1>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {funnel.productName}
+              {lpLabel(funnel)}{funnel.productName ? <> <span className="text-muted-foreground/40">·</span> {funnel.productName}</> : null}
               {beroas > 0 && <> <span className="text-muted-foreground/40">·</span> win ≥ {(beroas + 1).toFixed(2)}x</>}
             </p>
           </div>

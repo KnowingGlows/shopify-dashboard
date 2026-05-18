@@ -19,6 +19,7 @@ function sanitizeFunnel(input: Record<string, unknown>, base?: Partial<Funnel>):
   const out: Partial<Funnel> = { ...base };
   if ('productId' in input) out.productId = String(input.productId ?? '').trim();
   if ('productName' in input) out.productName = String(input.productName ?? '').trim();
+  if ('name' in input) out.name = String(input.name ?? '').trim();
   if ('funnelishUrl' in input) out.funnelishUrl = String(input.funnelishUrl ?? '').trim();
   if ('inspoLink' in input) out.inspoLink = String(input.inspoLink ?? '').trim();
   if ('status' in input) {
@@ -52,6 +53,7 @@ export async function GET(request: Request) {
           id: data.id ?? doc.id,
           productId: data.productId ?? '',
           productName: data.productName ?? '',
+          name: data.name ?? '',
           funnelishUrl: data.funnelishUrl ?? '',
           inspoLink: data.inspoLink ?? '',
           status: (VALID_STATUSES.includes(data.status) ? data.status : 'draft') as FunnelStatus,
@@ -95,6 +97,7 @@ export async function POST(request: Request) {
       id: crypto.randomUUID(),
       productId: sanitized.productId,
       productName: sanitized.productName,
+      name: sanitized.name ?? '',
       funnelishUrl: sanitized.funnelishUrl ?? '',
       inspoLink: sanitized.inspoLink ?? '',
       status: sanitized.status ?? 'draft',

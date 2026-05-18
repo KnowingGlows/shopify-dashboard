@@ -11,7 +11,7 @@ import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { isWinning, effectiveBeroas } from '@/lib/funnels';
+import { isWinning, effectiveBeroas, lpLabel } from '@/lib/funnels';
 import { formatMoney, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
@@ -223,7 +223,7 @@ export default function ProductFunnelsDetailPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 min-w-0">
                       <p className="truncate text-[13px] font-semibold text-foreground">
-                        {f.funnelishUrl ? f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : (f.productName || 'LP')}
+                        {lpLabel(f)}
                       </p>
                     </div>
                     <span className={cn('mt-1.5 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium', tone.bg, tone.border, tone.text)}>

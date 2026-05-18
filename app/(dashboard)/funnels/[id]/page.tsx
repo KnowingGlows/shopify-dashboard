@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   Funnel as FunnelIcon, ArrowLeft, ArrowRight, Plus, Trash2, Loader2, AlertTriangle,
-  ExternalLink, Lightbulb, TrendingUp, ShoppingCart, Target, Trophy,
+  ExternalLink, Lightbulb, Pencil, TrendingUp, ShoppingCart, Target, Trophy,
 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
@@ -14,7 +14,7 @@ import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
 import { productEconomicsOf } from '@/lib/3pl';
 import { formatINR } from '@/lib/currency-converter';
-import { isWinning, effectiveBeroas, aggregateLogs } from '@/lib/funnels';
+import { isWinning, effectiveBeroas, aggregateLogs, lpLabel } from '@/lib/funnels';
 import type { ProductTrackerEntry } from '@/types/shopify';
 import type { Funnel, FunnelDailyLog, FunnelStatus } from '@/types/funnel';
 
@@ -66,6 +66,8 @@ export default function FunnelDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterDate, setFilterDate] = useState<string>('');
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
 
   const loadAll = useCallback(async () => {
     if (!funnelId) return;
@@ -213,13 +215,33 @@ export default function FunnelDetailPage() {
                 {winning ? <Trophy className="h-5 w-5" /> : <FunnelIcon className="h-5 w-5" />}
               </div>
               <div className="min-w-0 flex-1">
-                {productId ? (
-                  <Link href={`/product-tracker/${productId}`} className="group/title inline-flex items-center gap-1.5 text-2xl font-semibold tracking-tight text-foreground hover:text-primary">
-                    <span className="truncate">{funnel.productName}</span>
-                  </Link>
+                {editingName ? (
+                  <input
+                    autoFocus
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    onBlur={() => { setEditingName(false); const v = nameDraft.trim(); if (v !== (funnel.name || '')) updateFunnel({ name: v }); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingName(false); }}
+                    placeholder="Name this LP…"
+                    className="w-full max-w-md bg-transparent border-b border-primary/40 text-2xl font-semibold tracking-tight text-foreground outline-none"
+                  />
                 ) : (
-                  <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">{funnel.productName}</h1>
+                  <button
+                    onClick={() => { setNameDraft(funnel.name || ''); setEditingName(true); }}
+                    title="Rename this LP"
+                    className="group/title inline-flex max-w-full items-center gap-1.5 text-left text-2xl font-semibold tracking-tight text-foreground hover:text-primary"
+                  >
+                    <span className="truncate">{lpLabel(funnel)}</span>
+                    <Pencil className="h-3.5 w-3.5 shrink-0 opacity-0 transition group-hover/title:opacity-60" />
+                  </button>
                 )}
+                {productId ? (
+                  <Link href={`/product-tracker/${productId}`} className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-muted-foreground transition hover:text-primary">
+                    {funnel.productName || 'product'} <ArrowRight className="h-3 w-3" />
+                  </Link>
+                ) : funnel.productName ? (
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">{funnel.productName}</p>
+                ) : null}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {funnel.funnelishUrl ? (
                     <a href={funnel.funnelishUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 bg-sky-500/10 px-2.5 py-1 text-[12px] font-medium text-sky-300 transition hover:bg-sky-500/15">

@@ -17,7 +17,10 @@
       "Bash(perl -0pi -e 's/<Num k=\"\\(\\\\w+\\)\" suffix=\"\\([^\"]*\\)\" \\\\/>/<NumInput value={String\\(v.$1\\)} onChange={\\(val\\) => set\\('\"'\"'$1'\"'\"', val\\)} suffix=\"$2\" \\\\/>/g; s/<Num k=\"\\(\\\\w+\\)\" \\\\/>/<NumInput value={String\\(v.$1\\)} onChange={\\(val\\) => set\\('\"'\"'$1'\"'\"', val\\)} \\\\/>/g' 'app/\\(dashboard\\)/finance/calculator/page.tsx')",
       "Bash(perl -0pi -e 's/monthlyCashUpfront/cashUpfront/g; s/monthlyFinanced/financed/g; s/Where every rupee goes · monthly/Where every rupee goes/g' 'app/\\(dashboard\\)/finance/3pl-calculator/page.tsx')",
       "Bash(git log *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(grep -n \"from '@/lib/funnels'\\\\|type NewFunnelInput\\\\|const hay = \\\\[f\\\\.productName\\\\|truncate text-\\\\[13px\\\\] font-semibold text-foreground\\\\\">{f.productName}\\\\|{f.productName}</p>\\\\|productName: selectedProduct.productName\\\\|const \\\\[productId, setProductId\\\\]\\\\|const \\\\[funnelishUrl, setFunnelishUrl\\\\]\\\\|onSubmit\\({\" \"app/\\(dashboard\\)/funnels/page.tsx\")",
+      "Bash(grep -n \"from '@/lib/funnels'\\\\|{s.funnel.productName}\\\\|{funnel.productName}\\\\|s.funnel.productName, s.funnel.funnelishUrl\" \"app/\\(dashboard\\)/ads-international/page.tsx\" \"app/\\(dashboard\\)/ads-international/[funnelId]/page.tsx\")",
+      "Bash(grep -n \"from '@/lib/funnels'\\\\|replace\\(/\\\\^https\\\\?:\\\\\\\\\\\\\\\\/\\\\\\\\\\\\\\\\///, ''\\).replace\\(/\\\\\\\\\\\\\\\\/\\\\$/, ''\\)\\\\|funnelishUrl ? \" \"app/\\(dashboard\\)/product-tracker/[id]/page.tsx\" \"app/\\(dashboard\\)/product-tracker/[id]/funnels/page.tsx\" \"app/\\(dashboard\\)/product-tracker/winners/page.tsx\")"
     ],
     "additionalDirectories": [
       "/tmp",

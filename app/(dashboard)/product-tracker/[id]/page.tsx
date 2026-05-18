@@ -12,7 +12,7 @@ import { PageTransition } from '@/components/motion';
 import { useAuth } from '@/components/auth-provider';
 import { DatePicker } from '@/components/date-picker';
 import { cn } from '@/lib/utils';
-import { isWinning, effectiveBeroas } from '@/lib/funnels';
+import { isWinning, effectiveBeroas, lpLabel } from '@/lib/funnels';
 import { productEconomicsOf } from '@/lib/3pl';
 import { formatINR, formatMoney, type SupportedCurrency, type UsdRates } from '@/lib/currency-converter';
 import type { ProductTrackerEntry } from '@/types/shopify';
@@ -912,12 +912,12 @@ function FunnelsMiniSegment({
                     'relative inline-flex shrink-0 items-center gap-2 rounded-md border px-2.5 py-1.5',
                     winning ? 'border-emerald-500/30 bg-emerald-500/[0.06]' : 'border-border bg-background/40'
                   )}
-                  title={`${f.funnelishUrl || 'No LP link'} — ${STATUS_LABEL[f.status]}`}
+                  title={`${lpLabel(f)} — ${STATUS_LABEL[f.status]}`}
                 >
                   <span className={cn('h-1.5 w-1.5 rounded-full', tone.dot)} aria-hidden />
                   <div className="leading-tight">
                     <p className="max-w-[120px] truncate text-[11px] font-semibold text-foreground">
-                      {f.funnelishUrl ? f.funnelishUrl.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'LP'}
+                      {lpLabel(f)}
                     </p>
                     <p className="text-[9px] text-muted-foreground">{STATUS_LABEL[f.status]}</p>
                   </div>

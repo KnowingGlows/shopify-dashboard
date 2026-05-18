@@ -17,6 +17,7 @@ export interface Funnel {
                                 // optional only to preserve legacy LPs created before linking
   productName: string;          // denormalized for display + legacy fallback
 
+  name: string;                 // human label for this LP (distinguishes LPs of the same product)
   funnelishUrl: string;         // the LP link itself
   inspoLink: string;            // inspiration / reference (competitor LP, swipe, doc)
 
