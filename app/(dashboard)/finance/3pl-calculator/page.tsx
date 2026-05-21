@@ -242,8 +242,7 @@ export default function ThreePLCalculatorPage() {
   const profitBeforeGst = moneyIn - outCOGS + stockRecovered - total3PL - outAds - outFinancing;
   const netProfit = moneyIn - moneyOut;
   const netMarginPct = moneyIn > 0 ? (netProfit / moneyIn) * 100 : 0;
-  // Gross profit = everything except ad spend. i.e. revenue minus all costs
-  // (net COGS, 3PL fees, net GST, financing) but BEFORE ads. Net = gross − ads.
+  // Gross profit = everything except ad spend.
   const grossProfit = netProfit + outAds;
   const grossMarginPct = moneyIn > 0 ? (grossProfit / moneyIn) * 100 : 0;
 

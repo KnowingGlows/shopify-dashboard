@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Target, Map, Bookmark, X, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Target, Map, Repeat, Bookmark, X, Plus, Pencil, Trash2 } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 import {
-  runRoadmap, portfolioAt, solveLever,
+  runRoadmap, portfolioAt, solveLever, ownerWcFor, productSnapshot,
   type RoadmapEconomics, type RoadmapInput, type Lever,
 } from '@/lib/roadmap';
 
@@ -105,7 +105,44 @@ function analyze(v: State) {
   const perProdAtEta = etaRow && etaRow.liveProducts > 0 ? etaRow.revPerDay / etaRow.liveProducts : 0;
   const bindingNow = roadmap.rows[0]?.binding ?? 'cadence';
 
-  return { econReady: true as const, targetDay, ceiling, capital, creditPct, roadmap, at, spectrum, gap, goal, etaRow, perProdAtEta, bindingNow };
+  // ── Single-product cycle: launch float → daily profit → payback ───
+  const start = Math.max(0, Math.min(n(v.startPerDay), ceiling));
+  const tau = Math.max(0.25, n(v.monthsToCeiling) / 3);
+  const rampAt = (age: number) => ceiling - (ceiling - start) * Math.exp(-Math.max(0, age) / tau);
+
+  const launchSnap = productSnapshot(econ, start);
+  const peakSnap = productSnapshot(econ, ceiling);
+  const launchOwnerWc = ownerWcFor(econ, start, creditPct);
+  const peakOwnerWc = ownerWcFor(econ, ceiling, creditPct);
+  const launchCreditCover = Math.max(0, launchSnap.wc - launchOwnerWc);
+
+  const cycleHorizon = Math.max(24, Math.round(n(v.maxHorizon)));
+  let breakEvenMonth: number | null = launchSnap.net > 0 ? 0 : null;
+  let paybackMonth: number | null = null;
+  let cum = -launchOwnerWc;
+  for (let m = 0; m <= cycleHorizon; m++) {
+    const s = productSnapshot(econ, rampAt(m));
+    cum += s.net * 30;
+    if (breakEvenMonth === null && s.net > 0) breakEvenMonth = m;
+    if (paybackMonth === null && cum >= 0) { paybackMonth = m; break; }
+  }
+
+  const carryAtCeiling = peakOwnerWc > 0 ? Math.floor(capital / peakOwnerWc) : 0;
+  const carryAtLaunch = launchOwnerWc > 0 ? Math.floor(capital / launchOwnerWc) : 0;
+
+  const trough = roadmap.rows.reduce((acc, r) => (r.cumNet < acc.cumNet ? r : acc), roadmap.rows[0]);
+  const recoveryRow = trough.cumNet < 0
+    ? roadmap.rows.find((r) => r.month > trough.month && r.cumNet >= 0) ?? null
+    : null;
+
+  const cycle = {
+    start, launchOwnerWc, peakOwnerWc, launchCreditCover,
+    launchDailyNet: launchSnap.net, peakDailyNet: peakSnap.net,
+    breakEvenMonth, paybackMonth, carryAtCeiling, carryAtLaunch,
+    trough, recoveryRow,
+  };
+
+  return { econReady: true as const, targetDay, ceiling, capital, creditPct, roadmap, at, spectrum, gap, goal, etaRow, perProdAtEta, bindingNow, cycle };
 }
 
 const BIND_LABEL: Record<string, string> = { capital: 'Capital', cadence: 'Launch cadence', ramp: 'Product ramp', target: 'At target' };
@@ -366,6 +403,101 @@ export default function StrategyPage() {
         </motion.div>
       </div>
 
+      {/* ── Product cycle (full-width, same card style) ─────────────────── */}
+      {A.econReady && A.cycle && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
+          className="rounded-xl border border-border bg-card overflow-hidden card-hover-glow">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+            <Repeat className="h-4 w-4 text-primary" />
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Product cycle</h2>
+              <p className="text-[10px] text-muted-foreground">How long one winner ties up cash before it pays itself back — the rhythm capital actually moves at</p>
+            </div>
+          </div>
+          <div className="relative z-10 p-4 space-y-4">
+            {/* Narrative — built from the user's actual numbers */}
+            <div className="rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3.5">
+              <p className="text-[12.5px] leading-relaxed text-foreground">
+                Each new winner asks for <span className="font-semibold text-primary">{fmt(A.cycle.launchOwnerWc)}</span> of your own cash on day one
+                {A.cycle.launchCreditCover > 0 && <>{' '}(credit covers another <span className="font-medium text-sky-400">{fmt(A.cycle.launchCreditCover)}</span>)</>}
+                .{' '}
+                {A.cycle.launchDailyNet >= 0
+                  ? <>It clears a daily profit from the first month — <span className="font-medium text-emerald-400">{fmt(A.cycle.launchDailyNet)}/day</span> at the launch run-rate.</>
+                  : <>At the launch run-rate it bleeds <span className="font-medium text-rose-400">{fmt(-A.cycle.launchDailyNet)}/day</span>; the ramp closes that gap
+                      {A.cycle.breakEvenMonth != null ? <> by month <span className="font-medium text-foreground">{A.cycle.breakEvenMonth}</span>.</> : <> only past your horizon.</>}</>}
+                {A.cycle.paybackMonth != null
+                  ? <> Its own cumulative profit refunds that launch float by month <span className="font-medium text-emerald-400">{A.cycle.paybackMonth}</span> — from there this product funds the next launch and capital starts recycling itself.</>
+                  : <> Within {v.maxHorizon} months the cumulative profit doesn&apos;t catch the launch float, so capital does <span className="font-medium text-rose-400">not</span> recycle from this product alone — every new winner has to come from new cash.</>}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              <ResultRow
+                label="Launch capital / product"
+                value={fmt(A.cycle.launchOwnerWc)}
+                highlight="primary"
+                sub={`Owner WC at ${fmt(A.cycle.start)}/day after credit covers ${fmt(A.cycle.launchCreditCover)}. Locked the day ads turn on.`}
+              />
+              <ResultRow
+                label="Owner WC at ceiling"
+                value={fmt(A.cycle.peakOwnerWc)}
+                sub={A.cycle.peakOwnerWc >= A.cycle.launchOwnerWc
+                  ? `${fmt(A.cycle.peakOwnerWc - A.cycle.launchOwnerWc)} more on the float once the product reaches ${fmt(A.ceiling)}/day.`
+                  : `Float at full ramp is actually lower than at launch — credit covers a bigger share at ceiling.`}
+              />
+              <ResultRow
+                label="Month one product turns daily-positive"
+                value={A.cycle.breakEvenMonth != null ? `month ${A.cycle.breakEvenMonth}` : `> ${v.maxHorizon} mo`}
+                sub={A.cycle.breakEvenMonth === 0
+                  ? `Profitable from day one — even the launch run-rate clears a daily net.`
+                  : A.cycle.breakEvenMonth != null
+                    ? `Until then the row stays in the red on its own; ramp lifts daily net above zero by here.`
+                    : `Daily net never crosses zero in the horizon — ROAS, COGS or AOV need to move.`}
+              />
+              <ResultRow
+                label="Payback / reinvest cycle"
+                value={A.cycle.paybackMonth != null ? `month ${A.cycle.paybackMonth}` : `> ${v.maxHorizon} mo`}
+                highlight={A.cycle.paybackMonth != null ? 'success' : undefined}
+                sub={A.cycle.paybackMonth != null
+                  ? `Cumulative profit catches its launch float. From here the same product self-funds the next launch.`
+                  : `Within the horizon, cumulative profit doesn't refund the launch float. Capital won't recycle off this product alone.`}
+              />
+              <ResultRow
+                label="Concurrent at full ramp"
+                value={`${A.cycle.carryAtCeiling}`}
+                sub={A.cycle.peakOwnerWc > 0
+                  ? `${fmt(A.capital)} ÷ ${fmt(A.cycle.peakOwnerWc)} owner WC at ceiling. Past this, the next launch waits on a payback.`
+                  : `No working-capital pressure at ceiling — capacity is governed by cadence and ramp, not cash.`}
+              />
+              <ResultRow
+                label="Concurrent at launch ₹/day"
+                value={`${A.cycle.carryAtLaunch}`}
+                sub={A.cycle.launchOwnerWc > 0
+                  ? `${fmt(A.capital)} ÷ ${fmt(A.cycle.launchOwnerWc)} owner WC at the start ramp — what you can have in test at once before scale-up.`
+                  : `Launch float is fully covered by credit — cadence-limited, not cash-limited at start.`}
+              />
+              <ResultRow
+                label="Program low point"
+                value={A.cycle.trough.cumNet < 0 ? `${fmt(A.cycle.trough.cumNet)} (${A.cycle.trough.label})` : 'never negative'}
+                sub={A.cycle.trough.cumNet < 0
+                  ? `Deepest cumulative net across the whole program. New launches consume float faster than older ones repay through this stretch.`
+                  : `Cumulative net never dips — old winners' profit covers new winners' launches month-over-month.`}
+              />
+              <ResultRow
+                label="Program turns net-positive"
+                value={A.cycle.trough.cumNet >= 0 ? 'month 0' : A.cycle.recoveryRow ? A.cycle.recoveryRow.label : `> ${v.maxHorizon} mo`}
+                highlight={A.cycle.trough.cumNet >= 0 || A.cycle.recoveryRow ? 'success' : undefined}
+                sub={A.cycle.trough.cumNet >= 0
+                  ? `Profitable from the start at this cadence and capital.`
+                  : A.cycle.recoveryRow
+                    ? `Total cumulative profit overtakes total burn from here on — the program funds itself.`
+                    : `Cumulative net stays underwater within the horizon. Either raise capital, slow cadence, or improve unit economics.`}
+              />
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* ── Roadmap (full-width, same card style) ───────────────────────── */}
       {A.econReady && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
@@ -555,14 +687,17 @@ function inrWords(num: number): string {
   return `${sgn}₹${grouped} · ${word}`;
 }
 
-function ResultRow({ label, value, highlight }: { label: string; value: string; highlight?: 'primary' | 'success' }) {
+function ResultRow({ label, value, highlight, sub }: { label: string; value: string; highlight?: 'primary' | 'success'; sub?: string }) {
   return (
-    <div className={`result-row-glow flex items-center justify-between rounded-lg px-3 py-2.5 ${
+    <div className={`result-row-glow rounded-lg px-3 py-2.5 ${
       highlight === 'primary' ? 'bg-primary/5 border border-primary/15' :
       highlight === 'success' ? 'bg-emerald-500/5 border border-emerald-500/15' : ''}`}>
-      <span className="relative z-10 text-[12px] text-muted-foreground">{label}</span>
-      <span className={`relative z-10 text-[13px] font-semibold font-mono ${
-        highlight === 'primary' ? 'text-primary' : highlight === 'success' ? 'text-emerald-400' : 'text-foreground'}`}>{value}</span>
+      <div className="relative z-10 flex items-center justify-between gap-3">
+        <span className="text-[12px] text-muted-foreground">{label}</span>
+        <span className={`text-[13px] font-semibold font-mono ${
+          highlight === 'primary' ? 'text-primary' : highlight === 'success' ? 'text-emerald-400' : 'text-foreground'}`}>{value}</span>
+      </div>
+      {sub && <p className="relative z-10 mt-1 text-[10.5px] leading-snug text-muted-foreground/70">{sub}</p>}
     </div>
   );
 }
