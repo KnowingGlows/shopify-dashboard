@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calculator, Percent, Bookmark, Plus, X, Trash2, Pencil, Package } from 'lucide-react';
+import { Calculator, Receipt, Bookmark, Plus, X, Trash2, Pencil } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 
@@ -10,78 +10,60 @@ interface CalcPreset {
   id: string;
   name: string;
   currency: 'USD' | 'INR';
-  margin: string;
-  adSpend: string;
-  roas: string;
-  numDays: string;
   sellingPrice: string;
   costPrice: string;
+  roas: string;
   deliveryRate: string;
+  orders: string;
+  // legacy fields tolerated when loading old presets
+  margin?: string;
+  adSpend?: string;
+  numDays?: string;
   aov?: string;
 }
 
+const DEFAULTS = {
+  sellingPrice: '0',
+  costPrice: '0',
+  roas: '0',
+  deliveryRate: '0',
+  orders: '0',
+};
+type State = typeof DEFAULTS;
+
 export default function ProfitCalculatorPage() {
-  const [currency, setCurrency] = useState<'USD' | 'INR'>('USD');
+  const [currency, setCurrency] = useState<'USD' | 'INR'>('INR');
   const [presets, setPresets] = useState<CalcPreset[]>([]);
   const [showPresets, setShowPresets] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editingPresetName, setEditingPresetName] = useState('');
 
-  // ROI Calculator
-  const [margin, setMargin] = useState('0.6');
-  const [adSpend, setAdSpend] = useState('250');
-  const [roas, setRoas] = useState('6');
-  const [numDays, setNumDays] = useState('30');
-
-  // Margin Calculator
-  const [sellingPrice, setSellingPrice] = useState('100');
-  const [costPrice, setCostPrice] = useState('35');
-  const [deliveryRate, setDeliveryRate] = useState('95');
-
-  // Per-Unit Profit Calculator
-  const [aov, setAov] = useState('500');
-  const [customOrders, setCustomOrders] = useState('');
+  const [v, setV] = useState<State>(DEFAULTS);
+  const set = <K extends keyof State>(k: K, val: State[K]) => setV((s) => ({ ...s, [k]: val }));
 
   useEffect(() => {
     fetch('/api/finance?action=presets')
       .then((r) => r.json())
-      .then(async (d) => {
-        const serverPresets = d.presets ?? [];
-        // Migrate localStorage presets to Firestore (one-time)
-        const LOCAL_KEY = 'orbit-calc-presets';
-        try {
-          const local = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]') as CalcPreset[];
-          if (local.length > 0 && serverPresets.length === 0) {
-            const migrated: CalcPreset[] = [];
-            for (const p of local) {
-              const { id: _id, ...preset } = p;
-              const res = await fetch('/api/finance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-preset', preset }) });
-              const data = await res.json();
-              if (data.preset) migrated.push(data.preset);
-            }
-            localStorage.removeItem(LOCAL_KEY);
-            setPresets(migrated);
-            return;
-          }
-          if (serverPresets.length > 0) localStorage.removeItem(LOCAL_KEY);
-        } catch { /* ignore */ }
-        setPresets(serverPresets);
-      })
+      .then((d) => setPresets(d.presets ?? []))
       .catch(() => {});
   }, []);
 
   const applyPreset = useCallback((p: CalcPreset) => {
-    setCurrency(p.currency);
-    setMargin(p.margin); setAdSpend(p.adSpend); setRoas(p.roas); setNumDays(p.numDays);
-    setSellingPrice(p.sellingPrice); setCostPrice(p.costPrice); setDeliveryRate(p.deliveryRate);
-    if (p.aov != null) setAov(p.aov);
+    if (p.currency) setCurrency(p.currency);
+    setV({
+      sellingPrice: String(p.sellingPrice ?? p.aov ?? DEFAULTS.sellingPrice),
+      costPrice: String(p.costPrice ?? DEFAULTS.costPrice),
+      roas: String(p.roas ?? DEFAULTS.roas),
+      deliveryRate: String(p.deliveryRate ?? DEFAULTS.deliveryRate),
+      orders: String(p.orders ?? DEFAULTS.orders),
+    });
     setShowPresets(false);
   }, []);
 
   const saveCurrentAsPreset = async () => {
     if (!presetName.trim()) return;
-    const preset = { name: presetName.trim(), currency, margin, adSpend, roas, numDays, sellingPrice, costPrice, deliveryRate, aov };
+    const preset = { name: presetName.trim(), currency, ...v };
     try {
       const res = await fetch('/api/finance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-preset', preset }) });
       const data = await res.json();
@@ -102,259 +84,219 @@ export default function ProfitCalculatorPage() {
     try { await fetch('/api/finance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'rename-preset', id, name: newName.trim() }) }); } catch { /* ignore */ }
   };
 
+  const reset = () => setV(DEFAULTS);
+
   const fmt = (amount: number) => currency === 'USD' ? formatUSD(amount) : formatINR(amount);
+  const sym = currency === 'INR' ? '₹' : '$';
+  const num = (s: string) => parseFloat(s) || 0;
 
-  // ROI calculations
-  const marginVal = parseFloat(margin) || 0;
-  const adSpendVal = parseFloat(adSpend) || 0;
-  const roasVal = parseFloat(roas) || 0;
-  const daysVal = parseFloat(numDays) || 30;
+  // ── Per-order economics (generic model — no 3PL fees/GST) ──────────────
+  const sp = num(v.sellingPrice);
+  const cogs = num(v.costPrice);
+  const roasVal = num(v.roas);
+  const d = Math.min(1, Math.max(0, num(v.deliveryRate) / 100));
+  const rto = 1 - d;
+  const ad = roasVal > 0 ? sp / roasVal : 0;        // ad spend / order = price ÷ ROAS
 
-  const breakevenRoas = marginVal > 0 ? (1 / marginVal).toFixed(2) : '0.00';
-  const revenue = adSpendVal * roasVal;
-  const profitMargin = revenue * marginVal;
-  const profitAdSpend = profitMargin - adSpendVal;
-  const roi = adSpendVal > 0 ? ((profitAdSpend / adSpendVal) * 100).toFixed(0) : '0';
+  // A delivered order earns its margin; an undelivered (RTO) order returns its
+  // unit to stock (COGS recovered) but the ad spend on it is gone regardless.
+  const deliveredProfitPre = sp - cogs;             // per delivered order, before ads
+  const blendedPre = d * deliveredProfitPre;        // RTO contributes 0 pre-ad
+  const netPerShipped = blendedPre - ad;            // net / shipped order, after ads
+  const simpleNet = deliveredProfitPre - ad;        // net / order @ 100% delivery
+  const rtoDragPerOrder = rto * deliveredProfitPre; // margin lost to undelivered orders
 
-  // Margin calculations
-  const sellingVal = parseFloat(sellingPrice) || 0;
-  const costVal = parseFloat(costPrice) || 0;
-  const deliveryVal = (parseFloat(deliveryRate) || 0) / 100;
-  const baseMargin = sellingVal > 0 ? (sellingVal - costVal) / sellingVal : 0;
-  const finalMargin = baseMargin * deliveryVal;
+  const baseMargin = sp > 0 ? (sp - cogs) / sp : 0;
+  const effMargin = baseMargin * d;
+  const beroas = blendedPre > 0 ? sp / blendedPre : NaN;
 
-  // Per-Unit Profit calculations
-  // Margin from Margin calc (delivery-rate adjusted), ROAS + Ad Spend from ROI calc.
-  const aovVal = parseFloat(aov) || 0;
-  const customOrdersVal = parseFloat(customOrders) || 0;
-  const estimatedUnits = aovVal > 0 ? revenue / aovVal : 0;
-  const marginPerUnit = aovVal * finalMargin;
-  const adCostPerUnit = roasVal > 0 ? aovVal / roasVal : 0;
-  const perUnitProfit = marginPerUnit - adCostPerUnit;
-  const totalOrdersForProfit = customOrdersVal > 0 ? customOrdersVal : estimatedUnits;
-  const totalProfitFromUnits = perUnitProfit * totalOrdersForProfit;
+  // ── Batch totals (for the order count you enter) ───────────────────────
+  const qty = Math.max(0, num(v.orders));
+  const shipped = qty;
+  const delivered = qty * d;
+  const rtoOrders = qty * rto;
+  const shopifyRevenue = shipped * sp;              // booked on Shopify (all orders)
+  const moneyIn = delivered * sp;                   // collected — delivered only
+  const outCOGS = shipped * cogs;                   // product cost on every unit shipped
+  const stockRecovered = rtoOrders * cogs;          // RTO units back to inventory
+  const outAds = shipped * ad;
+  const moneyOut = outCOGS - stockRecovered + outAds;
+  const netProfit = moneyIn - moneyOut;
+  const netMarginPct = moneyIn > 0 ? (netProfit / moneyIn) * 100 : 0;
+  const grossProfit = netProfit + outAds;           // everything except ad spend
+  const grossMarginPct = moneyIn > 0 ? (grossProfit / moneyIn) * 100 : 0;
+  const roiOnAd = outAds > 0 ? (netProfit / outAds) * 100 : 0;
+
+  const flowRows = [
+    { label: 'Product cost (COGS) — all units', amount: outCOGS },
+    { label: 'RTO stock recovered (back to inventory)', amount: -stockRecovered },
+    { label: 'Ad spend', amount: outAds },
+  ].filter((r) => Math.abs(r.amount) > 0.5).sort((a, b) => b.amount - a.amount);
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
-      {/* Header */}
+      {/* Header — same as the 3PL Calculator */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">Profit Calculator</h1>
-            <p className="text-[11px] text-muted-foreground">Calculate ROI & profit margins for paid advertising</p>
-          </div>
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Profit Calculator</h1>
+          <p className="text-[11px] text-muted-foreground">Per-order profit, margins &amp; ROI on ad spend</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Presets */}
-          <button
-            onClick={() => setShowPresets(!showPresets)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:bg-accent/30"
-          >
-            <Bookmark className="h-3.5 w-3.5" />
-            Presets {presets.length > 0 && <span className="text-primary">({presets.length})</span>}
-          </button>
-          {/* Currency toggle */}
           <div className="flex items-center rounded-lg border border-border bg-card overflow-hidden">
-            <button
-              onClick={() => setCurrency('USD')}
-              className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'USD' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              $ USD
-            </button>
-            <button
-              onClick={() => setCurrency('INR')}
-              className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'INR' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              ₹ INR
-            </button>
+            <button onClick={() => setCurrency('INR')} className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'INR' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>₹ INR</button>
+            <button onClick={() => setCurrency('USD')} className={`px-3 py-1.5 text-[11px] font-semibold transition ${currency === 'USD' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>$ USD</button>
           </div>
+          <button onClick={() => setShowPresets(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:bg-accent/30">
+            <Bookmark className="h-3.5 w-3.5" /> Presets {presets.length > 0 && <span className="text-primary">({presets.length})</span>}
+          </button>
+          <button onClick={reset} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:bg-accent/30">Reset</button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* ROI Calculator */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="rounded-xl border border-border bg-card overflow-hidden card-hover-glow"
-        >
+        {/* ── Calculator card ───────────────────────────────────────────── */}
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          className="rounded-xl border border-border bg-card overflow-hidden card-hover-glow">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <Calculator className="h-4 w-4 text-primary" />
             <div>
-              <h2 className="text-sm font-semibold text-foreground">ROI Calculator</h2>
-              <p className="text-[10px] text-muted-foreground">Calculate true profit & return on investment</p>
+              <h2 className="text-sm font-semibold text-foreground">Profit Calculator</h2>
+              <p className="text-[10px] text-muted-foreground">Enter your numbers — per-order &amp; batch profit</p>
             </div>
           </div>
           <div className="relative z-10 p-4 space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <CalcField label="Avg Profit Margin" hint="e.g. 0.6 = 60%">
-                <input type="text" value={margin} onChange={(e) => setMargin(e.target.value)} className="form-input" />
+              <CalcField label={`Selling Price (incl. shipping) — ${sym}`}>
+                <input type="text" inputMode="decimal" value={v.sellingPrice} onChange={(e) => set('sellingPrice', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" />
               </CalcField>
-              <CalcField label={`Ad Spend (${currency})`}>
-                <input type="text" value={adSpend} onChange={(e) => setAdSpend(e.target.value)} className="form-input" />
+              <CalcField label={`Cost of Product — ${sym}`}>
+                <input type="text" inputMode="decimal" value={v.costPrice} onChange={(e) => set('costPrice', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" />
               </CalcField>
-              <CalcField label="ROAS Multiplier">
-                <input type="text" value={roas} onChange={(e) => setRoas(e.target.value)} className="form-input" />
+              <CalcField label="ROAS" hint="ad spend = price ÷ ROAS">
+                <input type="text" inputMode="decimal" value={v.roas} onChange={(e) => set('roas', e.target.value)} className="form-input" />
               </CalcField>
-              <CalcField label="Number of Days">
-                <input type="text" value={numDays} onChange={(e) => setNumDays(e.target.value)} className="form-input" />
+              <CalcField label="Delivery Rate %" hint="rest is RTO">
+                <input type="text" inputMode="decimal" value={v.deliveryRate} onChange={(e) => set('deliveryRate', e.target.value)} className="form-input" />
+              </CalcField>
+              <CalcField label="Orders">
+                <input type="text" inputMode="decimal" value={v.orders} onChange={(e) => set('orders', e.target.value)} onFocus={(e) => e.currentTarget.select()} className="form-input" />
               </CalcField>
             </div>
 
             <div className="h-px bg-border" />
 
             <div className="space-y-1.5">
-              <ResultRow label="Breakeven ROAS" value={`${breakevenRoas}x`} />
-              <ResultRow label="Revenue from Ad Spend" value={fmt(revenue)} />
-              <ResultRow label="Profit After Margin" value={fmt(profitMargin)} />
-              <ResultRow label="Profit After Ad Spend" value={fmt(profitAdSpend)} highlight="primary" />
-              <ResultRow label={`True Profit (${daysVal} days)`} value={fmt(profitAdSpend)} highlight="success" />
+              <ResultRow label="Breakeven ROAS (BEROAS)" value={Number.isFinite(beroas) ? `${beroas.toFixed(2)}x` : '—'} />
+              <ResultRow label="Ad spend / order" value={fmt(ad)} />
+              <ResultRow label="Shopify revenue (all orders booked)" value={fmt(shopifyRevenue)} />
+              <ResultRow label="Delivered revenue (collected)" value={fmt(moneyIn)} />
+              <ResultRow label="Gross profit (excl. ad spend)" value={`${fmt(grossProfit)} · ${grossMarginPct.toFixed(1)}%`} />
+              <ResultRow label="ROI on ad spend" value={`${roiOnAd.toFixed(0)}%`} />
+              <ResultRow label="Net profit / order" value={fmt(netPerShipped)} highlight="primary" />
+              <ResultRow label="Net profit (final)" value={`${fmt(netProfit)} · ${netMarginPct.toFixed(1)}%`} highlight="success" />
             </div>
 
-            {/* Big ROI stat */}
-            <div
-              className="stat-shimmer glow-pulse rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
-              style={{ '--glow-color': 'rgba(16, 185, 129, 0.12)' } as React.CSSProperties}
-            >
-              <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Return on Investment</p>
-              <p className="relative z-10 text-4xl font-bold font-mono gradient-text-emerald">{roi}%</p>
+            <div className="stat-shimmer glow-pulse rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
+              style={{ '--glow-color': 'rgba(16, 185, 129, 0.12)' } as React.CSSProperties}>
+              <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">Net Profit</p>
+              <p className={`relative z-10 text-4xl font-bold font-mono ${netProfit >= 0 ? 'gradient-text-emerald' : 'text-rose-400'}`}>{fmt(netProfit)}</p>
+              <p className="relative z-10 mt-1.5 text-[11px] text-muted-foreground">{grossMarginPct.toFixed(1)}% gross margin</p>
             </div>
           </div>
         </motion.div>
 
-        {/* Margin Calculator */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="rounded-xl border border-border bg-card overflow-hidden card-hover-glow"
-        >
+        {/* ── Breakdown card ────────────────────────────────────────────── */}
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+          className="rounded-xl border border-border bg-card overflow-hidden card-hover-glow">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-            <Percent className="h-4 w-4 text-violet-400" />
+            <Receipt className="h-4 w-4 text-primary" />
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Margin Calculator</h2>
-              <p className="text-[10px] text-muted-foreground">Calculate your product&apos;s profit margin</p>
+              <h2 className="text-sm font-semibold text-foreground">Cost Breakdown</h2>
+              <p className="text-[10px] text-muted-foreground">Where every rupee goes &amp; per-order economics</p>
             </div>
           </div>
           <div className="relative z-10 p-4 space-y-4">
-            <CalcField label={`Selling Price (incl. shipping) — ${currency}`}>
-              <input type="text" value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} className="form-input" />
-            </CalcField>
-            <CalcField label={`Cost of Product (incl. shipping) — ${currency}`}>
-              <input type="text" value={costPrice} onChange={(e) => setCostPrice(e.target.value)} className="form-input" />
-            </CalcField>
-            <CalcField label="Delivery Rate %" hint="Successful delivery rate - multiplied to margin">
-              <input type="text" value={deliveryRate} onChange={(e) => setDeliveryRate(e.target.value)} className="form-input" />
-            </CalcField>
+            {/* Net profit / order — prominent */}
+            <div className="rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-3.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Net profit / order</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">delivery-blended, after ad spend</p>
+                </div>
+                <p className={`font-mono text-[22px] font-bold tabular-nums ${netPerShipped >= 0 ? 'text-primary' : 'text-rose-400'}`}>{fmt(netPerShipped)}</p>
+              </div>
+            </div>
 
-            {/* Big margin stat */}
-            <div
-              className="stat-shimmer glow-pulse rounded-xl border border-primary/20 bg-primary/[0.04] p-8 text-center"
-              style={{ '--glow-color': 'rgba(167, 139, 250, 0.12)' } as React.CSSProperties}
-            >
-              <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-2">Your Profit Margin</p>
-              <p className="relative z-10 text-5xl font-bold font-mono gradient-text-primary">{finalMargin.toFixed(3)}</p>
-              <p className="relative z-10 text-lg text-muted-foreground mt-1">{(finalMargin * 100).toFixed(1)}%</p>
+            <div className="h-px bg-border" />
+
+            <div className="space-y-1.5">
+              {flowRows.map((r) => {
+                const credit = r.amount < 0;
+                const share = moneyOut > 0 ? (Math.abs(r.amount) / moneyOut) * 100 : 0;
+                return (
+                  <ResultRow key={r.label} label={`${r.label} · ${share.toFixed(0)}%`} value={`${credit ? '+ ' : ''}${fmt(Math.abs(r.amount))}`} />
+                );
+              })}
+              <ResultRow label="Total money out" value={fmt(moneyOut)} highlight="primary" />
+            </div>
+
+            <div className="h-px bg-border" />
+
+            {/* Per-order economics */}
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-foreground">Per order <span className="normal-case tracking-normal font-normal text-muted-foreground/60">(one shipped order)</span></p>
+              <div className="space-y-1.5">
+                <ResultRow label="Selling price" value={fmt(sp)} />
+                <ResultRow label="− Product cost (COGS)" value={`− ${fmt(cogs)}`} />
+                <ResultRow label="− Ad spend (price ÷ ROAS)" value={`− ${fmt(ad)}`} />
+                <ResultRow label="− RTO drag (margin lost to undelivered)" value={`− ${fmt(rtoDragPerOrder)}`} />
+                <ResultRow label="Net / order @ 100% delivery" value={fmt(simpleNet)} />
+              </div>
+            </div>
+
+            <div className="h-px bg-border" />
+
+            {/* Margin reference */}
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-foreground">Margin</p>
+              <div className="grid grid-cols-2 gap-x-5 gap-y-2 rounded-lg border border-border bg-background/40 p-4 text-[13px]">
+                <div className="flex items-center justify-between"><span className="text-muted-foreground">Product margin</span><span className="font-mono font-semibold tabular-nums text-foreground">{(baseMargin * 100).toFixed(1)}%</span></div>
+                <div className="flex items-center justify-between"><span className="text-muted-foreground">After delivery rate</span><span className="font-mono font-semibold tabular-nums text-foreground">{(effMargin * 100).toFixed(1)}%</span></div>
+                <div className="flex items-center justify-between"><span className="text-muted-foreground">Delivered orders</span><span className="font-mono font-semibold tabular-nums text-foreground">{Math.round(delivered).toLocaleString('en-IN')}</span></div>
+                <div className="flex items-center justify-between"><span className="text-muted-foreground">RTO orders</span><span className="font-mono font-semibold tabular-nums text-foreground">{Math.round(rtoOrders).toLocaleString('en-IN')}</span></div>
+              </div>
+              <p className="mt-2.5 text-[11px] text-muted-foreground/70">
+                Net / order @ 100% delivery would be <span className="font-medium text-foreground">{fmt(simpleNet)}</span>.
+              </p>
             </div>
           </div>
         </motion.div>
       </div>
 
-      {/* Per-Unit Profit Calculator */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="rounded-xl border border-border bg-card overflow-hidden card-hover-glow"
-      >
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-          <Package className="h-4 w-4 text-emerald-400" />
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Per-Unit Profit</h2>
-            <p className="text-[10px] text-muted-foreground">Estimate units sold &amp; per-unit profit using your ROI &amp; Margin inputs above</p>
-          </div>
-        </div>
-        <div className="relative z-10 p-4 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <CalcField label={`Average Order Value (AOV) — ${currency}`}>
-              <input type="text" value={aov} onChange={(e) => setAov(e.target.value)} className="form-input" />
-            </CalcField>
-            <CalcField label="Number of orders" hint="leave blank to use estimated">
-              <input type="text" value={customOrders} onChange={(e) => setCustomOrders(e.target.value)} placeholder="auto" className="form-input" />
-            </CalcField>
-          </div>
-
-          <div className="h-px bg-border" />
-
-          <div className="space-y-1.5">
-            <ResultRow
-              label="Sourcing"
-              value={`margin ${(finalMargin * 100).toFixed(1)}% · ROAS ${roasVal.toFixed(2)}x`}
-            />
-            <ResultRow
-              label="Estimated units sold (Revenue ÷ AOV)"
-              value={Math.round(estimatedUnits).toLocaleString('en-IN')}
-            />
-            <ResultRow label="Margin per unit (AOV × margin)" value={fmt(marginPerUnit)} />
-            <ResultRow label="Ad cost per unit (AOV ÷ ROAS)" value={fmt(adCostPerUnit)} />
-            <ResultRow label="Per-unit profit" value={fmt(perUnitProfit)} highlight="primary" />
-          </div>
-
-          {/* Big total profit stat */}
-          <div
-            className="stat-shimmer glow-pulse rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center"
-            style={{ '--glow-color': 'rgba(16, 185, 129, 0.12)' } as React.CSSProperties}
-          >
-            <p className="relative z-10 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1">
-              Total profit for {Math.round(totalOrdersForProfit).toLocaleString('en-IN')} orders
-            </p>
-            <p className="relative z-10 text-4xl font-bold font-mono gradient-text-emerald">{fmt(totalProfitFromUnits)}</p>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Presets Modal */}
+      {/* Presets Modal — same as the 3PL Calculator */}
       <AnimatePresence>
         {showPresets && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowPresets(false)} />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="relative z-10 w-full max-w-md mx-4 rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl overflow-hidden"
-            >
+              className="relative z-10 w-full max-w-md mx-4 rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl overflow-hidden">
               <div className="flex items-center justify-between border-b border-border/50 px-5 py-3">
-                <div className="flex items-center gap-2">
-                  <Bookmark className="h-4 w-4 text-primary" />
-                  <h2 className="text-sm font-semibold text-foreground">Brand Presets</h2>
-                </div>
-                <button onClick={() => setShowPresets(false)} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition">
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-2"><Bookmark className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold text-foreground">Brand Presets</h2></div>
+                <button onClick={() => setShowPresets(false)} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition"><X className="h-4 w-4" /></button>
               </div>
 
               <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
-                {/* Save current */}
                 <div>
                   <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2">Save Current Values</p>
                   <div className="flex gap-2">
-                    <input
-                      type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)}
-                      placeholder="e.g. Kairova, Mavric..."
-                      onKeyDown={(e) => e.key === 'Enter' && saveCurrentAsPreset()}
-                      className="flex-1 rounded-lg border border-border/50 bg-background/60 px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none transition"
-                    />
-                    <button onClick={saveCurrentAsPreset} disabled={!presetName.trim()}
-                      className="rounded-lg bg-primary/15 px-3 py-2 text-[11px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"
-                    ><Plus className="h-3.5 w-3.5" /></button>
+                    <input type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="e.g. Kairova, Mavric..." onKeyDown={(e) => e.key === 'Enter' && saveCurrentAsPreset()}
+                      className="flex-1 rounded-lg border border-border/50 bg-background/60 px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none transition" />
+                    <button onClick={saveCurrentAsPreset} disabled={!presetName.trim()} className="rounded-lg bg-primary/15 px-3 py-2 text-[11px] font-medium text-primary transition hover:bg-primary/25 disabled:opacity-40"><Plus className="h-3.5 w-3.5" /></button>
                   </div>
                 </div>
 
-                {/* Saved presets */}
                 {presets.length > 0 && (
                   <div>
                     <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-2">Saved Presets</p>
@@ -362,36 +304,22 @@ export default function ProfitCalculatorPage() {
                       {presets.map((p) => (
                         <div key={p.id} className="flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-3 py-2.5 group">
                           {editingPresetId === p.id ? (
-                            <input
-                              autoFocus
-                              value={editingPresetName}
-                              onChange={(e) => setEditingPresetName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') renamePreset(p.id, editingPresetName);
-                                if (e.key === 'Escape') setEditingPresetId(null);
-                              }}
+                            <input autoFocus value={editingPresetName} onChange={(e) => setEditingPresetName(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') renamePreset(p.id, editingPresetName); if (e.key === 'Escape') setEditingPresetId(null); }}
                               onBlur={() => renamePreset(p.id, editingPresetName)}
-                              className="flex-1 rounded border border-primary/30 bg-transparent px-2 py-0.5 text-[12px] text-foreground focus:outline-none"
-                            />
+                              className="flex-1 rounded border border-primary/30 bg-transparent px-2 py-0.5 text-[12px] text-foreground focus:outline-none" />
                           ) : (
                             <button onClick={() => applyPreset(p)} className="flex-1 text-left min-w-0">
                               <p className="text-[12px] font-medium text-foreground truncate">{p.name}</p>
                               <p className="text-[10px] text-muted-foreground/60">
-                                Margin {(parseFloat(p.margin) * 100).toFixed(0)}% · SP {p.currency === 'INR' ? '₹' : '$'}{p.sellingPrice} · CP {p.currency === 'INR' ? '₹' : '$'}{p.costPrice} · DR {p.deliveryRate}%{p.aov ? ` · AOV ${p.currency === 'INR' ? '₹' : '$'}${p.aov}` : ''}
+                                SP {p.currency === 'INR' ? '₹' : '$'}{p.sellingPrice ?? p.aov} · CP {p.currency === 'INR' ? '₹' : '$'}{p.costPrice} · ROAS {p.roas} · DR {p.deliveryRate}%{p.orders ? ` · ${p.orders} orders` : ''}
                               </p>
                             </button>
                           )}
                           {editingPresetId !== p.id && (
                             <>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setEditingPresetId(p.id); setEditingPresetName(p.name); }}
-                                className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-primary transition"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              <button onClick={() => deletePreset(p.id)}
-                                className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-red-400 transition"
-                              ><Trash2 className="h-3.5 w-3.5" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); setEditingPresetId(p.id); setEditingPresetName(p.name); }} className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-primary transition"><Pencil className="h-3.5 w-3.5" /></button>
+                              <button onClick={() => deletePreset(p.id)} className="opacity-0 group-hover:opacity-100 rounded-md p-1 text-muted-foreground hover:text-red-400 transition"><Trash2 className="h-3.5 w-3.5" /></button>
                             </>
                           )}
                         </div>
