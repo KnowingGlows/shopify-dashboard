@@ -24,7 +24,7 @@ interface PProduct {
 }
 type ExpenseBasis = 'once' | 'day' | 'month';
 interface PExpense { id: string; label: string; amount: string; basis: ExpenseBasis }
-interface Gst { inclusive: boolean; registered: boolean }
+interface Gst { inclusive: boolean; enabled: boolean }
 
 const uid = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const n = (s: string) => { const x = parseFloat(s); return Number.isFinite(x) ? x : 0; };
@@ -57,11 +57,13 @@ function dailyFlow(p: PProduct, spend: number, roas: number, gst: Gst): Flow {
     const packing = n(p.ownPackingCost);
     const shipping = n(p.ownShipping);
     const payment = sp * 0.03;
-    const outputGstPerDel = gst.registered ? (gst.inclusive ? sp * gstRate / (1 + gstRate) : sp * gstRate) : 0;
-    const inputGstPerOrder = (cogs + packing + shipping) * gstRate;
-    const netGstPerDel = gst.registered ? outputGstPerDel - inputGstPerOrder : inputGstPerOrder;
-    const netGstPerRto = gst.registered ? -inputGstPerOrder : inputGstPerOrder;
-    const gstAmt = delivered * netGstPerDel + rto * netGstPerRto;
+    // GST off → no GST anywhere. On → registered: output owed on sales − input claimed.
+    let gstAmt = 0;
+    if (gst.enabled) {
+      const outputGstPerDel = gst.inclusive ? sp * gstRate / (1 + gstRate) : sp * gstRate;
+      const inputGstPerOrder = (cogs + packing + shipping) * gstRate;
+      gstAmt = delivered * (outputGstPerDel - inputGstPerOrder) + rto * (-inputGstPerOrder);
+    }
     const revColl = delivered * sp;
     const cogsNet = delivered * cogs;            // RTO units recovered to stock
     const costs: CostLine[] = [
@@ -76,7 +78,7 @@ function dailyFlow(p: PProduct, spend: number, roas: number, gst: Gst): Flow {
   const r = compute3PL({
     sellingPrice: sp, cogsPerUnit: cogs, deliveryRate: dr, roas, orders,
     unitsPerOrder: 1, weightGrams: 500, storageDays: 20, financingFeePct: 0,
-    spGstInclusive: gst.inclusive, chargeOutputGst: gst.registered,
+    spGstInclusive: gst.inclusive, chargeOutputGst: gst.enabled,
   });
   const costs: CostLine[] = [
     { label: 'Shipping (fwd + RTO)', amount: r.outForward + r.outRTO },
@@ -84,11 +86,14 @@ function dailyFlow(p: PProduct, spend: number, roas: number, gst: Gst): Flow {
     { label: 'COD & platform', amount: r.outCOD + r.outPlatform },
     { label: 'Payment (3%)', amount: r.outPayment },
   ];
+  // GST off → strip GST entirely (add back the sunk input the engine charges).
+  const gstAmt = gst.enabled ? r.outGst : 0;
+  const net = gst.enabled ? r.netProfit : r.netProfit + r.outGst;
   return {
     orders: r.shipped, delivered: r.delivered,
     revBooked: r.shopifyRevenue, revColl: r.moneyIn,
-    ads: r.outAds, cogs: r.outCOGS - r.stockRecovered, gst: r.outGst,
-    net: r.netProfit, costs,
+    ads: r.outAds, cogs: r.outCOGS - r.stockRecovered, gst: gstAmt,
+    net, costs,
   };
 }
 
@@ -97,20 +102,21 @@ function beroasOf(p: PProduct, gst: Gst): number {
   const sp = n(p.sellingPrice), cogs = n(p.cogs), dr = n(p.deliveryRate);
   const d = clamp01(dr / 100), rto = 1 - d, gstRate = 0.18;
   if (sp <= 0) return 0;
-  let blendedPre: number, netGstBlended: number;
   if (p.mode === 'own') {
     const packing = n(p.ownPackingCost), shipping = n(p.ownShipping), payment = sp * 0.03;
-    blendedPre = d * (sp - cogs - packing - shipping - payment) + rto * (-packing - shipping - payment);
-    const outputGstPerDel = gst.registered ? (gst.inclusive ? sp * gstRate / (1 + gstRate) : sp * gstRate) : 0;
-    const inputGstPerOrder = (cogs + packing + shipping) * gstRate;
-    const perDel = gst.registered ? outputGstPerDel - inputGstPerOrder : inputGstPerOrder;
-    const perRto = gst.registered ? -inputGstPerOrder : inputGstPerOrder;
-    netGstBlended = d * perDel + rto * perRto;
-  } else {
-    const r = compute3PL({ sellingPrice: sp, cogsPerUnit: cogs, deliveryRate: dr, roas: 0, orders: 1, unitsPerOrder: 1, weightGrams: 500, storageDays: 20, financingFeePct: 0, spGstInclusive: gst.inclusive, chargeOutputGst: gst.registered });
-    return Number.isFinite(r.beroas) && r.beroas > 0 ? r.beroas : 0;
+    const blendedPre = d * (sp - cogs - packing - shipping - payment) + rto * (-packing - shipping - payment);
+    let netGstBlended = 0;
+    if (gst.enabled) {
+      const outputGstPerDel = gst.inclusive ? sp * gstRate / (1 + gstRate) : sp * gstRate;
+      const inputGstPerOrder = (cogs + packing + shipping) * gstRate;
+      netGstBlended = d * (outputGstPerDel - inputGstPerOrder) + rto * (-inputGstPerOrder);
+    }
+    const profitBeforeAd = blendedPre - netGstBlended;
+    return profitBeforeAd > 0 ? sp / profitBeforeAd : 0;
   }
-  const profitBeforeAd = blendedPre - netGstBlended;
+  const r = compute3PL({ sellingPrice: sp, cogsPerUnit: cogs, deliveryRate: dr, roas: 0, orders: 1, unitsPerOrder: 1, weightGrams: 500, storageDays: 20, financingFeePct: 0, spGstInclusive: gst.inclusive, chargeOutputGst: gst.enabled });
+  // GST off → breakeven excludes GST entirely (use pre-GST blended profit).
+  const profitBeforeAd = gst.enabled ? r.blendedPre - r.netGstBlended : r.blendedPre;
   return profitBeforeAd > 0 ? sp / profitBeforeAd : 0;
 }
 
@@ -149,7 +155,7 @@ export default function PlannerPage() {
   const [products, setProducts] = useState<PProduct[]>([]);
   const [expenses, setExpenses] = useState<PExpense[]>([]);
   const [horizon, setHorizon] = useState(30);
-  const [gst, setGst] = useState<Gst>({ inclusive: true, registered: true });
+  const [gst, setGst] = useState<Gst>({ inclusive: true, enabled: true });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -169,7 +175,7 @@ export default function PlannerPage() {
       if (Array.isArray(plan.products)) setProducts(plan.products.map((p: Partial<PProduct>) => ({ ...blankProduct(), ...p, dailyRoas: Array.isArray(p.dailyRoas) ? p.dailyRoas : [] })));
       if (Array.isArray(plan.expenses)) setExpenses(plan.expenses);
       if (plan.horizonDays) setHorizon(Number(plan.horizonDays));
-      setGst({ inclusive: plan.gstInclusive !== false, registered: plan.gstRegistered !== false });
+      setGst({ inclusive: plan.gstInclusive !== false, enabled: plan.gstRegistered !== false });
     }).catch(() => {}).finally(() => setLoaded(true));
   }, []);
 
@@ -180,7 +186,7 @@ export default function PlannerPage() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       setSaving(true);
-      fetch('/api/planner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ products, expenses, horizonDays: horizon, gstInclusive: gst.inclusive, gstRegistered: gst.registered }) })
+      fetch('/api/planner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ products, expenses, horizonDays: horizon, gstInclusive: gst.inclusive, gstRegistered: gst.enabled }) })
         .catch(() => {}).finally(() => setSaving(false));
     }, 800);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
@@ -216,7 +222,7 @@ export default function PlannerPage() {
     try { const d = await (await fetch('/api/product-tracker')).json(); setImportList(d.entries ?? []); } catch { setImportList([]); }
   };
   const importProduct = (e: typeof importList[number]) => {
-    setProducts((ps) => [...ps, {
+    const p: PProduct = {
       ...blankProduct(),
       name: e.productName || 'Untitled',
       mode: e.fulfilmentMode === 'own' ? 'own' : '3pl',
@@ -224,8 +230,11 @@ export default function PlannerPage() {
       cogs: String(e.cogs || 0),
       deliveryRate: String(e.deliveryRate || 0),
       ownPackingCost: String(e.ownPackingCost || 0),
-    }]);
+    };
+    setProducts((ps) => [...ps, p]);
+    setExpanded((ex) => ({ ...ex, [p.id]: true }));
   };
+  const addBlank = () => { addP(); setShowImport(false); };
 
   // ── Derived ───────────────────────────────────────────────────────────
   const horizonFlows = useMemo(() => products.map((p) => ({ p, day: dailyFlow(p, n(p.dailySpend), n(p.roas), gst), horizon: projectProduct(p, horizon, gst) })), [products, horizon, gst]);
@@ -304,16 +313,15 @@ export default function PlannerPage() {
               <span className="text-[11px] text-muted-foreground">/ $</span>
             </div>
           )}
-          <button onClick={openImport} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:bg-accent/30"><Download className="h-3.5 w-3.5" /> Import</button>
-          <button onClick={addP} className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-semibold text-primary transition hover:bg-primary/25"><Plus className="h-3.5 w-3.5" /> Product</button>
+          <button onClick={openImport} className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 px-3 py-1.5 text-[11px] font-semibold text-primary transition hover:bg-primary/25"><Plus className="h-3.5 w-3.5" /> Product</button>
         </div>
       </div>
 
       {/* GST controls — apply to every product */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">GST</span>
-        <Toggle on={gst.registered} onClick={() => setGst((g) => ({ ...g, registered: !g.registered }))} label={gst.registered ? 'Registered — pay output, claim input' : 'Not registered — input GST is a sunk cost'} />
-        <Toggle on={gst.inclusive} onClick={() => setGst((g) => ({ ...g, inclusive: !g.inclusive }))} label="Selling price is GST-inclusive" />
+        <Toggle on={gst.enabled} onClick={() => setGst((g) => ({ ...g, enabled: !g.enabled }))} label={gst.enabled ? 'GST on — pay output, claim input' : 'GST off — not modelled'} />
+        {gst.enabled && <Toggle on={gst.inclusive} onClick={() => setGst((g) => ({ ...g, inclusive: !g.inclusive }))} label="Selling price is GST-inclusive" />}
       </div>
 
       {/* ── Overarching total — every product's projection summed ────────── */}
@@ -336,7 +344,7 @@ export default function PlannerPage() {
             <ResultRow label="Ad spend" value={fmt(portfolio.ads)} sub={`blended ROAS ${blendedRoas.toFixed(2)}x`} />
             <ResultRow label="Product cost (COGS, net of RTO)" value={fmt(portfolio.cogs)} />
             <ResultRow label="Fulfilment & fees" value={fmt(portfolioFees)} />
-            <ResultRow label={gst.registered ? 'GST (net of input credit)' : 'GST (input — unrecoverable)'} value={fmt(portfolio.gst)} />
+            {gst.enabled && <ResultRow label="GST (net of input credit)" value={fmt(portfolio.gst)} />}
             <ResultRow label="Operating expenses (incl. inventory)" value={fmt(expensesOverHorizon)} />
           </div>
           {/* Bottom line + hero */}
@@ -485,8 +493,8 @@ export default function PlannerPage() {
                     </div>
                     <p className="text-[10px] text-muted-foreground/60 leading-snug">
                       {p.mode === 'own'
-                        ? `Own dispatch costs: COGS (recovered on RTO) + packing + shipping + 3% payment${gst.registered ? ' + net GST' : ' + sunk input GST'}. No 3PL fees.`
-                        : `3PL costs: COGS (recovered on RTO) + forward/RTO shipping + COD + platform + fulfilment + storage + 3% payment${gst.registered ? ' + net GST' : ' + sunk input GST'} (fixed rates).`}
+                        ? `Own dispatch costs: COGS (recovered on RTO) + packing + shipping + 3% payment${gst.enabled ? ' + net GST' : ''}. No 3PL fees.`
+                        : `3PL costs: COGS (recovered on RTO) + forward/RTO shipping + COD + platform + fulfilment + storage + 3% payment${gst.enabled ? ' + net GST' : ''} (fixed rates).`}
                     </p>
                   </div>
 
@@ -498,7 +506,7 @@ export default function PlannerPage() {
                     <FlowRow label="Ad spend" amount={day.ads} total={dayMoneyOut} fmt={fmt} />
                     <FlowRow label="Product cost (COGS, net)" amount={day.cogs} total={dayMoneyOut} fmt={fmt} />
                     {day.costs.map((c) => <FlowRow key={c.label} label={c.label} amount={c.amount} total={dayMoneyOut} fmt={fmt} />)}
-                    <FlowRow label={gst.registered ? 'GST (net)' : 'GST (sunk)'} amount={day.gst} total={dayMoneyOut} fmt={fmt} />
+                    {gst.enabled && <FlowRow label="GST (net)" amount={day.gst} total={dayMoneyOut} fmt={fmt} />}
                     <ResultRow label="Net profit / day" value={fmt(day.net)} highlight="primary" />
                     <ResultRow label={`Net over ${horizon} days`} value={fmt(proj.net)} highlight={proj.net >= 0 ? 'success' : undefined} sub={`revenue ${fmt(proj.revColl)}`} />
                   </div>
@@ -585,10 +593,12 @@ export default function PlannerPage() {
             <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 10 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               className="relative z-10 w-full max-w-md mx-4 rounded-2xl border border-border/50 bg-card/95 shadow-2xl backdrop-blur-xl overflow-hidden">
               <div className="flex items-center justify-between border-b border-border/50 px-5 py-3">
-                <div className="flex items-center gap-2"><Download className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold text-foreground">Import from Products</h2></div>
+                <div className="flex items-center gap-2"><Package className="h-4 w-4 text-primary" /><h2 className="text-sm font-semibold text-foreground">Add a product</h2></div>
                 <button onClick={() => setShowImport(false)} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground transition"><X className="h-4 w-4" /></button>
               </div>
               <div className="p-4 space-y-1.5 max-h-[60vh] overflow-y-auto">
+                <button onClick={addBlank} className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-2 text-[11px] font-medium text-muted-foreground transition hover:text-foreground hover:border-primary/40"><Plus className="h-3.5 w-3.5" /> Add blank product</button>
+                <p className="px-1 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Or pick from your tracker</p>
                 {importList.length === 0 && <p className="py-6 text-center text-[12px] text-muted-foreground/50">No products found.</p>}
                 {importList.map((e) => {
                   const already = products.some((p) => p.name.trim().toLowerCase() === (e.productName || '').trim().toLowerCase());
