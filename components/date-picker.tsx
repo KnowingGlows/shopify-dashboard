@@ -41,6 +41,7 @@ interface DatePickerProps {
 export function DatePicker({ value, onChange, max, min, placeholder = 'Select date', className, compact }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; alignRight: boolean; openUp: boolean }>({ top: 0, left: 0, alignRight: false, openUp: false });
 
@@ -59,7 +60,11 @@ export function DatePicker({ value, onChange, max, min, placeholder = 'Select da
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      // The dropdown is portaled to <body>, so it's outside `ref`. Treat clicks
+      // inside either the trigger or the dropdown as "inside".
+      if (ref.current?.contains(t) || dropdownRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -145,6 +150,7 @@ export function DatePicker({ value, onChange, max, min, placeholder = 'Select da
       <AnimatePresence>
         {open && (
           <motion.div
+            ref={dropdownRef}
             initial={{ opacity: 0, y: dropdownPos.openUp ? 4 : -4, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: dropdownPos.openUp ? 4 : -4, scale: 0.95 }}
