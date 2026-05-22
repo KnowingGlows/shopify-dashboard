@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Area, AreaChart, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Wallet, Package, Receipt, Plus, Trash2, Download, ChevronDown, X, TrendingUp } from 'lucide-react';
 import { PageTransition } from '@/components/motion';
+import { DatePicker } from '@/components/date-picker';
 import { formatINR, formatUSD } from '@/lib/currency-converter';
 import { compute3PL, type FulfilmentMode } from '@/lib/3pl';
 
@@ -29,6 +30,12 @@ interface Gst { inclusive: boolean; enabled: boolean }
 const uid = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const n = (s: string) => { const x = parseFloat(s); return Number.isFinite(x) ? x : 0; };
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+
+// Date helpers — ISO YYYY-MM-DD, IST-aligned, no drift.
+const todayISO = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+const addDaysISO = (iso: string, days: number) => { const d = new Date(iso); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+const diffDaysInclusive = (a: string, b: string) => Math.floor((Date.parse(b) - Date.parse(a)) / 86400000) + 1;
+const labelISO = (iso: string) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(new Date(iso));
 
 function blankProduct(): PProduct {
   return { id: uid(), name: '', mode: '3pl', sellingPrice: '0', cogs: '0', deliveryRate: '0', ownPackingCost: '0', ownShipping: '0', dailySpend: '0', roas: '0', dailyRoas: [] };
@@ -155,6 +162,7 @@ export default function PlannerPage() {
   const [products, setProducts] = useState<PProduct[]>([]);
   const [expenses, setExpenses] = useState<PExpense[]>([]);
   const [horizon, setHorizon] = useState(30);
+  const [startDate, setStartDate] = useState(todayISO());
   const [gst, setGst] = useState<Gst>({ inclusive: true, enabled: true });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -175,6 +183,7 @@ export default function PlannerPage() {
       if (Array.isArray(plan.products)) setProducts(plan.products.map((p: Partial<PProduct>) => ({ ...blankProduct(), ...p, dailyRoas: Array.isArray(p.dailyRoas) ? p.dailyRoas : [] })));
       if (Array.isArray(plan.expenses)) setExpenses(plan.expenses);
       if (plan.horizonDays) setHorizon(Number(plan.horizonDays));
+      if (typeof plan.startDate === 'string' && plan.startDate) setStartDate(plan.startDate);
       setGst({ inclusive: plan.gstInclusive !== false, enabled: plan.gstRegistered !== false });
     }).catch(() => {}).finally(() => setLoaded(true));
   }, []);
@@ -186,11 +195,11 @@ export default function PlannerPage() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       setSaving(true);
-      fetch('/api/planner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ products, expenses, horizonDays: horizon, gstInclusive: gst.inclusive, gstRegistered: gst.enabled }) })
+      fetch('/api/planner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ products, expenses, horizonDays: horizon, startDate, gstInclusive: gst.inclusive, gstRegistered: gst.enabled }) })
         .catch(() => {}).finally(() => setSaving(false));
     }, 800);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [products, expenses, horizon, gst, loaded]);
+  }, [products, expenses, horizon, startDate, gst, loaded]);
 
   const fmt = (a: number) => {
     if (currency === 'USD') return formatUSD(inrPerUsd > 0 ? a / inrPerUsd : 0);
@@ -266,11 +275,10 @@ export default function PlannerPage() {
       }
       dayNet -= expDay;
       cum += dayNet;
-      const dt = new Date(); dt.setDate(dt.getDate() + day);
-      out.push({ label: new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short' }).format(dt), cum, day });
+      out.push({ label: labelISO(addDaysISO(startDate, day)), cum, day });
     }
     return out;
-  }, [products, expenses, horizon, gst]);
+  }, [products, expenses, horizon, startDate, gst]);
 
   // Money-out composition segments (for the stacked bar).
   const segments = [
@@ -282,10 +290,10 @@ export default function PlannerPage() {
   ].filter((s) => s.amount > 0.5);
   const barMax = Math.max(portfolio.revColl, moneyOut, 1);
 
-  const dayLabel = (offset: number) => {
-    const dt = new Date(); dt.setDate(dt.getDate() + offset);
-    return new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short' }).format(dt);
-  };
+  const endDate = addDaysISO(startDate, Math.max(0, horizon - 1));
+  const dayLabel = (offset: number) => labelISO(addDaysISO(startDate, offset));
+  const setTo = (d: string) => { if (d) setHorizon(Math.min(365, Math.max(1, diffDaysInclusive(startDate, d)))); };
+  const setQuick = (h: number) => { setStartDate(todayISO()); setHorizon(h); };
 
   return (
     <PageTransition className="mx-auto max-w-7xl p-5 space-y-5">
@@ -297,9 +305,14 @@ export default function PlannerPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] text-muted-foreground/60 tabular-nums">{saving ? 'saving…' : loaded ? 'saved ✓' : ''}</span>
+          <div className="flex items-center gap-1.5">
+            <DatePicker value={startDate} onChange={(d) => d && setStartDate(d)} compact placeholder="From" />
+            <span className="text-[10px] text-muted-foreground">→</span>
+            <DatePicker value={endDate} min={startDate} onChange={setTo} compact placeholder="To" />
+          </div>
           <div className="flex items-center rounded-lg border border-border bg-card overflow-hidden">
             {HORIZONS.map((h) => (
-              <button key={h} onClick={() => setHorizon(h)} className={`px-2.5 py-1.5 text-[11px] font-semibold transition ${horizon === h ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>{h}d</button>
+              <button key={h} onClick={() => setQuick(h)} className={`px-2.5 py-1.5 text-[11px] font-semibold transition ${horizon === h && startDate === todayISO() ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>{h}d</button>
             ))}
           </div>
           <div className="flex items-center rounded-lg border border-border bg-card overflow-hidden">
@@ -330,8 +343,8 @@ export default function PlannerPage() {
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <Wallet className="h-4 w-4 text-primary" />
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Total cashflow — next {horizon} days</h2>
-            <p className="text-[10px] text-muted-foreground">{products.length} product{products.length === 1 ? '' : 's'} rolled up · where the money comes from &amp; goes</p>
+            <h2 className="text-sm font-semibold text-foreground">Total cashflow — {labelISO(startDate)} → {labelISO(endDate)}</h2>
+            <p className="text-[10px] text-muted-foreground">{horizon} days · {products.length} product{products.length === 1 ? '' : 's'} rolled up · where the money comes from &amp; goes</p>
           </div>
         </div>
         <div className="relative z-10 p-4 grid grid-cols-1 lg:grid-cols-2 gap-5">
