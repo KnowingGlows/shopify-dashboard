@@ -7,7 +7,7 @@ import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
 
 const DOC_ID = 'finance_planner';
 
-const EMPTY_PLAN = { products: [], expenses: [], horizonDays: 30, updatedAt: '' };
+const EMPTY_PLAN = { products: [], expenses: [], horizonDays: 30, gstInclusive: true, gstRegistered: true, updatedAt: '' };
 
 export async function GET() {
   if (!isFirebaseAvailable()) return NextResponse.json({ plan: EMPTY_PLAN });
@@ -30,6 +30,8 @@ export async function POST(req: Request) {
       products: Array.isArray(body.products) ? body.products : [],
       expenses: Array.isArray(body.expenses) ? body.expenses : [],
       horizonDays: Number(body.horizonDays) || 30,
+      gstInclusive: body.gstInclusive !== false,
+      gstRegistered: body.gstRegistered !== false,
       updatedAt: new Date().toISOString(),
     };
     const firestore = getFirestore();
