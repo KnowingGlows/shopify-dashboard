@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { verifySessionToken, COOKIE_NAME } from '@/lib/auth';
 import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchAllStoresOrders } from '@/lib/shopify-api';
-import { getDelhiveryToken, trackShipments, type DelhiveryShipment } from '@/lib/delhivery';
+import { getDelhiveryToken, trackShipments, noteIndicatesRto, type DelhiveryShipment } from '@/lib/delhivery';
 import { getFirestore, isFirebaseAvailable, COLLECTIONS } from '@/lib/firebase';
 import type { RtoLineItem, RtoOrderItem, RtoStoreBucket, RtoSyncResponse } from '@/types/rto';
 
@@ -145,13 +145,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: `Delhivery tracking failed: ${message}` }, { status: 502 });
     }
 
-    // 5. Filter to RTO-in-transit shipments only
-    const rtoShipments: Array<{ awb: string; shipment: DelhiveryShipment; storeName: string; orderId: string }> = [];
-    for (const [awb, shipment] of delhiveryData.entries()) {
-      if (shipment.status !== 'rto_in_transit') continue;
-      const ref = awbToOrderRef.get(awb);
-      if (!ref) continue;
-      rtoShipments.push({ awb, shipment, storeName: ref.storeName, orderId: ref.orderId });
+    // 5. RTO is comment-driven — couriers over-report it, so the Shopify order
+    //    comment ("returned to origin") is the source of truth. Include orders
+    //    the comment flags as RTO; attach Delhivery tracking when available.
+    const rtoShipments: Array<{ awb: string; shipment: DelhiveryShipment | null; storeName: string; orderId: string }> = [];
+    for (const { storeName, orders } of ordersData) {
+      for (const order of orders) {
+        if (order.cancelled_at) continue;
+        if (!noteIndicatesRto(order.note, order.tags)) continue;
+        const awb = order.fulfillments?.[0]?.tracking_number ?? '';
+        rtoShipments.push({ awb, shipment: awb ? delhiveryData.get(awb) ?? null : null, storeName, orderId: String(order.id) });
+      }
     }
 
     // 6. Build per-order RTO items by joining shipment data with Shopify line_items
@@ -183,14 +187,14 @@ export async function GET(request: Request) {
         orderId: order.name ?? `#${order.order_number ?? ''}`,
         storeName,
         awb,
-        rtoStartedDate: shipment.rtoStartedDate,
-        expectedReturnDate: shipment.expectedReturnDate,
-        orderType: shipment.orderType || (order.financial_status === 'pending' ? 'COD' : 'Pre-paid'),
-        customerName: shipment.consigneeName || (order.customer
+        rtoStartedDate: shipment?.rtoStartedDate ?? null,
+        expectedReturnDate: shipment?.expectedReturnDate ?? null,
+        orderType: shipment?.orderType || (order.financial_status === 'pending' ? 'COD' : 'Pre-paid'),
+        customerName: shipment?.consigneeName || (order.customer
           ? `${order.customer.first_name ?? ''} ${order.customer.last_name ?? ''}`.trim()
           : ''),
-        origin: shipment.origin || '',
-        destination: shipment.destination || '',
+        origin: shipment?.origin || '',
+        destination: shipment?.destination || '',
         lineItems,
         totalUnits,
       };

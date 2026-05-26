@@ -27,6 +27,7 @@ export type DelhiveryStatus =
 export interface DelhiveryShipment {
   awb: string;
   status: DelhiveryStatus;
+  statusForward: DelhiveryStatus;  // status ignoring RTO signals (the forward-journey state)
   statusRaw: string;         // e.g. "In Transit"
   statusType: string;        // e.g. "RT", "DL", "UD"
   instructions: string;      // e.g. "Vehicle Departed"
@@ -90,7 +91,7 @@ function classifyDelhiveryStatus(shipment: {
   DeliveryDate?: string | null;
   Scans?: Array<{ ScanDetail?: { Scan?: string; StatusCode?: string; Instructions?: string } }>;
   DispatchCount?: number;
-}): DelhiveryStatus {
+}, opts: { ignoreRto?: boolean } = {}): DelhiveryStatus {
   const status = shipment.Status?.Status?.toLowerCase() ?? '';
   const statusType = shipment.Status?.StatusType ?? '';
   const instructions = (shipment.Status?.Instructions ?? '').toLowerCase();
@@ -112,14 +113,17 @@ function classifyDelhiveryStatus(shipment: {
   // RTOStartedDate flag is present.
   const onForwardLeg = statusType === 'UD' || status === 'in transit' || status === 'manifested' || status === 'pending' || status === 'dispatched';
 
-  // RTO checks FIRST — must come before delivered check
-  // RTO completed (returned to origin) — only with a real returned date
-  if (returnedDate) return 'rto_delivered';
-
-  // RTO in transit — the CURRENT leg must actually be a return
-  if (reverseInTransit || statusType === 'RT') return 'rto_in_transit';
-  // An RTO-started date only counts if the package isn't clearly still moving forward
-  if (rtoStarted && !onForwardLeg) return 'rto_in_transit';
+  // RTO checks FIRST — must come before delivered check.
+  // `ignoreRto` lets callers derive the underlying forward-journey status so an
+  // order whose RTO isn't confirmed by the Shopify comment can fall back to it.
+  if (!opts.ignoreRto) {
+    // RTO completed (returned to origin) — only with a real returned date
+    if (returnedDate) return 'rto_delivered';
+    // RTO in transit — the CURRENT leg must actually be a return
+    if (reverseInTransit || statusType === 'RT') return 'rto_in_transit';
+    // An RTO-started date only counts if the package isn't clearly still moving forward
+    if (rtoStarted && !onForwardLeg) return 'rto_in_transit';
+  }
 
   // Delivered (only if NOT an RTO)
   if (statusType === 'DL' || status === 'delivered') return 'delivered';
@@ -224,6 +228,7 @@ function parseShipment(s: any): DelhiveryShipment | null {
   return {
     awb: s.AWB,
     status: classifyDelhiveryStatus({ ...s, Scans: scans }),
+    statusForward: classifyDelhiveryStatus({ ...s, Scans: scans }, { ignoreRto: true }),
     statusRaw: s.Status?.Status ?? '',
     statusType: s.Status?.StatusType ?? '',
     instructions: s.Status?.Instructions ?? '',
@@ -303,4 +308,26 @@ export function mapDelhiveryToOrderStatus(ds: DelhiveryStatus): OrderDeliverySta
     case 'manifested': return 'in_transit';
     default: return 'in_transit';
   }
+}
+
+/**
+ * RTO is recorded by hand in the Shopify order — courier APIs over-report it.
+ * The note/tags are the source of truth: an order is only RTO when the comment
+ * says "returned to origin" (or an explicit RTO tag). Returns the RTO sub-status
+ * or null when the comment doesn't indicate a return.
+ */
+export function noteIndicatesRto(note?: string | null, tags?: string | null): 'rto' | 'rto_in_transit' | null {
+  const n = (note ?? '').toLowerCase();
+  const t = (tags ?? '').toLowerCase();
+  // Explicit "on its way back" wording → still in transit to origin
+  if (n.includes('in transit for return') || n.includes('rto in transit') || n.includes('in transit to origin') ||
+      t.includes('rto-in-transit') || t.includes('rto in transit') || t.includes('rto_in_transit')) {
+    return 'rto_in_transit';
+  }
+  // Returned to origin / RTO
+  if (n.includes('returned to origin') || n.includes('return to origin') || n.includes('rto initiated') ||
+      /\brto\b/.test(n) || /\brto\b/.test(t) || t.includes('return to origin')) {
+    return 'rto';
+  }
+  return null;
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchAllStoresOrders } from '@/lib/shopify-api';
-import { trackShipments, mapDelhiveryToOrderStatus, getDelhiveryToken, type DelhiveryShipment } from '@/lib/delhivery';
+import { trackShipments, mapDelhiveryToOrderStatus, getDelhiveryToken, noteIndicatesRto, type DelhiveryShipment } from '@/lib/delhivery';
 import { getFirestore, COLLECTIONS } from '@/lib/firebase';
 
 export const maxDuration = 60;
@@ -201,17 +201,33 @@ export async function GET(request: Request) {
         const fulfillment = order.fulfillments?.[0];
         const awb = fulfillment?.tracking_number ?? undefined;
 
-        // Use Delhivery status if available, otherwise fall back to Shopify
+        // RTO is recorded by hand in the Shopify comment — it's the source of
+        // truth. Couriers over-report RTO, so we only mark RTO when the comment
+        // confirms it; everything else uses live Delhivery tracking.
+        const noteRto = noteIndicatesRto(order.note, order.tags);
+
         let status: DeliveryStatus;
         let dShipment: DelhiveryShipment | undefined;
 
-        if (awb && delhiveryAvailable && delhiveryData.has(awb)) {
+        if (order.cancelled_at) {
+          status = 'cancelled';
+          if (awb && delhiveryAvailable && delhiveryData.has(awb)) dShipment = delhiveryData.get(awb)!;
+        } else if (awb && delhiveryAvailable && delhiveryData.has(awb)) {
           dShipment = delhiveryData.get(awb)!;
-          status = mapDelhiveryToOrderStatus(dShipment.status) as DeliveryStatus;
-          // Cancelled orders stay cancelled regardless of Delhivery
-          if (order.cancelled_at) status = 'cancelled';
+          if (noteRto) {
+            // Comment confirms RTO → authoritative
+            status = noteRto;
+          } else {
+            // No RTO comment → ignore Delhivery's RTO verdict, use the
+            // forward-journey status (in transit / NDR / delivered).
+            const ds = (dShipment.status === 'rto_in_transit' || dShipment.status === 'rto_delivered')
+              ? dShipment.statusForward
+              : dShipment.status;
+            status = mapDelhiveryToOrderStatus(ds) as DeliveryStatus;
+          }
         } else {
-          status = classifyFromShopify(order);
+          // No live tracking → comment first, then Shopify fulfilment fallback
+          status = noteRto ?? classifyFromShopify(order);
         }
 
         const classifiedOrder: ClassifiedOrder = {
