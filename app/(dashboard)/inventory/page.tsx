@@ -24,7 +24,7 @@ interface DispatchLog {
   createdAt: string;
 }
 
-const DEFAULT_STORE_OPTIONS = ['', 'Kairova', 'Mavric'];
+const DEFAULT_STORE_OPTIONS = ['', 'Kairova', 'Mavric', 'Vyonik'];
 const SOURCING_OPTIONS = ['', 'india', 'china'];
 const STATUS_OPTIONS = ['', 'In Stock', 'Low Stock', 'Out of Stock', 'Ordered', 'Discontinued'];
 
@@ -39,6 +39,7 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; dot: string }> 
 const STORE_CONFIG: Record<string, { color: string; bg: string }> = {
   'Kairova': { color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/30' },
   'Mavric': { color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/30' },
+  'Vyonik': { color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' },
 };
 
 const SOURCING_CONFIG: Record<string, { label: string; leadDays: number; color: string; bg: string }> = {

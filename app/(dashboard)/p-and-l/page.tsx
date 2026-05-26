@@ -13,7 +13,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-const BRANDS = ['Kairova', 'Mavric'];
+const BRANDS = ['Kairova', 'Mavric', 'Vyonik'];
 
 type BrandEntry = {
   brand: string;

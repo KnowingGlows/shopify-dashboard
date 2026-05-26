@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 import { getShopifyStores } from '@/lib/shopify-config';
 import { fetchShopifyOrders } from '@/lib/shopify-api';
 
-// Brand name → store index mapping (Store 1 = Kairova, Store 2 = Mavric)
+// Brand name → store index mapping (Store 1 = Kairova, Store 2 = Mavric, Store 3 = Vyonik)
+// NOTE: only a fallback — store lookup matches by name/displayName first.
 const BRAND_STORE_INDEX: Record<string, number> = {
   kairova: 0,
   mavric: 1,
+  vyonik: 2,
 };
 
 // GET /api/orders?store=StoreName&search=query

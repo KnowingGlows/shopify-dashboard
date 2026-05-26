@@ -20,7 +20,11 @@
       "Bash(git rm *)",
       "Bash(grep -n \"from '@/lib/funnels'\\\\|type NewFunnelInput\\\\|const hay = \\\\[f\\\\.productName\\\\|truncate text-\\\\[13px\\\\] font-semibold text-foreground\\\\\">{f.productName}\\\\|{f.productName}</p>\\\\|productName: selectedProduct.productName\\\\|const \\\\[productId, setProductId\\\\]\\\\|const \\\\[funnelishUrl, setFunnelishUrl\\\\]\\\\|onSubmit\\({\" \"app/\\(dashboard\\)/funnels/page.tsx\")",
       "Bash(grep -n \"from '@/lib/funnels'\\\\|{s.funnel.productName}\\\\|{funnel.productName}\\\\|s.funnel.productName, s.funnel.funnelishUrl\" \"app/\\(dashboard\\)/ads-international/page.tsx\" \"app/\\(dashboard\\)/ads-international/[funnelId]/page.tsx\")",
-      "Bash(grep -n \"from '@/lib/funnels'\\\\|replace\\(/\\\\^https\\\\?:\\\\\\\\\\\\\\\\/\\\\\\\\\\\\\\\\///, ''\\).replace\\(/\\\\\\\\\\\\\\\\/\\\\$/, ''\\)\\\\|funnelishUrl ? \" \"app/\\(dashboard\\)/product-tracker/[id]/page.tsx\" \"app/\\(dashboard\\)/product-tracker/[id]/funnels/page.tsx\" \"app/\\(dashboard\\)/product-tracker/winners/page.tsx\")"
+      "Bash(grep -n \"from '@/lib/funnels'\\\\|replace\\(/\\\\^https\\\\?:\\\\\\\\\\\\\\\\/\\\\\\\\\\\\\\\\///, ''\\).replace\\(/\\\\\\\\\\\\\\\\/\\\\$/, ''\\)\\\\|funnelishUrl ? \" \"app/\\(dashboard\\)/product-tracker/[id]/page.tsx\" \"app/\\(dashboard\\)/product-tracker/[id]/funnels/page.tsx\" \"app/\\(dashboard\\)/product-tracker/winners/page.tsx\")",
+      "Bash(grep -r \"Vyonik\\\\|VYO\" /Users/sovanshthakur/Documents/Work/Business/Softwares/Orbit/shopify-dashboard --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.js\" --include=\"*.json\" ! -path \"*/node_modules/*\")",
+      "Bash(sed -n '24,46p' \"app/\\(dashboard\\)/inventory/page.tsx\")",
+      "Bash(sed -n '14,20p' \"app/\\(dashboard\\)/p-and-l/page.tsx\")",
+      "Bash(sed -n '1,40p' \"app/api/orders/route.ts\")"
     ],
     "additionalDirectories": [
       "/tmp",

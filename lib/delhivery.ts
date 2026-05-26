@@ -96,17 +96,34 @@ function classifyDelhiveryStatus(shipment: {
   const instructions = (shipment.Status?.Instructions ?? '').toLowerCase();
   const statusCode = (shipment.Status?.StatusCode ?? '').toUpperCase();
 
-  // RTO checks FIRST — must come before delivered check
-  // RTO completed (returned to origin)
-  if (shipment.ReturnedDate) return 'rto_delivered';
+  // Delhivery's RTO date/flag fields sometimes come back as placeholder strings
+  // ("", "None", "0000-00-00") or string-booleans. Treating those as an active
+  // RTO mis-flags forward in-transit shipments as returns. Parse them strictly.
+  const isValidDate = (v?: string | null) => {
+    if (!v || typeof v !== 'string') return false;
+    const t = Date.parse(v);
+    return !Number.isNaN(t) && new Date(t).getUTCFullYear() > 2000;
+  };
+  const reverseInTransit = shipment.ReverseInTransit === true || String(shipment.ReverseInTransit ?? '').toLowerCase() === 'true';
+  const returnedDate = isValidDate(shipment.ReturnedDate);
+  const rtoStarted = isValidDate(shipment.RTOStartedDate);
+  // The forward leg ("UD"/in transit/manifested/dispatched/pending) means the
+  // package is still heading to the customer — never an RTO, even if a stale
+  // RTOStartedDate flag is present.
+  const onForwardLeg = statusType === 'UD' || status === 'in transit' || status === 'manifested' || status === 'pending' || status === 'dispatched';
 
-  // RTO in transit
-  if (shipment.ReverseInTransit || statusType === 'RT') return 'rto_in_transit';
-  if (shipment.RTOStartedDate && !shipment.ReturnedDate) return 'rto_in_transit';
+  // RTO checks FIRST — must come before delivered check
+  // RTO completed (returned to origin) — only with a real returned date
+  if (returnedDate) return 'rto_delivered';
+
+  // RTO in transit — the CURRENT leg must actually be a return
+  if (reverseInTransit || statusType === 'RT') return 'rto_in_transit';
+  // An RTO-started date only counts if the package isn't clearly still moving forward
+  if (rtoStarted && !onForwardLeg) return 'rto_in_transit';
 
   // Delivered (only if NOT an RTO)
   if (statusType === 'DL' || status === 'delivered') return 'delivered';
-  if (shipment.DeliveryDate) return 'delivered';
+  if (isValidDate(shipment.DeliveryDate)) return 'delivered';
 
   // NDR / delivery attempted — check current status
   const isNdrInstruction =
