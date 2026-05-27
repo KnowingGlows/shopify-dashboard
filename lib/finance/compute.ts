@@ -1,0 +1,160 @@
+// Finance compute — validated delivery/COD analytics (TS port of the worker's compute.js).
+// Pure function: takes tracked rows + NOW, returns a metrics object. Unit-tested against real data.
+import type { TrackedRow } from './delhivery';
+
+const DAY = 86400000;
+
+export function pd(s?: string | null): Date | null {
+  if (!s) return null;
+  const t = String(s).split('.')[0].replace('Z', '').slice(0, 19);
+  const m = t.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  const [, y, mo, d, hh, mm, ss] = m;
+  return new Date(Date.UTC(+y, +mo - 1, +d, +(hh || 0), +(mm || 0), +(ss || 0)));
+}
+
+const NDR_PH = [
+  'consignee unavailable', 'bad/incomplete address', 'refused to accept', 'office/institute closed',
+  'maximum attempts reached', 'destination unable to receive', 'not attempted',
+  'no client instructions to reattempt',
+];
+
+function isNdr(r: TrackedRow): boolean {
+  return (r.scans || []).some(sc => {
+    const instr = (sc[1] || '').toLowerCase();
+    return NDR_PH.some(p => instr.includes(p));
+  });
+}
+
+function val(r: TrackedRow): number {
+  const c = parseFloat(String(r.cod_amt ?? 0)) || 0;
+  const t = parseFloat(String(r.total ?? 0)) || 0;
+  return c > 0 ? c : t;
+}
+
+// COD cash-in-bank rule (confirmed by Sovansh). delivered weekday -> deposit lands.
+// No deposits Sat/Sun; Thu/Fri and weekend collections roll into Mon/Tue.
+// getUTCDay(): Sun=0..Sat=6. Offsets in calendar days:
+//   Mon(1)->Wed(+2) Tue(2)->Thu(+2) Wed(3)->Fri(+2) Thu(4)->Mon(+4) Fri(5)->Mon(+3) Sat(6)->Tue(+3) Sun(0)->Tue(+2)
+const DEPOSIT_OFFSET: Record<number, number> = { 1: 2, 2: 2, 3: 2, 4: 4, 5: 3, 6: 3, 0: 2 };
+export function depositDate(deliv: Date): Date {
+  return new Date(deliv.getTime() + DEPOSIT_OFFSET[deliv.getUTCDay()] * DAY);
+}
+
+const dayLabel = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' });
+const wdLabel = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+const keyOf = (d: Date) => d.toISOString().slice(0, 10);
+
+export interface DepositRow { date: string; label: string; weekday: string; orders: number; amount: number; cumulative: number; }
+export interface RiskRow { order?: string; waybill: string; dest: string; promised: string; last: string; failed: boolean; }
+
+export interface FinanceMetrics {
+  shipped: number; nfin: number;
+  delivered: number; rto: number; transit: number;
+  dr: number; rr: number; avgTt: number; avgTtRound: number;
+  cod: number; pre: number;
+  codRr: number; preRr: number; codRtCount: number; codFinCount: number; preRtCount: number; preFinCount: number;
+  ndrFlagged: number; ndrComp: number; ndrDl: number; ndrTr: number; ndrRecovery: number; noreatt: number;
+  p1: number; pndr: number; P: number; Praw: number;
+  codCollected: number; codTransitVal: number; codRtVal: number; codExpTransit: number; codExpOrders: number;
+  codExpTotal: number; codShippedVal: number; codAvgVal: number; codDl: number; codTransit: number;
+  deposits: DepositRow[];
+  statusCt: [string, number][]; stateCt: [string, number][]; rtoState: [string, number][];
+  riskRows: RiskRow[]; atrisk: number;
+}
+
+export function compute(R: TrackedRow[], NOW: Date = new Date()): FinanceMetrics {
+  const dl = R.filter(r => r.stype === 'DL');
+  const rt = R.filter(r => r.stype === 'RT');
+  const transit = R.filter(r => r.stype !== 'DL' && r.stype !== 'RT');
+  const nfin = dl.length + rt.length;
+  const shipped = R.length;
+
+  const cod = R.filter(r => r.ordertype === 'COD');
+  const pre = R.filter(r => r.ordertype === 'Pre-paid');
+  const codFin = cod.filter(r => r.stype === 'DL' || r.stype === 'RT');
+  const codRt = cod.filter(r => r.stype === 'RT');
+  const preFin = pre.filter(r => r.stype === 'DL' || r.stype === 'RT');
+  const preRt = pre.filter(r => r.stype === 'RT');
+
+  const tts: number[] = [];
+  for (const r of dl) {
+    const a = pd(r.pickup), b = pd(r.delivered);
+    if (a && b) tts.push((b.getTime() - a.getTime()) / DAY);
+  }
+  const avgTt = tts.length ? tts.reduce((x, y) => x + y, 0) / tts.length : 0;
+  const avgTtRound = avgTt ? Math.ceil(avgTt) : 4;
+
+  const ndr = R.filter(isNdr);
+  const ndrDl = ndr.filter(r => r.stype === 'DL');
+  const ndrRt = ndr.filter(r => r.stype === 'RT');
+  const ndrTr = ndr.filter(r => r.stype !== 'DL' && r.stype !== 'RT');
+  const ndrComp = ndrDl.length + ndrRt.length;
+  const ndrRecovery = ndrComp ? (ndrDl.length / ndrComp) * 100 : 0;
+  const noreatt = ndrRt.filter(r => (r.scans || []).some(sc => (sc[1] || '').toLowerCase().includes('no client instructions to reattempt')));
+
+  const atrisk = transit.filter(r => { const p = pd(r.promised); return p && p < NOW; });
+
+  const faDeliv = dl.filter(r => !isNdr(r));
+  const p1 = nfin ? faDeliv.length / nfin : 0;
+  const pndr = ndrComp ? ndrDl.length / ndrComp : 0;
+  const P = p1 + (1 - p1) * pndr;
+  const codTransit = transit.filter(r => r.ordertype === 'COD');
+  const codDl = dl.filter(r => r.ordertype === 'COD');
+  const codCollected = codDl.reduce((s, r) => s + val(r), 0);
+  const codRtVal = codRt.reduce((s, r) => s + val(r), 0);
+  const codTransitVal = codTransit.reduce((s, r) => s + val(r), 0);
+  const codExpTransit = codTransitVal * P;
+  const codExpOrders = codTransit.length * P;
+  const codExpTotal = codCollected + codExpTransit;
+  const codShippedVal = codCollected + codRtVal + codTransitVal;   // all COD shipped (incl. RTO) — honest AOV
+  const codAvgVal = cod.length ? codShippedVal / cod.length : 0;
+
+  const depAmt: Record<string, number> = {}, depCnt: Record<string, number> = {};
+  const add = (d: Date, amt: number, cnt: number) => { const k = keyOf(d); depAmt[k] = (depAmt[k] || 0) + amt; depCnt[k] = (depCnt[k] || 0) + cnt; };
+  for (const r of codDl) { const dv = pd(r.delivered); if (dv) add(depositDate(dv), val(r), 1); }
+  for (const r of codTransit) {
+    const pk = pd(r.pickup) || NOW;
+    let est = new Date(pk.getTime() + avgTtRound * DAY);
+    if (est < NOW) est = new Date(NOW.getTime() + DAY);
+    add(depositDate(est), val(r) * P, P);
+  }
+  let cum = 0;
+  const deposits: DepositRow[] = Object.keys(depAmt).sort().map(k => {
+    cum += depAmt[k];
+    const d = pd(k)!;
+    return { date: k, label: dayLabel(d), weekday: wdLabel(d), orders: depCnt[k], amount: depAmt[k], cumulative: cum };
+  });
+
+  const count = (arr: TrackedRow[], key: keyof TrackedRow) =>
+    arr.reduce<Record<string, number>>((m, r) => { const k = String(r[key] ?? '—'); m[k] = (m[k] || 0) + 1; return m; }, {});
+  const sortDesc = (obj: Record<string, number>): [string, number][] => Object.entries(obj).sort((a, b) => b[1] - a[1]);
+  const statusCt = sortDesc(count(R, 'status'));
+  const stateCt = sortDesc(count(R, 'state')).slice(0, 10);
+  const rtoState = sortDesc(count(rt, 'state'));
+
+  const riskRows: RiskRow[] = atrisk.map(r => {
+    const failed = ['cancel', 'maximum', 'refus'].some(k => (r.instructions || '').toLowerCase().includes(k));
+    return { order: r.order, waybill: r.waybill, dest: `${r.city || ''}, ${r.state || ''}`, promised: (r.promised || '').slice(0, 10), last: r.instructions || '', failed };
+  });
+
+  return {
+    shipped, nfin, delivered: dl.length, rto: rt.length, transit: transit.length,
+    dr: nfin ? (dl.length / nfin) * 100 : 0, rr: nfin ? (rt.length / nfin) * 100 : 0,
+    avgTt, avgTtRound,
+    cod: cod.length, pre: pre.length,
+    codRr: codFin.length ? (codRt.length / codFin.length) * 100 : 0,
+    preRr: preFin.length ? (preRt.length / preFin.length) * 100 : 0,
+    codRtCount: codRt.length, codFinCount: codFin.length, preRtCount: preRt.length, preFinCount: preFin.length,
+    ndrFlagged: ndr.length, ndrComp, ndrDl: ndrDl.length, ndrTr: ndrTr.length, ndrRecovery, noreatt: noreatt.length,
+    p1: p1 * 100, pndr: pndr * 100, P: P * 100, Praw: P,
+    codCollected, codTransitVal, codRtVal, codExpTransit, codExpOrders, codExpTotal,
+    codShippedVal, codAvgVal, codDl: codDl.length, codTransit: codTransit.length,
+    deposits, statusCt, stateCt, rtoState, riskRows, atrisk: atrisk.length,
+  };
+}
+
+/** Merge several stores' tracked rows into one combined metrics object. */
+export function computeCombined(perStore: TrackedRow[][], NOW: Date = new Date()): FinanceMetrics {
+  return compute(perStore.flat(), NOW);
+}

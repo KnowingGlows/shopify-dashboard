@@ -8,7 +8,8 @@ import { getFirestore, COLLECTIONS } from '@/lib/firebase';
  * delivered COD amounts + analytics. This API just reads that cache
  * and applies remittance rules to project bank deposits.
  *
- * Remittance: Mon-Thu D+2, Fri→Mon, Sat→Tue, Sun→Tue
+ * Remittance: Mon-Wed D+2, Thu→Mon, Fri→Mon, Sat→Tue, Sun→Tue
+ * (No deposits land Sat/Sun — Thu+2 would be Saturday, so it rolls to Monday.)
  */
 
 function toISTDateStr(date: Date): string {
@@ -23,10 +24,11 @@ function addDays(dateStr: string, days: number): string {
 
 function getRemittanceDate(deliveryDateStr: string): string {
   const dow = new Date(deliveryDateStr + 'T00:00:00+05:30').getDay();
+  if (dow === 4) return addDays(deliveryDateStr, 4);  // Thu → Mon (Thu+2 = Sat, no deposit → roll to Mon)
   if (dow === 5) return addDays(deliveryDateStr, 3);  // Fri → Mon
   if (dow === 6) return addDays(deliveryDateStr, 3);  // Sat → Tue
   if (dow === 0) return addDays(deliveryDateStr, 2);  // Sun → Tue
-  return addDays(deliveryDateStr, 2);                  // Mon-Thu → D+2
+  return addDays(deliveryDateStr, 2);                  // Mon-Wed → D+2
 }
 
 export async function GET(request: Request) {
