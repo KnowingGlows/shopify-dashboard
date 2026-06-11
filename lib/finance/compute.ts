@@ -26,6 +26,28 @@ function isNdr(r: TrackedRow): boolean {
   });
 }
 
+// Delhivery occasionally returns stype='DL' for packages that were actually
+// returned to origin (RTO-delivered to the seller, not the buyer). The
+// human-readable status string 'RTO' and the ReturnedDate field are the
+// reliable disambiguators. Treat any of these signals as RTO regardless of
+// the StatusType code.
+export function isRto(r: TrackedRow): boolean {
+  if (r.stype === 'RT') return true;
+  const rd = r.returnedDate;
+  if (rd) {
+    const t = Date.parse(rd);
+    if (!Number.isNaN(t) && new Date(t).getUTCFullYear() > 2000) return true;
+  }
+  const s = (r.status || '').toUpperCase();
+  if (s === 'RTO' || s === 'RTO DELIVERED' || s.startsWith('RTO ')) return true;
+  return false;
+}
+
+export function isDelivered(r: TrackedRow): boolean {
+  // Strict customer-delivery: stype=DL and none of the RTO signals fire.
+  return r.stype === 'DL' && !isRto(r);
+}
+
 function val(r: TrackedRow): number {
   const c = parseFloat(String(r.cod_amt ?? 0)) || 0;
   const t = parseFloat(String(r.total ?? 0)) || 0;
@@ -45,7 +67,9 @@ const dayLabel = (d: Date) => d.toLocaleDateString('en-GB', { day: '2-digit', mo
 const wdLabel = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
 const keyOf = (d: Date) => d.toISOString().slice(0, 10);
 
-export interface DepositRow { date: string; label: string; weekday: string; orders: number; amount: number; cumulative: number; }
+export interface DepositRow { date: string; label: string; weekday: string; orders: number; amount: number; confirmed: number; estimated: number; cumulative: number; }
+export interface InflowBucket { label: string; amount: number; confirmed: number; estimated: number; orders: number; }
+export interface InflowSummary { total: number; confirmed: number; estimated: number; next7: number; next14: number; alreadyDeposited: number; buckets: InflowBucket[]; }
 export interface RiskRow { order?: string; waybill: string; dest: string; promised: string; last: string; failed: boolean; }
 
 export interface FinanceMetrics {
@@ -59,23 +83,27 @@ export interface FinanceMetrics {
   codCollected: number; codTransitVal: number; codRtVal: number; codExpTransit: number; codExpOrders: number;
   codExpTotal: number; codShippedVal: number; codAvgVal: number; codDl: number; codTransit: number;
   deposits: DepositRow[];
+  inflow: InflowSummary;
   statusCt: [string, number][]; stateCt: [string, number][]; rtoState: [string, number][];
   riskRows: RiskRow[]; atrisk: number;
 }
 
 export function compute(R: TrackedRow[], NOW: Date = new Date()): FinanceMetrics {
-  const dl = R.filter(r => r.stype === 'DL');
-  const rt = R.filter(r => r.stype === 'RT');
-  const transit = R.filter(r => r.stype !== 'DL' && r.stype !== 'RT');
+  // dl = strictly delivered-to-customer (stype=DL AND no RTO signal)
+  // rt = RTO via any signal (stype=RT OR returnedDate OR status='RTO')
+  // transit = everything else
+  const dl = R.filter(isDelivered);
+  const rt = R.filter(isRto);
+  const transit = R.filter(r => !isDelivered(r) && !isRto(r));
   const nfin = dl.length + rt.length;
   const shipped = R.length;
 
   const cod = R.filter(r => r.ordertype === 'COD');
   const pre = R.filter(r => r.ordertype === 'Pre-paid');
-  const codFin = cod.filter(r => r.stype === 'DL' || r.stype === 'RT');
-  const codRt = cod.filter(r => r.stype === 'RT');
-  const preFin = pre.filter(r => r.stype === 'DL' || r.stype === 'RT');
-  const preRt = pre.filter(r => r.stype === 'RT');
+  const codFin = cod.filter(r => isDelivered(r) || isRto(r));
+  const codRt = cod.filter(isRto);
+  const preFin = pre.filter(r => isDelivered(r) || isRto(r));
+  const preRt = pre.filter(isRto);
 
   const tts: number[] = [];
   for (const r of dl) {
@@ -86,9 +114,9 @@ export function compute(R: TrackedRow[], NOW: Date = new Date()): FinanceMetrics
   const avgTtRound = avgTt ? Math.ceil(avgTt) : 4;
 
   const ndr = R.filter(isNdr);
-  const ndrDl = ndr.filter(r => r.stype === 'DL');
-  const ndrRt = ndr.filter(r => r.stype === 'RT');
-  const ndrTr = ndr.filter(r => r.stype !== 'DL' && r.stype !== 'RT');
+  const ndrDl = ndr.filter(isDelivered);
+  const ndrRt = ndr.filter(isRto);
+  const ndrTr = ndr.filter(r => !isDelivered(r) && !isRto(r));
   const ndrComp = ndrDl.length + ndrRt.length;
   const ndrRecovery = ndrComp ? (ndrDl.length / ndrComp) * 100 : 0;
   const noreatt = ndrRt.filter(r => (r.scans || []).some(sc => (sc[1] || '').toLowerCase().includes('no client instructions to reattempt')));
@@ -110,21 +138,56 @@ export function compute(R: TrackedRow[], NOW: Date = new Date()): FinanceMetrics
   const codShippedVal = codCollected + codRtVal + codTransitVal;   // all COD shipped (incl. RTO) — honest AOV
   const codAvgVal = cod.length ? codShippedVal / cod.length : 0;
 
-  const depAmt: Record<string, number> = {}, depCnt: Record<string, number> = {};
-  const add = (d: Date, amt: number, cnt: number) => { const k = keyOf(d); depAmt[k] = (depAmt[k] || 0) + amt; depCnt[k] = (depCnt[k] || 0) + cnt; };
-  for (const r of codDl) { const dv = pd(r.delivered); if (dv) add(depositDate(dv), val(r), 1); }
+  const depAmt: Record<string, number> = {}, depCnt: Record<string, number> = {}, depConf: Record<string, number> = {}, depEst: Record<string, number> = {};
+  const add = (d: Date, amt: number, cnt: number, kind: 'confirmed' | 'estimated') => {
+    const k = keyOf(d);
+    depAmt[k] = (depAmt[k] || 0) + amt; depCnt[k] = (depCnt[k] || 0) + cnt;
+    if (kind === 'confirmed') depConf[k] = (depConf[k] || 0) + amt; else depEst[k] = (depEst[k] || 0) + amt;
+  };
+  // Confirmed: COD already delivered to the customer — cash is real, only the D+2 remittance is pending.
+  for (const r of codDl) { const dv = pd(r.delivered); if (dv) add(depositDate(dv), val(r), 1, 'confirmed'); }
+  // Estimated: still in transit — risk-adjusted by delivery probability P, dated by best available ETA.
   for (const r of codTransit) {
-    const pk = pd(r.pickup) || NOW;
-    let est = new Date(pk.getTime() + avgTtRound * DAY);
-    if (est < NOW) est = new Date(NOW.getTime() + DAY);
-    add(depositDate(est), val(r) * P, P);
+    const prom = pd(r.promised);                                   // courier's promised delivery date (most accurate)
+    const pk = pd(r.pickup);
+    let est = prom || (pk ? new Date(pk.getTime() + avgTtRound * DAY) : new Date(NOW.getTime() + avgTtRound * DAY));
+    // Overdue but still moving: don't pretend it lands tomorrow — give it a fresh transit cycle from today.
+    if (est.getTime() < NOW.getTime()) est = new Date(NOW.getTime() + avgTtRound * DAY);
+    add(depositDate(est), val(r) * P, P, 'estimated');
   }
   let cum = 0;
   const deposits: DepositRow[] = Object.keys(depAmt).sort().map(k => {
     cum += depAmt[k];
     const d = pd(k)!;
-    return { date: k, label: dayLabel(d), weekday: wdLabel(d), orders: depCnt[k], amount: depAmt[k], cumulative: cum };
+    return { date: k, label: dayLabel(d), weekday: wdLabel(d), orders: depCnt[k], amount: depAmt[k], confirmed: depConf[k] || 0, estimated: depEst[k] || 0, cumulative: cum };
   });
+
+  // ---- inflow: "how much is about to come, and when" — future deposits bucketed by timeframe ----
+  const nowDay = Math.floor(NOW.getTime() / DAY);
+  const bucketDefs = [
+    { label: 'Next 7 days', lo: 0, hi: 7 },
+    { label: '8–14 days', lo: 8, hi: 14 },
+    { label: '15–30 days', lo: 15, hi: 30 },
+    { label: '30+ days', lo: 31, hi: Infinity },
+  ];
+  const buckets: InflowBucket[] = bucketDefs.map(b => ({ label: b.label, amount: 0, confirmed: 0, estimated: 0, orders: 0 }));
+  let alreadyDeposited = 0;
+  for (const dep of deposits) {
+    const dDay = Math.floor(pd(dep.date)!.getTime() / DAY) - nowDay;
+    if (dDay < 0) { alreadyDeposited += dep.amount; continue; }      // remittance date already passed → in the bank
+    const bi = bucketDefs.findIndex(b => dDay >= b.lo && dDay <= b.hi);
+    if (bi < 0) continue;
+    buckets[bi].amount += dep.amount; buckets[bi].confirmed += dep.confirmed; buckets[bi].estimated += dep.estimated; buckets[bi].orders += dep.orders;
+  }
+  const inflow: InflowSummary = {
+    total: buckets.reduce((s, b) => s + b.amount, 0),
+    confirmed: buckets.reduce((s, b) => s + b.confirmed, 0),
+    estimated: buckets.reduce((s, b) => s + b.estimated, 0),
+    next7: buckets[0].amount,
+    next14: buckets[0].amount + buckets[1].amount,
+    alreadyDeposited,
+    buckets,
+  };
 
   const count = (arr: TrackedRow[], key: keyof TrackedRow) =>
     arr.reduce<Record<string, number>>((m, r) => { const k = String(r[key] ?? '—'); m[k] = (m[k] || 0) + 1; return m; }, {});
@@ -150,7 +213,7 @@ export function compute(R: TrackedRow[], NOW: Date = new Date()): FinanceMetrics
     p1: p1 * 100, pndr: pndr * 100, P: P * 100, Praw: P,
     codCollected, codTransitVal, codRtVal, codExpTransit, codExpOrders, codExpTotal,
     codShippedVal, codAvgVal, codDl: codDl.length, codTransit: codTransit.length,
-    deposits, statusCt, stateCt, rtoState, riskRows, atrisk: atrisk.length,
+    deposits, inflow, statusCt, stateCt, rtoState, riskRows, atrisk: atrisk.length,
   };
 }
 
