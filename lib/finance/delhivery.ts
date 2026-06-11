@@ -15,12 +15,6 @@ export interface TrackedRow {
   pickup?: string | null;
   promised?: string | null;
   delivered?: string | null;
-  // RTO signals — Delhivery sometimes returns stype='DL' for packages
-  // successfully returned to origin (delivered back to seller). Always consult
-  // these fields before treating stype=DL as a customer-delivery.
-  returnedDate?: string | null;
-  rtoStartedDate?: string | null;
-  reverseInTransit?: boolean;
   state?: string;
   city?: string;
   total?: string | null;
@@ -67,17 +61,12 @@ export async function trackAll(token: string, rows: TrackingRow[]): Promise<Trac
           const sd = sc.ScanDetail ?? {};
           return [sd.Scan, sd.Instructions, sd.ScanDateTime] as [string | undefined, string | undefined, string | undefined];
         });
-        const revRaw = s.ReverseInTransit;
-        const rev = revRaw === true || String(revRaw ?? '').toLowerCase() === 'true';
         results.push({
           waybill: wb, order: m?.order,
           status: st.Status as string, stype: st.StatusType as string, instructions: st.Instructions as string,
           ordertype: s.OrderType as string, cod_amt: s.CODAmount as number,
           pickup: (s.PickUpDate as string) ?? null, promised: (s.PromisedDeliveryDate as string) ?? null,
           delivered: (s.DeliveryDate as string) ?? null,
-          returnedDate: (s.ReturnedDate as string) ?? null,
-          rtoStartedDate: (s.RTOStartedDate as string) ?? null,
-          reverseInTransit: rev,
           state: m?.state, city: m?.city, total: m?.total ?? null,
           scans,
         });
